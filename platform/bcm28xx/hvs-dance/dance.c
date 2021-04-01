@@ -256,7 +256,6 @@ static int cmd_hvs_delay(int argc, const console_cmd_args *argv) {
 void dance_start(gfx_surface* fbin, int hvs_channel, void (*backgroundcb)(void)) {
   fb = fbin;
   background = backgroundcb;
-  gfx_flush(fb);
 
   hvs_set_background_color(hvs_channel, 0xffffff);
   screen_width = (hvs_channels[hvs_channel].dispctrl >> 12) & 0xfff;

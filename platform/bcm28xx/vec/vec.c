@@ -39,7 +39,7 @@ static void vec_init(const struct app_descriptor *app) {
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   int rate = measure_clock(29);
-  printf("vec rate: %f\n", ((float)rate)/1000/1000);
+  printf("vec rate: %f\n", ((double)rate)/1000/1000);
 
   *REG32(VEC_WSE_RESET) = 1;
   *REG32(VEC_SOFT_RESET) = 1;
@@ -76,8 +76,8 @@ static void vec_init(const struct app_descriptor *app) {
   *REG32(VEC_DAC_MISC) = VEC_DAC_MISC_VID_ACT | VEC_DAC_MISC_DAC_RST_N;
   *REG32(VEC_CFG) = VEC_CFG_VEC_EN;
   struct pv_timings t;
-  bool ntsc = true;
-  if (ntsc) {
+  bool ntsc_mode = true;
+  if (ntsc_mode) {
     t.vfp = 3;
     t.vsync = 4;
     t.vbp = 16;
