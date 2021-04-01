@@ -1,0 +1,7 @@
+LOCAL_DIR := mystuff
+LKMAKEROOT := .
+LKROOT := lk
+LKINC := $(LOCAL_DIR)
+#DEFAULT_PROJECT ?= rpi3-start
+BUILDROOT ?= .
+
