@@ -59,8 +59,13 @@ manual_uart_cfg:
   mov r1, 0x00004000
   st r1, (r0)
   mov r0, 0x7e1010f4 // CM_UARTDIV
-  //mov r1, 0x5a003900 //19.2mhz divisor
+#if CRYSTAL == 19200000
+  mov r1, 0x5a003900 //19.2mhz divisor
+#elif CRYSTAL == 54000000
   mov r1, 0x5a00a050 // 54mhz divisor
+#else
+#error unsupported crystal speed
+#endif
   st r1, (r0)
   mov r0, 0x7e1010f0 // CM_UARTCTL
   mov r1, 0x5a000211
