@@ -93,7 +93,7 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
     {
         .phys = SDRAM_BASE,
         .virt = KERNEL_BASE,
-        .size = MEMORY_APERTURE_SIZE,
+        .size = MEMSIZE,
         .flags = 0,
         .name = "memory"
     },
@@ -106,6 +106,16 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
         .name = "bcm peripherals"
     },
+#ifdef WITH_SMP
+    /* arm local peripherals */
+    {
+        .phys = 0x40000000,
+        .virt = BCM_LOCAL_PERIPH_BASE_VIRT,
+        .size = 1 * 1024 * 1024,
+        .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
+        .name = "arm local peripherals"
+    },
+#endif
 
     /* null entry to terminate the list */
     { 0 }
