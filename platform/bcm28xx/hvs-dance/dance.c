@@ -3,19 +3,16 @@
 #include <assert.h>
 #include <dance.h>
 #include <kernel/timer.h>
-#if ARCH_HAS_MMU==1
-#include <kernel/vm.h>
-#endif
 #include <lib/tga.h>
 #include <lk/console_cmd.h>
 #include <lk/err.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pv.h>
 #include <platform/mailbox.h>
 #include <rand.h>
 #include <stdio.h>
-//#include <pi-logo.h>
 
 static int cmd_hvs_dance(int argc, const console_cmd_args *argv);
 static int cmd_hvs_limit(int argc, const console_cmd_args *argv);

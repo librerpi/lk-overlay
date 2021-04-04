@@ -8,9 +8,9 @@ ENTRY(_start)
 GROUP(-lgcc)
 
 MEMORY {
-  /* in the C alias, direct uncached
+  /* in the 8 alias, L2 cached
    */
-  ram (rwx) : ORIGIN = 0xc0000000 + 20M, LENGTH = 20M
+  ram (rwx) : ORIGIN = 0x80000000 + 20M, LENGTH = 20M
 }
 SECTIONS {
   .text : {

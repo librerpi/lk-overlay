@@ -21,16 +21,17 @@ SDHOST driver. This used to be known as ALTMMC.
 #include "block_device.hpp"
 
 #include <lib/bio.h>
+#include <lk/console_cmd.h>
 #include <lk/debug.h>
 #include <lk/reg.h>
+#include <malloc.h>
 #include <platform/bcm28xx.h>
 #include <platform/bcm28xx/gpio.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/sdhost.h>
+#include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
-#include <malloc.h>
-#include <lk/console_cmd.h>
-#include <platform/bcm28xx/sdhost_impl.h>
 
 extern "C" {
   #include <dev/gpio.h>
@@ -598,7 +599,7 @@ struct BCM2708SDHost *sdhost = 0;
 
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
-  //printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
+  printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
   for (int i=0; i<count; i++) {
     uint32_t *dest = reinterpret_cast<uint32_t*>(buf + (sdhost->get_block_size() * i));
     bool ret = dev->real_read_block(block + i, dest);
@@ -611,16 +612,11 @@ bdev_t *rpi_sdhost_init() {
   if (!sdhost) {
     sdhost = new BCM2708SDHost;
     auto blocksize = sdhost->get_block_size();
-    puts("a");
     auto blocks = sdhost->capacity_bytes / blocksize;
-    puts("b");
     bio_initialize_bdev(sdhost, "sdhost", blocksize, blocks, 0, NULL, BIO_FLAGS_NONE);
-    puts("c");
     //sdhost->read = sdhost_read_wrap;
     sdhost->read_block = sdhost_read_block_wrap;
-    puts("d");
     bio_register_device(sdhost);
-    puts("e");
   }
   return sdhost;
 }

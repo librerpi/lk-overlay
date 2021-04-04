@@ -3,6 +3,7 @@
 #include <lib/tga.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/pll_read.h>

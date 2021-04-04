@@ -3,6 +3,8 @@
 #include <lk/debug.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll.h>
 #include <stdint.h>
 
@@ -549,9 +551,9 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
             CM_PLLC_HOLDCORE2_SET |
             CM_PLLC_HOLDCORE1_SET;
 
-  puts("waiting for lock");
+  //puts("waiting for lock");
   while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKC_BIT)) {}
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
   *REG32(A2W_PLLC_FRAC) = A2W_PASSWORD | frac;
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
 }

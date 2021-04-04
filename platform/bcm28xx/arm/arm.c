@@ -1,11 +1,12 @@
 #include <app.h>
+#include <kernel/timer.h>
+#include <lib/cksum.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
 #include <string.h>
-#include <kernel/timer.h>
 
 extern uint8_t arm_payload_start, arm_payload_end;
 timer_t arm_check;
@@ -57,7 +58,12 @@ static void arm_init(const struct app_descriptor *app) {
   power_arm_start();
   printregs();
   printf("arm starting...\n");
-  memcpy((void*)0xc0000000, &arm_payload_start, &arm_payload_end - &arm_payload_start);
+  void *original_start = &arm_payload_start;
+  uint32_t size = &arm_payload_end - &arm_payload_start;
+  memcpy((void*)0xc0000000, original_start, size);
+  uint32_t crc = crc32(0, original_start, size);
+  uint32_t crc2 = crc32(0, 0xc0000000, size);
+  printf("checksums 0x%08x 0x%08x\n", crc, crc2);
   mapBusToArm(0xc0000000, 0);
   mapBusToArm(0x7e000000, 0x20000000);
   printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
@@ -107,8 +113,11 @@ void setupClock(void) {
   /* oscillator->pllb */
   *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_PLLBEN_SET;
 
-  *REG32(A2W_PLLB_FRAC) = A2W_PASSWORD | 0xeaaa8; // out of 0x100000
-  *REG32(A2W_PLLB_CTRL) = A2W_PASSWORD | 48 | 0x1000;
+  *REG32(A2W_PLLB_FRAC) = A2W_PASSWORD | 0x15555; // out of 0x100000
+  *REG32(A2W_PLLB_CTRL) = A2W_PASSWORD | 52 | 0x1000;
+
+  // sets clock to 19.2 * (52 + (0x15555 / 0x100000))
+  // aka ~1000mhz
 
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET;
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;
@@ -140,7 +149,7 @@ void setupClock(void) {
   *REG32(A2W_PLLB_DIG0) = A2W_PASSWORD | dig0;
 
 
-  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 8;
+  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 4;
 
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET | CM_PLLB_LOADARM_SET;
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;

@@ -1,4 +1,5 @@
 #include <lk/asm.h>
+#include <platform/bcm28xx/clock.h>
 
 #define MANUAL_UART
 
@@ -20,9 +21,9 @@ loop:
 core2_start:
   mov r0, core2_stack_top
   ld sp, (r0)
-  mov r0, 0
-  mov r1, 'A'
-  bl uart_putc
+  //mov r0, 0
+  //mov r1, 'A'
+  //bl uart_putc
   bl core2_entry
 loop2:
   b loop2
@@ -30,6 +31,11 @@ loop2:
 .global testit
 testit:
   st r1, (r0)
+  mov.m r2, p16
+  mov.m r3, p16
+  mov r4, 0
+  mov.m p16, r4
+  mov.m r4, p16
   st r2, (r0+4)
   st r3, (r0+8)
   st r4, (r0+12)
@@ -91,3 +97,8 @@ manual_uart_cfg:
   rts
   v8st H(0,0)+r0, (r0)
 #endif
+
+.global benchmark_self_asm
+benchmark_self_asm:
+  mov r0, ST_CLO
+  rts

@@ -7,14 +7,6 @@
  */
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-void print_timestamp(void);
-#ifdef __cplusplus
-}
-#endif
-
 #define BV(n) (1 << n)
 #define SDRAM_BASE 0
 
@@ -37,7 +29,7 @@ void print_timestamp(void);
   #define BCM_PERIPH_BASE_VIRT    (0xffffffffc0000000ULL)
   #define MEMORY_APERTURE_SIZE    (1024 * 1024 * 1024)
 #elif ARCH_VPU
-  #define BCM_PERIPH_BASE_VIRT    (0x7e000000U)
+  #define BCM_PERIPH_BASE_VIRT    (0x7e000000)
 #else
 #error Unknown BCM28XX Variant
 #endif
@@ -55,6 +47,7 @@ void print_timestamp(void);
 #define DMA_BASE                (BCM_PERIPH_BASE_VIRT + 0x7000)
 #define ARM_BASE                (BCM_PERIPH_BASE_VIRT + 0xB000)
 #define CM_BASE                 (BCM_PERIPH_BASE_VIRT + 0x101000)
+#define A2W_BASE                (BCM_PERIPH_BASE_VIRT + 0x102000)
 #define PCM_CLOCK_BASE          (BCM_PERIPH_BASE_VIRT + 0x101098)
 #define RNG_BASE                (BCM_PERIPH_BASE_VIRT + 0x104000)
 #define GPIO_BASE               (BCM_PERIPH_BASE_VIRT + 0x200000)
@@ -76,12 +69,6 @@ void print_timestamp(void);
 
 #define SD_IDL                  (SD_BASE + 0x18)
 #define SD_CYC                  (SD_BASE + 0x30)
-
-#define ST_CS                   (ST_BASE + 0x0)
-#define ST_CLO                  (ST_BASE + 0x4)
-#define ST_CHI                  (ST_BASE + 0x8)
-#define ST_C0                   (ST_BASE + 0xc)
-#define ST_C1                   (ST_BASE + 0x10)
 
 #define IC0_C                   (IC0_BASE + 0x0)
 #define IC0_S                   (IC0_BASE + 0x4)

@@ -3,6 +3,8 @@
 #include <lk/debug.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/udelay.h>
@@ -10,11 +12,13 @@
 
 static int cmd_pll_dump(int argc, const console_cmd_args *argv);
 static int cmd_measure_clock(int argc, const console_cmd_args *argv);
+static int cmd_test1(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("dump_pll_state", "print all pll state", &cmd_pll_dump)
 STATIC_COMMAND("measure_clock", "measure an internal clock rate", &cmd_measure_clock)
 STATIC_COMMAND("measure_clocks", "measure all internal clocks", &cmd_measure_clocks)
+STATIC_COMMAND("t", "do test 1", &cmd_test1)
 STATIC_COMMAND_END(pll);
 
 uint32_t get_vpu_per_freq(void) {
@@ -45,7 +49,7 @@ uint32_t get_pll_freq(enum pll pll) {
 
 uint32_t get_pll_chan_freq(enum pll_chan chan) {
   const struct pll_chan_def *def = &pll_chan_def[chan];
-  printf("def is 0x%x\n", def);
+  printf("def is 0x%x\n", (uint32_t)def);
   uint32_t ctrl_val = *def->ctrl;
   uint32_t div = ctrl_val & def->div_mask;
   if (BIT_SET(ctrl_val, def->chenb_bit) || div == 0)
@@ -166,21 +170,21 @@ static const char *clock_names[] = {
   [9] = "TIMER", // guess, from start.elf
   [0xa] = "PVTMON", // VC6 only, from a start.elf
   [0xc] = "dsi0p",
-  "dsi1p",
-  "cam0",
-  "cam1",
+  [0xd] = "dsi1p",
+  [0xe] = "cam0",
+  [0xf] = "cam1",
   [0x11] = "dpi",
-  "dsi0e",
-  "dsi1e",
-  "gp0",
-  "gp1",
-  "hsm",
-  "pcm",
-  "pwm",
-  "slim",
+  [0x12] = "dsi0e",
+  [0x13] = "dsi1e",
+  [0x14] = "gp0",
+  [0x15] = "gp1",
+  [0x16] = "hsm",
+  [0x17] = "pcm",
+  [0x18] = "pwm",
+  [0x19] = "slim",
   [0x1b] = "smi",
-  "uart",
-  "vec",
+  [0x1c] = "uart",
+  [0x1d] = "vec",
   [0x26] = "aveo",
   [0x26] = "emmc",
   [0x2a] = "emmc2"
@@ -233,5 +237,66 @@ int cmd_measure_clocks(int argc, const console_cmd_args *argv) {
     int count = measure_clock(i);
     printf("clock #%d(%s) is %d\n", i, clock_names[i], count);
   }
+  return 0;
+}
+
+// source 2 is PLLB_ARM, only works with pllnr 1
+// source 3 is PLLC/2, works on pllnr 0/1/2
+float measure_clock2(int pllnr, int source) {
+  uint32_t pllbit;
+  switch (pllnr) {
+  case 0:
+    pllbit = CM_TDCLKEN_PLLADIV2_SET;
+    break;
+  case 1:
+    pllbit = CM_TDCLKEN_PLLBDIV2_SET;
+    break;
+  case 2:
+    pllbit = CM_TDCLKEN_PLLCDIV2_SET;
+    break;
+  case 3:
+    pllbit = CM_TDCLKEN_PLLDDIV2_SET;
+    break;
+  }
+
+  *REG32(CM_PLLTCTL) = CM_PASSWORD | CM_PLLTCTL_KILL_SET;
+  *REG32(CM_PLLTCTL) = CM_PASSWORD | source;
+  *REG32(CM_TDCLKEN) = CM_PASSWORD | pllbit;
+  *REG32(CM_TD0DIV) = CM_PASSWORD | 0x1000; // divisor, 24bit int
+  *REG32(CM_TD0CTL) = CM_PASSWORD | 0x1; // source = 1
+  *REG32(CM_TD0CTL) = CM_PASSWORD | CM_TD0CTL_ENAB_SET | 0x1; // source = 1
+  *REG32(CM_BURSTCNT) = CM_PASSWORD | 0x4b00; // 19.2mhz / 1000
+  *REG32(CM_BURSTCTL) = CM_PASSWORD | CM_BURSTCTL_ENAB_SET;
+
+  int maxTries = 10;
+  while (maxTries-- > 0) {
+    if ((*REG32(CM_PLLTCTL) & CM_PLLTCTL_BUSY_SET) == 0) break;
+    udelay(1000);
+  }
+
+  uint32_t a = *REG32(CM_PLLTCNT0);
+  *REG32(CM_PLLTCTL) = CM_PASSWORD | CM_PLLTCTL_KILL_SET;
+  *REG32(CM_PLLTCTL) = CM_PASSWORD;
+  *REG32(CM_TDCLKEN) = CM_PASSWORD;
+  *REG32(CM_TD0CTL) = CM_PASSWORD | 0x1;
+
+  double b = ((float)a) * 2000 / 1000 / 1000;
+  printf("a:%d\n", a);
+
+  return b;
+}
+
+static int cmd_test1(int argc, const console_cmd_args *argv) {
+  int pllnr = 1; // PLLB
+  if (argc > 1) pllnr = argv[1].u;
+  if (pllnr >= 4) pllnr = 3;
+
+  int source = 2;
+  if (argc > 2) source = argv[2].u;
+
+  double b = measure_clock2(pllnr, source);
+
+  printf("pllnr:%d rate:%f %f\n", pllnr, b, b*4 );
+
   return 0;
 }

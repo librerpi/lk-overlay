@@ -23,8 +23,11 @@ VideoCoreIV SDRAM initialization code.
 #include <lk/debug.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/sdram.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdbool.h>

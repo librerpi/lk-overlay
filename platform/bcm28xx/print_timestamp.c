@@ -1,5 +1,7 @@
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <stdio.h>
 
 void print_timestamp() {

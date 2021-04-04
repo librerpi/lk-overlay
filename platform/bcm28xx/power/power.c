@@ -1,9 +1,10 @@
-#include <platform/bcm28xx/power.h>
-#include <lk/reg.h>
-#include <stdio.h>
-#include <platform/bcm28xx/udelay.h>
-#include <platform/bcm28xx/pll.h>
 #include <lk/console_cmd.h>
+#include <lk/reg.h>
+#include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/pll.h>
+#include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/udelay.h>
+#include <stdio.h>
 
 #define PM_PROC_ARMRSTN_CLR    0xffffffbf
 #define PM_IMAGE_PERIRSTN_SET  0x00000040

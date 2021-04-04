@@ -14,6 +14,7 @@
 #include <platform/interrupts.h>
 #include <platform/debug.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <assert.h>
 #include <dev/gpio.h>

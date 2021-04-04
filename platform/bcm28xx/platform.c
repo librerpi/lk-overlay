@@ -5,31 +5,34 @@
  * license that can be found in the LICENSE file or at
  * https://opensource.org/licenses/MIT
  */
+#include <arch.h>
+#include <dev/gpio.h>
+#include <dev/uart.h>
+#include <kernel/spinlock.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
 #include <lk/err.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <lk/trace.h>
+#include <platform.h>
+#include <platform/bcm28xx.h>
+#include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/gpio.h>
+#include <platform/bcm28xx/pll_read.h>
+#include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/udelay.h>
+#include <platform/interrupts.h>
 
-#include <dev/uart.h>
-#include <arch.h>
-#include <lk/init.h>
 #if ARCH_HAS_MMU == 1
 #include <kernel/vm.h>
 #endif
-#include <kernel/spinlock.h>
-#include <dev/gpio.h>
 
 #ifdef HAVE_ARM_TIMER
 #include <dev/timer/arm_generic.h>
 #endif
-
-#include <platform.h>
-#include <platform/bcm28xx.h>
-#include <platform/bcm28xx/gpio.h>
-#include <platform/bcm28xx/pll_read.h>
-#include <platform/bcm28xx/power.h>
-#include <platform/interrupts.h>
 
 #if BCM2836 || BCM2835
 #include <arch/arm.h>
@@ -144,6 +147,8 @@ __WEAK uint32_t get_uart_base_freq() {
 void platform_init_mmu_mappings(void) {
 }
 
+uint32_t vpu_clock;
+
 static void switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
@@ -156,6 +161,7 @@ static void switch_vpu_to_pllc() {
   setup_pllc(    pllc_mhz * 1000 * 1000, core0_div, per_div);
 
   int vpu_divisor = 1;
+  vpu_clock = (108 * core0_div) / vpu_divisor;
 
   *REG32(CM_VPUCTL) = CM_PASSWORD | CM_VPUCTL_FRAC_SET | CM_SRC_OSC | CM_VPUCTL_GATE_SET;
   *REG32(CM_VPUDIV) = CM_PASSWORD | (vpu_divisor << 12);
@@ -271,6 +277,27 @@ void platform_early_init(void) {
     puts("done platform early init");
 }
 
+static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
+  //register uint32_t x __asm__("r5");
+  spin_lock_saved_state_t state;
+  arch_interrupt_save(&state, SPIN_LOCK_FLAG_INTERRUPTS);
+  uint32_t start = *REG32(ST_CLO);
+  uint32_t limit = 100000;
+  asm volatile ("nop");
+  for (uint32_t i=0; i<limit; i++) {
+    asm volatile("");
+  }
+  uint32_t stop = *REG32(ST_CLO);
+  arch_interrupt_restore(state, SPIN_LOCK_FLAG_INTERRUPTS);
+  uint32_t delta = stop - start;
+  if (delta > 0) {
+    double rate = ((double)limit) / delta;
+    printf("%dMHz %f loops per tick, averaged over %d ticks, %f clocks per loop\n", vpu_clock, rate, delta, vpu_clock / rate);
+  } else {
+    puts("delta zero");
+  }
+}
+
 void platform_init(void) {
 #if BCM2835 == 1
   gpio_config(16, kBCM2708PinmuxOut);
@@ -280,6 +307,9 @@ void platform_init(void) {
   gpio_config(42, kBCM2708PinmuxOut);
 #endif
     uart_init();
+    udelay(1000);
+    benchmark_self();
+    printf("A2W_SMPS_A_VOLTS: 0x%x\n", *REG32(A2W_SMPS_A_VOLTS));
 #if BCM2837
     init_framebuffer();
 #endif

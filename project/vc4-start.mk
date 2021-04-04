@@ -6,11 +6,11 @@ MODULES += \
 	platform/bcm28xx/otp \
 	platform/bcm28xx/vec \
 	platform/bcm28xx/hvs-dance \
-	platform/bcm28xx/arm \
-	#app/shell \
-	#lib/debugcommands \
-	#app/tests \
+	app/shell \
+	lib/debugcommands \
+	app/tests \
+	#platform/bcm28xx/arm \
 	#app/stringtests \
 	#lib/cksum \
 
-GLOBAL_DEFINES += PL011_TX_ONLY
+# GLOBAL_DEFINES += PL011_TX_ONLY

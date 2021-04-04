@@ -3,6 +3,7 @@
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/interrupts.h>
 #include <stdio.h>
@@ -96,7 +97,7 @@ void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, uns
     scl0 = SCALER_CTL0_SCL_H_TPZ_V_TPZ;
     break;
   default:
-    puts("unsupported scale combonation");
+    puts("unsupported scale combination");
   }
 
   int start = display_slot;

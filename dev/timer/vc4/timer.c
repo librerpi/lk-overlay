@@ -5,6 +5,7 @@
 #include <platform/bcm28xx.h>
 #include <platform/interrupts.h>
 #include <platform/timer.h>
+#include <platform/bcm28xx/clock.h>
 
 static enum handler_return timer0_irq(void *arg);
 static void vc4_timer_init(uint level);

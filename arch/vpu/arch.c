@@ -1,15 +1,16 @@
-#include <sys/types.h>
-#include <stdint.h>
-#include <lk/debug.h>
+#include <dev/gpio.h>
+#include <dev/uart.h>
+#include <kernel/thread.h>
 #include <lk/console_cmd.h>
+#include <lk/debug.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
-#include <kernel/thread.h>
-#include <string.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/pll.h>
-#include <dev/gpio.h>
 #include <platform/bcm28xx/udelay.h>
-#include <dev/uart.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/types.h>
 
 static int cmd_boot_other_core(int argc, const console_cmd_args *argv);
 static int cmd_testit(int argc, const console_cmd_args *argv);
@@ -74,18 +75,22 @@ static int cmd_boot_other_core(int argc, const console_cmd_args *argv) {
   core2_stack_top = (uint32_t)((core2_stack + sizeof(core2_stack)) - 4);
   //*REG32(A2W_PLLC_CORE1) = A2W_PASSWORD | 6; // 3ghz/6 == 500mhz
   *REG32(IC1_WAKEUP) = (uint32_t)(&core2_start);
-  for (int i=0; i<20; i++) {
-    udelay(2);
-    printf("%d %d\n", i, foo);
+  uint32_t start = *REG32(ST_CLO);
+  while (true) {
+    if (foo % 2 == 0) foo++;
+    if (foo > 1000) break;
   }
+  uint32_t end = *REG32(ST_CLO);
+  uint32_t delta = end - start;
+  printf("took %d ticks\n", delta);
   return 0;
 }
 
 void core2_entry(void) {
-  dprintf(INFO, "core2 says hello\n");
-  for (int i=0; i<300; i++) {
-    udelay(1);
-    foo = i;
+  //dprintf(INFO, "core2 says hello\n");
+  while (true) {
+    if (foo % 2 == 1) foo++;
+    if (foo > 1000) break;
   }
   for (;;);
 }
