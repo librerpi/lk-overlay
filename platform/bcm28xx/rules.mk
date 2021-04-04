@@ -93,6 +93,8 @@ else ifeq ($(TARGET),rpi3-vpu)
   MODULES += platform/bcm28xx/sdhost
 
 else ifeq ($(TARGET),rpi4-vpu)
+  MMIO_BASE_PHYS = 0x7e000000
+  MMIO_BASE_VIRT = 0x7e000000
   GLOBAL_DEFINES += RPI4=1
 
   MODULE_SRCS += \

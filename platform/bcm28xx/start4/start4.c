@@ -1,6 +1,7 @@
 #include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/clock.h>
 #include <stdint.h>
 #include <stdio.h>
 
