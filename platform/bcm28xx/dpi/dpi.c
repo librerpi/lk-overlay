@@ -2,6 +2,7 @@
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/dpi.h>
 #include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/hvs.h>
