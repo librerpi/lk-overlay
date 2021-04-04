@@ -57,6 +57,16 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
         .name = "bcm peripherals"
     },
+#ifdef WITH_SMP
+    /* arm local peripherals */
+    {
+        .phys = 0x40000000,
+        .virt = BCM_LOCAL_PERIPH_BASE_VIRT,
+        .size = 1 * MB,
+        .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
+        .name = "arm local peripherals"
+    },
+#endif
 
     /* identity map to let the boot code run */
     {

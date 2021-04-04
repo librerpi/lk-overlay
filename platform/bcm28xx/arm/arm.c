@@ -2,6 +2,8 @@
 #include <kernel/timer.h>
 #include <lib/cksum.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>

@@ -5,16 +5,17 @@
  * license that can be found in the LICENSE file or at
  * https://opensource.org/licenses/MIT
  */
-#include <lk/trace.h>
 #include <assert.h>
-#include <lk/err.h>
-#include <lk/bits.h>
+#include <kernel/mp.h>
 #include <kernel/spinlock.h>
 #include <kernel/thread.h>
-#include <kernel/mp.h>
-#include <platform/interrupts.h>
-#include <platform/bcm28xx.h>
+#include <lk/bits.h>
+#include <lk/err.h>
 #include <lk/reg.h>
+#include <lk/trace.h>
+#include <platform/bcm28xx.h>
+#include <platform/bcm28xx/udelay.h>
+#include <platform/interrupts.h>
 
 #if ARCH_ARM
   #include <arch/arm.h>

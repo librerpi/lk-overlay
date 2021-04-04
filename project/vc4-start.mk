@@ -9,8 +9,8 @@ MODULES += \
 	app/shell \
 	lib/debugcommands \
 	app/tests \
-	#platform/bcm28xx/arm \
+	platform/bcm28xx/arm \
 	#app/stringtests \
 	#lib/cksum \
 
-# GLOBAL_DEFINES += PL011_TX_ONLY
+GLOBAL_DEFINES += PL011_TX_ONLY

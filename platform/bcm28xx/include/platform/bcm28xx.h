@@ -11,27 +11,19 @@
 #define SDRAM_BASE 0
 
 /* Note: BCM2836/BCM2837 use different peripheral base than BCM2835 */
-#ifdef ARCH_VPU
-  #define BCM_PERIPH_BASE_PHYS    (0x7E000000U)
-#elif defined(TARGET_RPI1)
-  #define BCM_PERIPH_BASE_PHYS    (0x20000000U)
-#elif defined(TARGET_RPI2)
-  #define BCM_PERIPH_BASE_PHYS    (0x3F000000U)
-#elif defined(TARGET_RPI3)
-  #define BCM_PERIPH_BASE_PHYS    (0x3F000000U)
+
+#ifdef MMIO_BASE_PHYS
+  #define BCM_PERIPH_BASE_PHYS (MMIO_BASE_PHYS)
+#else
+  #error add MMIO_BASE_PHYS to rules.mk
 #endif
 
-#define BCM_PERIPH_SIZE         (0x01100000U)
+#define BCM_PERIPH_SIZE         (0x01000000U)
 
-#ifdef MMIO_BASE_VIRT
+#if MMIO_BASE_VIRT
   #define BCM_PERIPH_BASE_VIRT    (MMIO_BASE_VIRT)
-#elif BCM2837
-  #define BCM_PERIPH_BASE_VIRT    (0xffffffffc0000000ULL)
-  #define MEMORY_APERTURE_SIZE    (1024 * 1024 * 1024)
-#elif ARCH_VPU
-  #define BCM_PERIPH_BASE_VIRT    (0x7e000000)
 #else
-#error Unknown BCM28XX Variant
+  #error add MMIO_BASE_VIRT to rules.mk
 #endif
 
 #define BCM_SDRAM_BUS_ADDR_BASE_NO_L2 0xc0000000

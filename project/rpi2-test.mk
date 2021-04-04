@@ -9,5 +9,7 @@ MODULES += \
 	lib/cksum \
 	lib/debugcommands \
 	platform/bcm28xx/pll \
-	platform/bcm28xx/hvs-dance \
-	lib/tga \
+	#platform/bcm28xx/hvs-dance \
+	#lib/tga \
+
+MEMSIZE = 0xa00000
