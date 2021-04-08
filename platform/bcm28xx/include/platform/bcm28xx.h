@@ -76,13 +76,8 @@
 #define IC1_VADDR               (IC1_BASE + 0x30)
 #define IC1_WAKEUP              (IC1_BASE + 0x34)
 
-#define ARMCTRL_BASE            (ARM_BASE + 0x000)
-#define ARMCTRL_INTC_BASE       (ARM_BASE + 0x200)
-#define ARMCTRL_TIMER0_1_BASE   (ARM_BASE + 0x400)
-#define ARMCTRL_0_SBM_BASE      (ARM_BASE + 0x800)
 
 /* Videocore (GPU) mailbox registers for core0 */
-#define ARM0_MAILBOX_BASE       (ARM_BASE + 0x0880)
 #define ARM0_MAILBOX_READ       (ARM0_MAILBOX_BASE + 0x00)
 #define ARM0_MAILBOX_PEEK       (ARM0_MAILBOX_BASE + 0x10)
 #define ARM0_MAILBOX_CONFIG     (ARM0_MAILBOX_BASE + 0x1C)

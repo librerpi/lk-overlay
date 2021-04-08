@@ -21,7 +21,6 @@ SDHOST driver. This used to be known as ALTMMC.
 #include "block_device.hpp"
 
 #include <lib/bio.h>
-#include <lk/console_cmd.h>
 #include <lk/debug.h>
 #include <lk/reg.h>
 #include <malloc.h>
@@ -80,12 +79,6 @@ extern "C" {
 #define mfence() __sync_synchronize()
 
 #define kIdentSafeClockRate 0x148
-
-static int cmd_sdhost_init(int argc, const console_cmd_args *argv);
-
-STATIC_COMMAND_START
-STATIC_COMMAND("sdhost_init", "initialize the sdhost driver", &cmd_sdhost_init)
-STATIC_COMMAND_END(sdhost);
 
 struct BCM2708SDHost : BlockDevice {
 	bool is_sdhc;
@@ -465,7 +458,7 @@ struct BCM2708SDHost : BlockDevice {
 			/* work out the capacity of the card in bytes */
 			capacity_bytes = (SD_CSD_V2_CAPACITY(csd) * block_length);
 
-			clock_div = 5;
+			clock_div = 10; // 5;
 		} else if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_1_0) {
 			printf("    CSD     : Ver 1.0\n");
 			printf("    Capacity: %d\n", SD_CSD_CAPACITY(csd));
@@ -599,7 +592,7 @@ struct BCM2708SDHost *sdhost = 0;
 
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
-  printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
+  //printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
   for (int i=0; i<count; i++) {
     uint32_t *dest = reinterpret_cast<uint32_t*>(buf + (sdhost->get_block_size() * i));
     bool ret = dev->real_read_block(block + i, dest);
@@ -619,9 +612,4 @@ bdev_t *rpi_sdhost_init() {
     bio_register_device(sdhost);
   }
   return sdhost;
-}
-
-static int cmd_sdhost_init(int argc, const console_cmd_args *argv) {
-  rpi_sdhost_init();
-  return 0;
 }

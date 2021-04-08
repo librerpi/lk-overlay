@@ -14,6 +14,7 @@
 #include <lk/reg.h>
 #include <lk/trace.h>
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/arm.h>
 #include <platform/bcm28xx/udelay.h>
 #include <platform/interrupts.h>
 

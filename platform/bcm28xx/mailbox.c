@@ -17,6 +17,7 @@
 #include <dev/display.h>
 
 #include <platform/bcm28xx.h>
+#include <platform/bcm28xx/arm.h>
 #include <platform/mailbox.h>
 
 

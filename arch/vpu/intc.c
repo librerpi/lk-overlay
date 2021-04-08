@@ -220,18 +220,14 @@ void sleh_irq(vc4_saved_state_t* pcb, uint32_t tp) {
   switch (source) {
   case 64: // timer0
   case 73: // dwc2
+  case INTERRUPT_ARM + 64: // fired when the arm cpu writes to the arm->vpu mailbox
   case 106: // pv2
   case 121: // uart
     assert(irq_handlers[source - 64].h);
     ret = irq_handlers[source - 64].h(irq_handlers[source - 64].arg);
     if (ret == INT_RESCHEDULE) {
-      //dprintf(INFO, "pre-emptying\n");
       thread_preempt();
-      //dprintf(INFO, "done preempt\n");
     }
-    break;
-  case INTERRUPT_ARM:
-    // fired when the arm cpu writes to the arm->vpu mailbox
     break;
   default:
     print_vpu_state(pcb);

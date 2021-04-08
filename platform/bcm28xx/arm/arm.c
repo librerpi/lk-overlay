@@ -3,6 +3,7 @@
 #include <lib/cksum.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/arm.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
@@ -16,20 +17,6 @@ timer_t arm_check;
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
 void setupClock(void);
 void bridgeStart(bool cycleBrespBits);
-
-#define ARM_CONTROL0  (ARM_BASE+0x000)
-#define ARM_C0_SIZ1G     0x00000003
-#define ARM_C0_BRESP1    0x00000004
-#define ARM_C0_BRESP2    0x00000008
-#define ARM_C0_FULLPERI  0x00000040
-#define ARM_C0_APROTPASS  0x0000A000 // Translate 1:1
-#define ARM_C0_APROTMSK  0x0000F000
-#define ARM_TRANSLATE (ARM_BASE+0x100)
-#define ARM_CONTROL1  (ARM_BASE+0x440)
-#define ARM_C1_PERSON    0x00000100 // peripherals on
-#define ARM_C1_REQSTOP   0x00000200 // ASYNC bridge request stop
-#define ARM_ERRHALT   (ARM_BASE + 0x448)
-#define ARM_ID        (ARM_BASE + 0x44C)
 
 #define PM_PROC_ARMRSTN_CLR 0xffffffbf
 
@@ -66,8 +53,11 @@ static void arm_init(const struct app_descriptor *app) {
   uint32_t crc = crc32(0, original_start, size);
   uint32_t crc2 = crc32(0, 0xc0000000, size);
   printf("checksums 0x%08x 0x%08x\n", crc, crc2);
-  mapBusToArm(0xc0000000, 0);
+  for (int i=0; i<64 ; i += 16) {
+    mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
+  }
   mapBusToArm(0x7e000000, 0x20000000);
+  mapBusToArm(0x7e000000, 0x3f000000);
   printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
   /*
    * enable peripheral access, map arm secure bits to axi secure bits 1:1 and
@@ -104,7 +94,7 @@ void mapBusToArm(uint32_t busAddr, uint32_t armAddr) {
 
   uint32_t index = armAddr >> 24; // div by 16mb
   uint32_t pte = busAddr >> 21; // div by 2mb
-  printf("mapBusToArm index:%x, pte:%x\n", index, pte);
+  printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
 
   tte[index] = pte;
 }
@@ -197,7 +187,7 @@ void bridgeStart(bool cycleBrespBits) {
     *REG32(PM_PROC) |= PM_PASSWORD | ~PM_PROC_ARMRSTN_CLR;
   }
 
-  udelay(300000);
+  udelay(6 * 1000 * 1000);
   printf("\nbridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
 }
 

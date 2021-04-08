@@ -67,6 +67,13 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .name = "arm local peripherals"
     },
 #endif
+    { // 32mb window for linux+dtb
+      .phys = 16 * MB,
+      .virt = KERNEL_BASE + (16 * MB),
+      .size = 32 * MB,
+      .flags = 0,
+      .name = "next-stage"
+    },
 
     /* identity map to let the boot code run */
     {
@@ -138,9 +145,15 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+static int cmd_short_hang(int argc, const console_cmd_args *argv) {
+  udelay(10 * 1000 * 1000);
+  return 0;
+}
+
 
 STATIC_COMMAND_START
 STATIC_COMMAND("whatareyou", "print the cpu arch", &cmd_what_are_you)
+STATIC_COMMAND("shorthang", "hang for a bit", &cmd_short_hang)
 STATIC_COMMAND_END(platform);
 
 extern void intc_init(void);
@@ -257,7 +270,7 @@ void platform_early_init(void) {
     }
 
 #elif BCM2836
-    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, 1000000);
+    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPSIRQ, 1000000);
 #elif ARCH_VPU
 #else
 #error Unknown BCM28XX Variant
