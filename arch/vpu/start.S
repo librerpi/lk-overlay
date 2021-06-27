@@ -1,5 +1,7 @@
 #include <lk/asm.h>
 #include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/pl011.h>
 
 #define MANUAL_UART
 
@@ -61,10 +63,10 @@ loop18:
 
 #ifdef MANUAL_UART
 manual_uart_cfg:
-  mov r0, 0x7e200004 // GP_FSEL1
+  mov r0, GPIO_GPFSEL1
   mov r1, 0x00004000
   st r1, (r0)
-  mov r0, 0x7e1010f4 // CM_UARTDIV
+  mov r0, CM_UARTDIV
 #if CRYSTAL == 19200000
   mov r1, 0x5a003900 //19.2mhz divisor
 #elif CRYSTAL == 54000000
@@ -73,32 +75,26 @@ manual_uart_cfg:
 #error unsupported crystal speed
 #endif
   st r1, (r0)
-  mov r0, 0x7e1010f0 // CM_UARTCTL
+  mov r0, CM_UARTCTL
   mov r1, 0x5a000211
   st r1, (r0)
-  mov r0, 0x7e201044
+  mov r0, UART_ICR
   mov r1, 0x000007ff
   st r1, (r0)
-  mov r0, 0x7e20102c
+  mov r0, UART_LCRH
   mov r1, 0x00000070
   st r1, (r0)
-  mov r0, 0x7e201024
+  mov r0, UART_IBRD
   mov r1, 0x00000002
   st r1, (r0)
-  mov r0, 0x7e201028
+  mov r0, UART_FBRD
   mov r1, 0x0000003b
   st r1, (r0)
-  mov r0, 0x7e201030
+  mov r0, UART_CR
   mov r1, 0x00000301
   st r1, (r0)
-  mov r0, 0x7e201000
+  mov r0, UART_DR
   mov r1, 'U'
   st r1, (r0)
   rts
-  v8st H(0,0)+r0, (r0)
 #endif
-
-.global benchmark_self_asm
-benchmark_self_asm:
-  mov r0, ST_CLO
-  rts
