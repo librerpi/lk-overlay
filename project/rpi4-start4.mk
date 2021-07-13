@@ -10,4 +10,4 @@ MODULES += \
 	app/stringtests \
 	app/tests \
 	platform/bcm28xx/dpi \
-
+	app/signing-dump \
