@@ -10,6 +10,12 @@ FUNCTION(_start)
 .global _start
 _start:
   di
+
+  // check if the 2nd core ran this entry point
+  version r0
+  btest r0, 0x10
+  bne core2_loop
+
   mov sp, _fstack
 #ifdef MANUAL_UART
   bl manual_uart_cfg
@@ -18,6 +24,9 @@ _start:
   bl lk_main
 loop:
   b loop
+
+core2_loop:
+  b .
 
 .global core2_start
 core2_start:
