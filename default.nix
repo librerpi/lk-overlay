@@ -1,3 +1,5 @@
+{ risc ? false }:
+
 let
   sources = import ./nix/sources.nix;
   pkgs = import (builtins.fetchTarball https://github.com/input-output-hk/nixpkgs/archive/0ee0489d42e.tar.gz) {};
@@ -26,12 +28,13 @@ in lib.fix (self: {
       pkgsCross.i686-embedded.stdenv.cc
       pkgsCross.vc4.stdenv.cc
       pkgsCross.aarch64-embedded.stdenv.cc
-      pkgsCross.riscv32-embedded.stdenv.cc
-      pkgsCross.riscv64-embedded.stdenv.cc
       python
       python3
       qemu
       imagemagick
+    ] ++ lib.optionals risc [
+      pkgsCross.riscv32-embedded.stdenv.cc
+      pkgsCross.riscv64-embedded.stdenv.cc
     ];
     ARCH_x86_TOOLCHAIN_PREFIX = "i686-elf-";
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
