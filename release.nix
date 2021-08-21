@@ -1,5 +1,5 @@
 let
-  self = import ./.;
+  self = import ./. {};
 in {
   arm = {
     inherit (self.arm) rpi1-test rpi2-test rpi3-test;
