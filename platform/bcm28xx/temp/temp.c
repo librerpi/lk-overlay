@@ -1,3 +1,4 @@
+#include <app.h>
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
@@ -14,7 +15,6 @@
 #define TS_TSENSSTAT  0x7e212004
 
 static int cmd_show_temp(int argc, const console_cmd_args *argv);
-static int cmd_monitor_temp(int argc, const console_cmd_args *argv);
 static void setup_tsens(void);
 bool tsens_setup = false;
 timer_t poller;
@@ -22,7 +22,6 @@ float increment, offset;
 
 STATIC_COMMAND_START
 STATIC_COMMAND("show_temp", "print internal temp sensor", &cmd_show_temp)
-STATIC_COMMAND("monitor_temp", "monitor the temp at regular intervals", &cmd_monitor_temp)
 STATIC_COMMAND_END(temp);
 
 typedef struct {
@@ -66,7 +65,6 @@ static float get_converted_temp(void) {
 }
 
 static void setup_tsens() {
-  printf("bringing tsens up\n");
   *REG32(CM_TSENSCTL) = (*REG32(CM_TSENSCTL) & CM_TSENSCTL_ENAB_CLR) | CM_PASSWORD; // disable TSENS
   while (*REG32(CM_TSENSCTL) & CM_TSENSCTL_BUSY_SET) {} // wait for it to stop
   *REG32(CM_TSENSCTL) = CM_PASSWORD; // clear all config
@@ -87,7 +85,8 @@ static void setup_tsens() {
 
 static int cmd_show_temp(int argc, const console_cmd_args *argv) {
   double converted = get_converted_temp();
-  printf("Temp: %f\n", converted);
+  uint32_t raw = get_raw_temp();
+  printf("Temp: %f\nRaw: %d\n", converted, raw);
   return 0;
 }
 
@@ -100,16 +99,18 @@ static enum handler_return poller_entry(struct timer *t, lk_time_t now, void *ar
   static int32_t last_temp = 0;
   int32_t temp = get_raw_temp();
   uint32_t diff = abs32(temp - last_temp);
-  if (diff > 5) {
+  if (diff > 3) {
     printf("temp changed %f -> %f\n", (double)convert_temp(last_temp), (double)convert_temp(temp));
     last_temp = temp;
   }
   return INT_NO_RESCHEDULE;
 }
 
-static int cmd_monitor_temp(int argc, const console_cmd_args *argv) {
+static void temp_init(const struct app_descriptor *app) {
   timer_initialize(&poller);
   timer_set_periodic(&poller, 1000, poller_entry, NULL);
-
-  return 0;
 }
+
+APP_START(temp)
+  .init = temp_init,
+APP_END
