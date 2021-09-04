@@ -29,6 +29,11 @@
 #define V3D_SQRSV0 (V3D_BASE + 0x0410)
 #define V3D_SQRSV1 (V3D_BASE + 0x0414)
 
+#define V3D_PCTRC  (V3D_BASE + 0x0670)
+#define V3D_PCTRE  (V3D_BASE + 0x0674)
+#define V3D_PCTR0  (V3D_BASE + 0x0680)
+#define V3D_PCTRS0 (V3D_BASE + 0x0684)
+
 #define V3D_ERRSTAT (V3D_BASE + 0x0f20)
 
 int cmd_v3d_probe2(int argc, const console_cmd_args *argv);
