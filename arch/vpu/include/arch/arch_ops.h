@@ -34,7 +34,10 @@ static inline struct thread *arch_get_current_thread(void) {
 }
 
 static inline void arch_set_current_thread(struct thread *t) {
-  __asm__ volatile ("mov r29, %0" : : "r"(t));
+  // Error: operand out of range (-65 not between -64 and 63)
+  // gcc is off by one, on the reach of a pc-relative jump like `b.s .L17`
+  // this nop pushes it over gcc's idea of the limit, and makes it switch technique
+  __asm__ volatile ("mov r29, %0 \n nop" : : "r"(t));
 }
 
 static inline ulong arch_cycle_count(void) { return 0; }
