@@ -4,8 +4,11 @@
 #endif
 #include <strings.h>
 #include <assert.h>
+#include <dev/display.h>
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
+#include <lk/err.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/hvs.h>
@@ -251,8 +254,6 @@ void hvs_initialize() {
     hvs_channels[i].dispctrl = SCALER_DISPCTRLX_RESET;
     hvs_channels[i].dispctrl = 0;
     hvs_channels[i].dispbkgnd = 0x1020202; // bit 24
-    list_initialize(&channels[i].layers);
-    mutex_init(&channels[i].lock);
   }
 
 #ifdef ENABLE_TEXT
@@ -499,8 +500,29 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 }
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
-  // TODO, have a base layer exposed via this
-  return -1;
+  int w = 640;
+  int h = 480;
+  struct gfx_surface *gfx = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
+  bzero(gfx->ptr, gfx->len);
+  fb->image.pixels = gfx->ptr;
+  fb->format = DISPLAY_FORMAT_ARGB_8888;
+  fb->image.format = IMAGE_FORMAT_ARGB_8888;
+  fb->image.rowbytes = w * 4;
+  fb->image.width = w;
+  fb->image.height = h;
+  fb->image.stride = w;
+  fb->flush = NULL;
+  hvs_layer *console_layer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(console_layer, gfx, 50, 50, 30);
+  console_layer->name = "console";
+
+  int channel = 1;
+  mutex_acquire(&channels[channel].lock);
+  hvs_dlist_add(channel, console_layer);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+
+  return NO_ERROR;
 }
 
 static int cmd_hvs_update(int argc, const console_cmd_args *argv) {
@@ -597,3 +619,12 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer) {
   puts("no match insert");
   list_add_tail(&channels[channel].layers, &new_layer->node);
 }
+
+static void hvs_init_hook(uint level) {
+  for (int i=0; i<3; i++) {
+    list_initialize(&channels[i].layers);
+    mutex_init(&channels[i].lock);
+  }
+}
+
+LK_INIT_HOOK(hvs, &hvs_init_hook, LK_INIT_LEVEL_PLATFORM - 1);

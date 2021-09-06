@@ -28,7 +28,6 @@ enum vec_mode {
   palm,
 };
 
-
 static gfx_surface *gfx_grid;
 
 #ifdef WITH_TGA
@@ -136,10 +135,10 @@ static void vec_init(const struct app_descriptor *app) {
   for (int x=0; x< width; x++) {
     for (int y=0; y < height; y++) {
       uint color = 0xff000000;
-      if (y % grid == 0) color |= 0xffffff;
-      if (y % grid == 1) color |= 0xffffff;
-      if (x % grid == 0) color |= 0xffffff;
-      if (x % grid == 1) color |= 0xffffff;
+      //if (y % grid == 0) color |= 0xffffff;
+      //if (y % grid == 1) color |= 0xffffff;
+      //if (x % grid == 0) color |= 0xffffff;
+      //if (x % grid == 1) color |= 0xffffff;
       gfx_putpixel(gfx_grid, x, y, color);
     }
   }

@@ -4,7 +4,12 @@ MODULE_SRCS += $(LOCAL_DIR)/vec.c
 
 MODULES += platform/bcm28xx/pixelvalve platform/bcm28xx/hvs \
 	platform/bcm28xx/power \
-	#platform/bcm28xx/hvs-dance \
-	#lib/tga \
+
+ifneq ($(BOOTCODE),1)
+  GLOBAL_DEFINES += WITH_TGA
+  MODULES += \
+	platform/bcm28xx/hvs-dance \
+	lib/tga
+endif
 
 include make/module.mk
