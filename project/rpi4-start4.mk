@@ -9,5 +9,7 @@ MODULES += \
 	lib/debugcommands \
 	app/stringtests \
 	app/tests \
-	platform/bcm28xx/dpi \
 	app/signing-dump \
+	platform/bcm28xx/vec \
+	platform/bcm28xx/hvs-dance \
+	#platform/bcm28xx/dpi \
