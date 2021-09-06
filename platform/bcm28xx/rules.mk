@@ -47,6 +47,7 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/platform.c \
 	$(LOCAL_DIR)/udelay.c \
 	$(LOCAL_DIR)/print_timestamp.c \
+	$(LOCAL_DIR)/hexdump.c \
 	#$(LOCAL_DIR)/i2c.c \
 
 
@@ -92,7 +93,7 @@ else ifeq ($(TARGET),rpi3-vpu)
   MODULE_SRCS += \
     $(LOCAL_DIR)/uart.c \
 
-  MODULES += platform/bcm28xx/sdhost
+  #MODULES += platform/bcm28xx/sdhost
 
 else ifeq ($(TARGET),rpi4-vpu)
   MMIO_BASE_PHYS = 0x7e000000

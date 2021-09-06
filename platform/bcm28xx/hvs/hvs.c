@@ -501,7 +501,7 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   int w = 640;
-  int h = 480;
+  int h = 420;
   struct gfx_surface *gfx = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
   bzero(gfx->ptr, gfx->len);
   fb->image.pixels = gfx->ptr;
