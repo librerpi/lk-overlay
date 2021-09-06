@@ -1,14 +1,6 @@
 .macro SaveRegsLower
   stm lr, (--sp)
-  nop
-  nop
-  nop
-  nop
   stm r0-r5, (--sp)
-  nop
-  nop
-  nop
-  nop
 .endm
 
 .macro SaveRegsUpper

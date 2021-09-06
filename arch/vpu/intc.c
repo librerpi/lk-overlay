@@ -228,6 +228,7 @@ void sleh_irq(vc4_saved_state_t* pcb, uint32_t tp) {
 
   //if ((source != 64) && (source != 106)) dprintf(INFO, "VPU Received interrupt from source %d\n", source);
 
+#if 0
   switch (source) {
   case 64: // timer0
   case 73: // dwc2
@@ -235,16 +236,19 @@ void sleh_irq(vc4_saved_state_t* pcb, uint32_t tp) {
   case INTERRUPT_ARM + 64: // fired when the arm cpu writes to the arm->vpu mailbox
   case 106: // pv2
   case 121: // uart
+#endif
     assert(irq_handlers[source - 64].h);
     ret = irq_handlers[source - 64].h(irq_handlers[source - 64].arg);
     if (ret == INT_RESCHEDULE) {
       thread_preempt();
     }
+#if 0
     break;
   default:
     print_vpu_state(pcb);
     panic("unknown interrupt source!");
   }
+#endif
 }
 
 void sleh_swi(vc4_saved_state_t* pcb) {
