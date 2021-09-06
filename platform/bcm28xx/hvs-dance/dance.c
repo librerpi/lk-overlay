@@ -83,8 +83,11 @@ void do_frame_update(int frame) {
       it->layer.y += it->yd;
     }
   }
-  //hvs_update_dlist(1);
 
+  int hvs_channel = 1;
+  mutex_acquire(&channels[hvs_channel].lock);
+  hvs_update_dlist(hvs_channel);
+  mutex_release(&channels[hvs_channel].lock);
 }
 
 static int cmd_dance_list(int argc, const console_cmd_args *argv) {
@@ -210,7 +213,15 @@ static void dance_init(const struct app_descriptor *app) {
 }
 
 static void dance_entry(const struct app_descriptor *app, void *args) {
+  int hvs_channel = 1;
+  while (true) {
+    uint32_t stat = hvs_wait_vsync(hvs_channel);
 
+    uint32_t line = SCALER_STAT_LINE(stat);
+    uint32_t frame = (stat >> 12) & 0x3f;
+    //printf("frame %d\n", frame);
+    do_frame_update(frame);
+  }
 }
 
 APP_START(hvs_dance)

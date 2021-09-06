@@ -279,6 +279,7 @@ void hvs_setup_irq() {
 uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
 
 static enum handler_return pv_irq(void *pvnr) {
+  enum handler_return ret = INT_NO_RESCHEDULE;
   int hvs_channel = 1; // FIXME
   uint32_t t = *REG32(ST_CLO);
   struct pixel_valve *rawpv = getPvAddr((int)pvnr);
@@ -325,6 +326,11 @@ static enum handler_return pv_irq(void *pvnr) {
     // actually do the page-flip
     *REG32(SCALER_DISPLIST1) = channels[hvs_channel].dlist_target;
 
+    THREAD_LOCK(state);
+    int woken = wait_queue_wake_all(&channels[hvs_channel].vsync, false, NO_ERROR);
+    if (woken > 0) ret = INT_RESCHEDULE;
+    THREAD_UNLOCK(state);
+
     //hvs_set_background_color(1, 0xff0000);
     //do_frame_update((stat1 >> 12) & 0x3f);
     //printf("line: %d frame: %2d start: %4d ", stat1 & 0xfff, (stat1 >> 12) & 0x3f, *REG32(SCALER_DISPLIST1));
@@ -343,7 +349,7 @@ static enum handler_return pv_irq(void *pvnr) {
     ack |= PV_INTEN_IDLE;
   }
   rawpv->int_status = ack;
-  return INT_NO_RESCHEDULE;
+  return ret;
 }
 
 void hvs_configure_channel(int channel, int width, int height, bool interlaced) {
@@ -538,8 +544,8 @@ void hvs_update_dlist(int channel) {
   assert(is_mutex_held(&channels[channel].lock));
   hvs_layer *layer;
 
-  uint32_t t = *REG32(ST_CLO);
-  printf("doing dlist update at %d\n", t);
+  //uint32_t t = *REG32(ST_CLO);
+  //printf("doing dlist update at %d\n", t);
 
   int list_start = display_slot;
 
@@ -581,7 +587,7 @@ void hvs_update_dlist(int channel) {
 
   if (display_slot > 4000) {
     display_slot = 0;
-    puts("dlist loop");
+    //puts("dlist loop");
   }
 
   // TODO, defer this until vsync
@@ -603,15 +609,15 @@ static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
 
 void hvs_dlist_add(int channel, hvs_layer *new_layer) {
   hvs_layer *layer;
-  printf("adding at layer %d\n", new_layer->layer);
+  //printf("adding at layer %d\n", new_layer->layer);
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
-    printf("current is %d\n", layer->layer);
+    //printf("current is %d\n", layer->layer);
     if (layer->layer == new_layer->layer) {
       puts("match insert");
       list_add_after(&layer->node, &new_layer->node);
       return;
     } else if (layer->layer > new_layer->layer) {
-      puts("past insert");
+      //puts("past insert");
       list_add_before(&layer->node, &new_layer->node);
       return;
     }
@@ -624,7 +630,16 @@ static void hvs_init_hook(uint level) {
   for (int i=0; i<3; i++) {
     list_initialize(&channels[i].layers);
     mutex_init(&channels[i].lock);
+    wait_queue_init(&channels[i].vsync);
   }
+}
+
+uint32_t hvs_wait_vsync(int hvs_channel) {
+  THREAD_LOCK(state);
+  wait_queue_block(&channels[hvs_channel].vsync, INFINITE_TIME);
+  uint32_t stat = hvs_channels[hvs_channel].dispstat;
+  THREAD_UNLOCK(state);
+  return stat;
 }
 
 LK_INIT_HOOK(hvs, &hvs_init_hook, LK_INIT_LEVEL_PLATFORM - 1);

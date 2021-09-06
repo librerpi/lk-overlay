@@ -37,6 +37,7 @@ struct hvs_channel_config {
   mutex_t lock;
   struct list_node layers;
   uint32_t dlist_target;
+  wait_queue_t vsync;
 };
 
 extern struct hvs_channel_config channels[3];
@@ -146,8 +147,21 @@ void hvs_wipe_displaylist(void);
 void hvs_initialize(void);
 void hvs_configure_channel(int channel, int width, int height, bool interlaced);
 void hvs_setup_irq(void);
-void hvs_update_dlist(int channel); // must be called with channel lock held
+// schedules a pageflip at the next vsync, based on the current state of the layers list
+// can be called multiple times per frame
+// if called multiple times, only the last state will be applied
+// must be called with channel lock held
+void hvs_update_dlist(int channel);
+// adds an hvs_layer to the layer list
+// do not change the ->layer while an hvs_layer is added
+// x/y/w/h can be changed, and will take effect next time hvs_update_dlist is ran
 void hvs_dlist_add(int channel, hvs_layer *new_layer);
+// blocks the current thread until after a vsync has occured
+// thread resumes too late for any page-flip actions
+// but then you have an entire frametime to schedule a pageflip
+// flip will happen at the NEXT vsync
+// returns the value of the SCALER_DISPSTATn register, which holds the current frame and scanline#
+uint32_t hvs_wait_vsync(int channel);
 
 // 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
