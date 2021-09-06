@@ -57,6 +57,7 @@ in lib.fix (self: {
     vc4.stage1 = vc4.callPackage ./lk.nix { project = "vc4-stage1"; };
     vc4.stage2 = vc4.callPackage ./lk.nix { project = "vc4-stage2"; };
     vc4.start = vc4.callPackage ./lk.nix { project = "vc4-start"; };
+    vc4.bootcode-fast-ntsc = vc4.callPackage ./lk.nix { project = "bootcode-fast-ntsc"; };
   };
   x86_64 = {
     inherit (x86_64) uart-manager;

@@ -138,7 +138,9 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
 
 static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
 #ifdef ARCH_VPU
-  puts("i am VPU");
+  uint32_t cpuid;
+  __asm__("version %0" : "=r"(cpuid));
+  printf("i am VPU with cpuid 0x%08x\n", cpuid);
 #else
   puts("i am arm");
 #endif
@@ -150,10 +152,15 @@ static int cmd_short_hang(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+static int cmd_platform_reboot(int argc, const console_cmd_args *argv) {
+  platform_halt(HALT_ACTION_REBOOT, HALT_REASON_SW_RESET);
+  return 0;
+}
 
 STATIC_COMMAND_START
 STATIC_COMMAND("whatareyou", "print the cpu arch", &cmd_what_are_you)
 STATIC_COMMAND("shorthang", "hang for a bit", &cmd_short_hang)
+STATIC_COMMAND("r", "reboot", &cmd_platform_reboot)
 STATIC_COMMAND_END(platform);
 
 extern void intc_init(void);
@@ -187,29 +194,42 @@ static void switch_vpu_to_pllc() {
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
   int core0_div = 4;
-  int per_div = 4;
+  int per_div = 2;
 
   const uint64_t pllc_mhz = 108 * per_div * 4;
 
   setup_pllc(    pllc_mhz * 1000 * 1000, core0_div, per_div);
 
   int vpu_divisor = 1;
-  vpu_clock = (108 * core0_div) / vpu_divisor;
+  vpu_clock = pllc_mhz / core0_div / vpu_divisor;
+
+  const uint32_t vpu_source = CM_SRC_PLLC_CORE0;
 
   *REG32(CM_VPUCTL) = CM_PASSWORD | CM_VPUCTL_FRAC_SET | CM_SRC_OSC | CM_VPUCTL_GATE_SET;
   *REG32(CM_VPUDIV) = CM_PASSWORD | (vpu_divisor << 12);
-  *REG32(CM_VPUCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0 | CM_VPUCTL_GATE_SET;
-  *REG32(CM_VPUCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0 | CM_VPUCTL_GATE_SET | 0x10; /* ENAB */
+  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET;
+  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET | 0x10; /* ENAB */
 
   //*REG32(CM_TIMERDIV) = CM_PASSWORD | (19 << 12) | 819; // TODO, look into this timer
   //*REG32(CM_TIMERCTL) = CM_PASSWORD | CM_SRC_OSC | 0x10;
 
   int vpu = measure_clock(5);
+  printf("vpu raw: %d\n", vpu);
   int pllc_core0 = vpu*vpu_divisor;
   uint32_t pllc = pllc_core0 * core0_div;
-  dprintf(INFO, "VPU now at %dmhz, ", vpu/1000/1000);
+  dprintf(INFO, "VPU now at %dmhz(%d), ", vpu/1000/1000, vpu_clock);
   dprintf(INFO, "PLLC_CORE0 at %dmhz, ", pllc_core0/1000/1000);
   dprintf(INFO, "PLLC at %dmhz\n", pllc / 1000 / 1000);
+  vpu_clock = vpu/1000/1000;
+}
+
+static void switch_vpu_to_crystal() {
+  const uint32_t vpu_source = CM_SRC_OSC;
+  const uint32_t vpu_divisor = 1;
+  *REG32(CM_VPUCTL) = CM_PASSWORD | CM_VPUCTL_FRAC_SET | CM_SRC_OSC | CM_VPUCTL_GATE_SET;
+  *REG32(CM_VPUDIV) = CM_PASSWORD | (vpu_divisor << 12);
+  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET;
+  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET | 0x10; /* ENAB */
 }
 
 void platform_early_init(void) {
@@ -218,9 +238,15 @@ void platform_early_init(void) {
     intc_init();
 
 #ifdef ARCH_VPU
-    //if (xtal_freq == 19200000) {
+    if (xtal_freq == 19200000) {
       switch_vpu_to_pllc();
-    //}
+    } else {
+      switch_vpu_to_crystal();
+      int vpu = measure_clock(5);
+      vpu_clock = vpu/1000/1000;
+      dprintf(INFO, "VPU at %dmhz\n", vpu_clock);
+      switch_vpu_to_pllc();
+    }
 #endif
 
 #if BCM2835
@@ -311,21 +337,30 @@ void platform_early_init(void) {
 }
 
 static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
+  volatile uint32_t temp[16];
+  printf("temp is at 0x%x, ", temp);
   //register uint32_t x __asm__("r5");
   spin_lock_saved_state_t state;
   arch_interrupt_save(&state, SPIN_LOCK_FLAG_INTERRUPTS);
+
   uint32_t start = *REG32(ST_CLO);
   uint32_t limit = 100000;
   asm volatile ("nop");
   for (uint32_t i=0; i<limit; i++) {
-    asm volatile("");
+    /*asm volatile(
+        //"v8ld H(0++,0), (%0+=%1) REP64"
+        "v32ld HY(0++,0), (%0+=%1)"
+        :
+        :"r"(0x80000000), "r"(4*16));*/
+    for (int j = 0; j < 16; ++j) temp[j ^0xa] = 42;
+    asm volatile ("");
   }
   uint32_t stop = *REG32(ST_CLO);
   arch_interrupt_restore(state, SPIN_LOCK_FLAG_INTERRUPTS);
   uint32_t delta = stop - start;
   if (delta > 0) {
-    double rate = ((double)limit) / delta;
-    printf("%dMHz %f loops per tick, averaged over %d ticks, %f clocks per loop\n", vpu_clock, rate, delta, vpu_clock / rate);
+    float rate = ((float)limit) / delta;
+    printf("%dMHz %f loops per tick, averaged over %d ticks, %f clocks per loop, -11: %f\n", vpu_clock, rate, delta, vpu_clock / rate, (vpu_clock/rate) - 11);
   } else {
     puts("delta zero");
   }
@@ -341,7 +376,7 @@ void platform_init(void) {
 #endif
     uart_init();
     udelay(1000);
-    benchmark_self();
+    //benchmark_self();
     printf("A2W_SMPS_A_VOLTS: 0x%x\n", *REG32(A2W_SMPS_A_VOLTS));
 #if BCM2837
     init_framebuffer();
@@ -349,6 +384,7 @@ void platform_init(void) {
   printf("crystal is %lf MHz\n", (double)xtal_freq/1000/1000);
   printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", BCM_PERIPH_BASE_VIRT);
   printf("BCM_PERIPH_BASE_PHYS: 0x%x\n", BCM_PERIPH_BASE_PHYS);
+  puts("partition 3\n");
 }
 
 void platform_dputc(char c) {

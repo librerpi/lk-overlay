@@ -1,10 +1,11 @@
-#include <lk/debug.h>
-#include <platform/interrupts.h>
-#include <lk/err.h>
-#include <platform/bcm28xx.h>
 #include <assert.h>
-#include <lk/reg.h>
 #include <kernel/thread.h>
+#include <lk/debug.h>
+#include <lk/err.h>
+#include <lk/reg.h>
+#include <platform.h>
+#include <platform/bcm28xx.h>
+#include <platform/interrupts.h>
 
 #include <arch/vc4_traps.h>
 
@@ -184,14 +185,24 @@ static const char* exception_name(uint32_t n) {
   return g_ExceptionNames[n];
 }
 
-// c mode handlers, called by interrupt.S
+#define L2_L2_ALIAS_EXCEPTION      0x7ee01080
+#define L2_L2_ALIAS_EXCEPTION_ID   0x7ee01084
+#define L2_L2_ALIAS_EXCEPTION_ADDR 0x7ee01088
 
+// c mode handlers, called by interrupt.S
 void sleh_fatal(vc4_saved_state_t* pcb, uint32_t n) {
   printf("Fatal VPU Exception: %s\n", exception_name(n));
 
   print_vpu_state(pcb);
+  //cmd_v3d_probe2(0, NULL);
+  if (n == 12) {
+    printf("L2_L2_ALIAS_EXCEPTION: 0x%x\n", *REG32(L2_L2_ALIAS_EXCEPTION));
+    printf("L2_L2_ALIAS_EXCEPTION_ID: 0x%x\n", *REG32(L2_L2_ALIAS_EXCEPTION_ID));
+    printf("L2_L2_ALIAS_EXCEPTION_ADDR: 0x%x\n", *REG32(L2_L2_ALIAS_EXCEPTION_ADDR));
+  }
 
   printf("We are hanging here ...\n");
+  platform_halt(HALT_ACTION_REBOOT, HALT_REASON_SW_RESET);
 
   while(true) __asm__ volatile ("nop");
 }
@@ -220,6 +231,7 @@ void sleh_irq(vc4_saved_state_t* pcb, uint32_t tp) {
   switch (source) {
   case 64: // timer0
   case 73: // dwc2
+  case 74: // v3d
   case INTERRUPT_ARM + 64: // fired when the arm cpu writes to the arm->vpu mailbox
   case 106: // pv2
   case 121: // uart

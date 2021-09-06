@@ -6,17 +6,44 @@
 
 struct pixel_valve *getPvAddr(int pvnr) {
   uint32_t addr;
-  assert(pvnr <= 2);
   switch (pvnr) {
+#ifdef RPI4
+  assert(pvnr <= 4);
   case 0:
+    // DSI0/DPI
     addr = BCM_PERIPH_BASE_VIRT + 0x206000;
     break;
   case 1:
+    // DSI1/SMI
     addr = BCM_PERIPH_BASE_VIRT + 0x207000;
     break;
   case 2:
+    // HDMI0
+    addr = BCM_PERIPH_BASE_VIRT + 0x20a000;
+    break;
+  case 3:
+    // VEC
+    addr = BCM_PERIPH_BASE_VIRT + 0xc12000;
+    break;
+  case 4:
+    // HDMI1
+    addr = BCM_PERIPH_BASE_VIRT + 0x216000;
+    break;
+#else
+  assert(pvnr <= 2);
+  case 0:
+    // DSI0/DPI
+    addr = BCM_PERIPH_BASE_VIRT + 0x206000;
+    break;
+  case 1:
+    // DSI1/SMI
+    addr = BCM_PERIPH_BASE_VIRT + 0x207000;
+    break;
+  case 2:
+    // HDMI/VEC
     addr = BCM_PERIPH_BASE_VIRT + 0x807000;
     break;
+#endif
   default:
     return NULL;
   }
@@ -76,7 +103,11 @@ void setup_pixelvalve(struct pv_timings *t, int pvnr) {
   rawpv->c = PV_CONTROL_EN |
             PV_CONTROL_FIFO_CLR |
             //CLK_SELECT(PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI) | // set to DPI clock
+#ifdef RPI4
+            CLK_SELECT(0) | // vec
+#else
             CLK_SELECT(PV_CONTROL_CLK_SELECT_VEC) | // vec
+#endif
             PIXEL_REP(1 - 1) |
             BV(12) | // wait for h-start
             BV(13) | // trigger underflow

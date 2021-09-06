@@ -195,14 +195,15 @@ static int cmd_measure_clock(int argc, const console_cmd_args *argv) {
     puts("error, missing argument");
     // A = default-freq when netbooting a custom bootcode.bin
     // B = default when netbooting kernel.img under closed fw on a pi2
-                        // reg      offset A          B
+    // C = default when netbooting custom start.elf on pi2, with help from closed bootcode.bin
+                        // reg      offset A          B         C
     puts("1 - H264");   // CM_H264  0x28
     puts("2 - ISP");    // CM_ISP   0x30
     puts("3 - sdram");  // CM_SDC   0xa8
     puts("4 - V3D");    //                            250mhz
-    puts("5 - VPU");    // CM_VPU   0x08  100,000khz  250mhz
-    puts("6 - OTP");    // CM_OTP   0x90  4,800khz    4.8mhz
-    puts("9 - ???");    //                500khz      500khz
+    puts("5 - VPU");    // CM_VPU   0x08  100,000khz  250mhz    LK
+    puts("6 - OTP");    // CM_OTP   0x90  4,800khz    4.8mhz    4.8mhz
+    puts("9 - ???");    //                500khz      500khz    500khz
     puts("10 - ???");   //                            1.92mhz
     puts("12 - dsi0p"); // CM_DSI0P 0x60
     puts("13 - dsi1p"); // CM_DSI1P 0x160
@@ -212,15 +213,15 @@ static int cmd_measure_clock(int argc, const console_cmd_args *argv) {
     puts("18 - dsi0e"); // CM_DSI0E 0x58
     puts("19 - dsi1e"); // CM_DSI1E 0x158
     puts("20 - gp0");   // CM_GP0   0x70
-    puts("21 - gp1");   // CM_GP1   0x78  25mhz       25mhz
+    puts("21 - gp1");   // CM_GP1   0x78  25mhz       25mhz     25mhz
     puts("22 - hsm");   // CM_HSM   0x88
     puts("23 - pcm");   // CM_PCM   0x98
     puts("24 - pwm");   // CM_PWM   0xa0
     puts("25 - slim");  // CM_SLIM  0xa8
     puts("27 - smi");   // CM_SMI   0xb0
-    puts("28 - uart");  // CM_UART  0xf0  1,916khz    48mhz
-    puts("29 - vec");   // CM_VEC   0xf8              108mhz
-    puts("30 - ???");   //                44khz       44khz
+    puts("28 - uart");  // CM_UART  0xf0  1,916khz    48mhz     5.390mhz
+    puts("29 - vec");   // CM_VEC   0xf8              108mhz    LK
+    puts("30 - ???");   //                44khz       44khz     44.4khz
     puts("38 - aveo");  // CM_AVEO  0x1b8
     puts("39 - emmc");  // CM_EMMC  0x1c0             200mhz
     puts("42 - emmc2"); // CM_EMMC2 0x1d0

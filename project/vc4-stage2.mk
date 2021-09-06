@@ -3,8 +3,12 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := rpi3-vpu
 
 MODULES += \
-	app/vc4-stage2 \
 	platform/bcm28xx/otp \
+	app/shell \
+	platform/bcm28xx/temp \
+	platform/bcm28xx/v3d \
+	platform/bcm28xx/vec \
+	#app/vc4-stage2 \
 	#lib/debugcommands \
 	lib/cksum \
 	app/stringtests \

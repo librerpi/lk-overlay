@@ -35,7 +35,10 @@
 #define CM_PLLC_ANARST_SET                                 0x00000100
 #define CM_PLLC_HOLDPER_SET                                0x00000080
 #define CM_PLLC_HOLDCORE2_SET                              0x00000020
+
 #define CM_PLLC_HOLDCORE1_SET                              0x00000008
+#define CM_PLLC_LOADCORE1_SET                              0x00000004
+
 #define CM_PLLC_HOLDCORE0_SET                              0x00000002
 #define CM_PLLC_LOADCORE0_SET                              0x00000001
 #define CM_PLLD                 (CM_BASE + 0x10C)
@@ -61,6 +64,8 @@
 
 #define CM_SRC_OSC                    1
 #define CM_SRC_PLLC_CORE0             5
+#define CM_SRC_PLLC_CORE1             8
+#define CM_SRC_PLLC_CORE2             9
 
 
 #define CM_PLLB                 (CM_BASE + 0x170)

@@ -13,12 +13,14 @@
 #include <platform/mailbox.h>
 #include <rand.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static int cmd_hvs_dance(int argc, const console_cmd_args *argv);
 static int cmd_hvs_limit(int argc, const console_cmd_args *argv);
 static int cmd_hvs_delay(int argc, const console_cmd_args *argv);
 static int cmd_dance_update(int argc, const console_cmd_args *argv);
 static int cmd_dance_list(int argc, const console_cmd_args *argv);
+static void update_visibility(int channel);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("dance", "make the HVS dance in another direction", &cmd_hvs_dance)
@@ -29,17 +31,17 @@ STATIC_COMMAND("dance_list", "list", &cmd_dance_list)
 STATIC_COMMAND_END(hvs_dance);
 
 gfx_surface *fb;
-void (*background)(void);
 
 struct item {
-  signed int x, y;
   signed int xd, yd;
+  bool visible;
+  hvs_layer layer;
 };
 
 #define ITEMS 580
 struct item items[ITEMS];
-uint32_t sprite_limit = 2;
-int delay = 0;
+uint32_t sprite_limit = 1;
+int delay = 1;
 
 int32_t screen_width, screen_height;
 
@@ -49,84 +51,46 @@ void do_frame_update(int frame) {
   if (delay != 0) {
     if ((frame % delay) != 0) return;
   }
-  if ((display_slot + (sprite_limit * 14) + 1) > 4096) {
-    printf("early dlist loop %d\n", display_slot);
-    display_slot = 0;
-  }
+  //if ((display_slot + (sprite_limit * 14) + 1) > 4096) {
+  //  printf("early dlist loop %d\n", display_slot);
+  //  display_slot = 0;
+  //}
 
-  int w,h;
-#ifdef SCALED
-  w = 100;
-  h = 100;
-#else
-  w = fb->width;
-  h = fb->height;
-#endif
-
-  int start = display_slot;
-  background();
   for (unsigned int i=0; i < sprite_limit; i++) {
     struct item *it = &items[i];
-    if (it->x > (screen_width - w)) it->xd *= -1;
-    if (it->y > (screen_height - h)) it->yd *= -1;
+    int w = it->layer.w;
+    int h = it->layer.h;
 
-    it->x += it->xd;
-    it->y += it->yd;
-
-    if (it->x < 0) {
-      it->x *= -1;
+    if ((it->layer.x + it->xd) < 0) {
+      it->layer.x += it->xd;
+      it->layer.x *= -1;
       it->xd *= -1;
-    }
-    if (it->y < 0) {
-      it->y *= -1;
-      it->yd *= -1;
-    }
-    if (it->x > screen_width) {
-      it->x -= screen_width;
+    } else if ((it->layer.x + w) > screen_width) {
+      it->layer.x -= (it->layer.x + w) - screen_width;
       it->xd *= -1;
+    } else {
+      it->layer.x += it->xd;
     }
-    if (it->y > screen_height) {
-      it->y -= screen_height;
+
+    if ((it->layer.y + it->yd) < 0) {
+      it->layer.y += it->yd;
+      it->layer.y *= -1;
       it->yd *= -1;
-    }
-
-#if 0
-    if (it->x < 0) {
-      it->x = it->x * -1;
-      it->xd *= -1;
-    }
-    if (it->y < 0) {
-      it->y = it->y * -1;
+    } else if ((it->layer.y + h) > screen_height) {
+      it->layer.y -= (it->layer.y + h) - screen_height;
       it->yd *= -1;
+    } else {
+      it->layer.y += it->yd;
     }
-#endif
-#ifdef SCALED
-    hvs_add_plane_scaled(fb, it->x, it->y, w, h, false);
-#else
-    hvs_add_plane(fb, it->x, it->y, false);
-#endif
   }
-  hvs_terminate_list();
+  //hvs_update_dlist(1);
 
-  if (display_slot > 4096) {
-    printf("dlist overflow!!!: %d\n", display_slot);
-    display_slot = 0;
-    do_frame_update(frame);
-    return;
-  }
-
-  *REG32(SCALER_DISPLIST1) = start;
-
-  if (display_slot > 4000) {
-    display_slot = 0;
-    //puts("dlist loop");
-  }
 }
 
 static int cmd_dance_list(int argc, const console_cmd_args *argv) {
   for (unsigned int i=0; i < sprite_limit; i++) {
     struct item *it = &items[i];
-    printf("%d: %dx%d, rate %dx%d\n", i, it->x, it->y, it->xd, it->yd);
+    printf("%d: %dx%d+%dx%d, rate %dx%d\n", i, it->layer.x, it->layer.y, it->layer.w, it->layer.h, it->xd, it->yd);
   }
   return 0;
 }
@@ -134,72 +98,6 @@ static int cmd_dance_list(int argc, const console_cmd_args *argv) {
 static int cmd_dance_update(int argc, const console_cmd_args *argv) {
   do_frame_update(0);
   return 0;
-}
-
-uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
-
-static enum handler_return pv_irq(void *pvnr) {
-  uint32_t t = *REG32(ST_CLO);
-  struct hvs_channel *hvs_channels = (struct hvs_channel*)REG32(SCALER_DISPCTRL0);
-  struct pixel_valve *rawpv = getPvAddr((int)pvnr);
-  uint32_t stat = rawpv->int_status;
-  uint32_t ack = 0;
-  uint32_t stat1 = hvs_channels[1].dispstat;
-  if (stat & PV_INTEN_HSYNC_START) {
-    ack |= PV_INTEN_HSYNC_START;
-    hsync = t;
-    if ((SCALER_STAT_LINE(stat1) % 5) == 0) {
-      //hvs_set_background_color(1, 0x0000ff);
-    } else {
-      //hvs_set_background_color(1, 0xffffff);
-    }
-  }
-  if (stat & PV_INTEN_HBP_START) {
-    ack |= PV_INTEN_HBP_START;
-    hbp = t;
-  }
-  if (stat & PV_INTEN_HACT_START) {
-    ack |= PV_INTEN_HACT_START;
-    hact = t;
-  };
-  if (stat & PV_INTEN_HFP_START) {
-    ack |= PV_INTEN_HFP_START;
-    hfp = t;
-  }
-  if (stat & PV_INTEN_VSYNC_START) {
-    ack |= PV_INTEN_VSYNC_START;
-    vsync = t;
-  }
-  if (stat & PV_INTEN_VBP_START) {
-    ack |= PV_INTEN_VBP_START;
-    vbp = t;
-  }
-  if (stat & PV_INTEN_VACT_START) {
-    ack |= PV_INTEN_VACT_START;
-  }
-  if (stat & PV_INTEN_VFP_START) {
-    ack |= PV_INTEN_VFP_START;
-    last_vfps = vfps;
-    vfps = t;
-    hvs_set_background_color(1, 0xff0000);
-    do_frame_update((stat1 >> 12) & 0x3f);
-    //printf("line: %d frame: %2d start: %4d ", stat1 & 0xfff, (stat1 >> 12) & 0x3f, *REG32(SCALER_DISPLIST1));
-    //uint32_t idle = *REG32(SD_IDL);
-    //uint32_t total = *REG32(SD_CYC);
-    //*REG32(SD_IDL) = 0;
-    //uint64_t idle_percent = ((uint64_t)idle * 100) / ((uint64_t)total);
-    //printf("sdram usage: %d %d, %lld\n", idle, total, idle_percent);
-    //printf("HSYNC:%5d HBP:%d HACT:%d HFP:%d VSYNC:%5d VBP:%5d VFPS:%d FRAME:%d\n", t - vsync, t-hbp, t-hact, t-hfp, t-vsync, t-vbp, t-vfps, t-last_vfps);
-    hvs_set_background_color(1, 0xffffff);
-  }
-  if (stat & PV_INTEN_VFP_END) {
-    ack |= PV_INTEN_VFP_END;
-  }
-  if (stat & PV_INTEN_IDLE) {
-    ack |= PV_INTEN_IDLE;
-  }
-  rawpv->int_status = ack;
-  return INT_NO_RESCHEDULE;
 }
 
 static void dance_scramble(void) {
@@ -213,18 +111,18 @@ static void dance_scramble(void) {
 #endif
   for (int i=0; i<ITEMS; i++) {
     struct item *it = &items[i];
-    it->x = (unsigned int)rand() % screen_width;
-    it->y = (unsigned int)rand() % screen_height;
+    it->layer.x = (unsigned int)rand() % screen_width;
+    it->layer.y = (unsigned int)rand() % screen_height;
     it->xd = (rand() % 5)+1;
     it->yd = (rand() % 5)+1;
-    if (it->x > (screen_width - w)) it->x = screen_width - fb->width;
-    if (it->y > (screen_height - h)) it->y = screen_height - fb->height;
+    if (it->layer.x > (screen_width - w)) it->layer.x = screen_width - fb->width;
+    if (it->layer.y > (screen_height - h)) it->layer.y = screen_height - fb->height;
   }
 
-  items[0].x = 40;
-  items[0].y = 100;
-  items[0].xd = 0;
-  items[0].yd = 0;
+  //items[0].layer.x = 50;
+  //items[0].layer.y = 50;
+  //items[0].xd = 1;
+  //items[0].yd = 1;
 
 #if 0
   items[1].x = 140;
@@ -242,7 +140,26 @@ static int cmd_hvs_dance(int argc, const console_cmd_args *argv) {
 static int cmd_hvs_limit(int argc, const console_cmd_args *argv) {
   if (argc == 2) sprite_limit = argv[1].u;
   if (sprite_limit > ITEMS) sprite_limit = ITEMS;
+
+  int channel = 1;
+  update_visibility(channel);
   return 0;
+}
+
+static void update_visibility(int channel) {
+  mutex_acquire(&channels[channel].lock);
+  for (unsigned int i=0; i<ITEMS; i++) {
+    struct item *it = &items[i];
+    if ((i < sprite_limit) && !it->visible) {
+      //list_add_tail(&channels[channel].layers, &it->layer.node);
+      hvs_dlist_add(channel, &it->layer);
+      it->visible = true;
+    } else if (it->visible && (i >= sprite_limit)) {
+      list_delete(&it->layer.node);
+      it->visible = false;
+    }
+  }
+  mutex_release(&channels[channel].lock);
 }
 
 static int cmd_hvs_delay(int argc, const console_cmd_args *argv) {
@@ -250,28 +167,26 @@ static int cmd_hvs_delay(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
-void dance_start(gfx_surface* fbin, int hvs_channel, void (*backgroundcb)(void)) {
+void dance_start(gfx_surface* fbin, int hvs_channel) {
   fb = fbin;
-  background = backgroundcb;
 
-  hvs_set_background_color(hvs_channel, 0xffffff);
+  //hvs_set_background_color(hvs_channel, 0xffffff);
   screen_width = (hvs_channels[hvs_channel].dispctrl >> 12) & 0xfff;
   screen_height = (hvs_channels[hvs_channel].dispctrl & 0xfff);
   printf("detected a %dx%d screen\n", screen_width, screen_height);
+  for (int i=0; i<ITEMS; i++) {
+    struct item *it = &items[i];
+    it->visible = false;
+    MK_UNITY_LAYER(&it->layer, fbin, i, 150, 150);
+    it->layer.name = malloc(10);
+    snprintf(it->layer.name, 10, "sprite %d", i);
+    it->layer.w /= 4;
+    it->layer.h /= 4;
+  }
+  update_visibility(hvs_channel);
 
   srand(*REG32(ST_CLO));
   dance_scramble();
-  if (true) {
-    puts("setting up pv interrupt");
-    int pvnr = 2;
-    struct pixel_valve *rawpv = getPvAddr(pvnr);
-    rawpv->int_enable = 0;
-    rawpv->int_status = 0xff;
-    setup_pv_interrupt(pvnr, pv_irq, (void*)pvnr);
-    rawpv->int_enable = PV_INTEN_VFP_START | 0x3f;
-    //hvs_setup_irq();
-    puts("done");
-  }
 }
 
 static void dance_init(const struct app_descriptor *app) {
@@ -290,8 +205,8 @@ static void dance_init(const struct app_descriptor *app) {
   }
   fb->flush = 0;
 #endif
-  screen_width = 0x500;
-  screen_height = 0x400;
+  //screen_width = 0x500;
+  //screen_height = 0x400;
 }
 
 static void dance_entry(const struct app_descriptor *app, void *args) {

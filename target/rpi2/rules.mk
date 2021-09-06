@@ -10,5 +10,6 @@ ARCH := arm
 ARM_CPU := cortex-a7
 HAVE_ARM_TIMER = 1
 
+ENABLE_THUMB := false
 #include make/module.mk
 

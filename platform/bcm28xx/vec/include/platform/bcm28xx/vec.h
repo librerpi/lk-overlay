@@ -3,7 +3,11 @@
 #include <platform/bcm28xx.h>
 #include <lk/bits.h>
 
+#ifdef RPI4
+#define VEC_BASE (BCM_PERIPH_BASE_VIRT + 0xc13000)
+#else
 #define VEC_BASE (BCM_PERIPH_BASE_VIRT + 0x806000)
+#endif
 
 #define VEC_WSE_RESET (VEC_BASE + 0x0c0)
 #define VEC_WSE_CONTROL (VEC_BASE + 0x0c4)

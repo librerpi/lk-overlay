@@ -1,16 +1,25 @@
 #include <arch/ops.h>
+#ifdef ENABLE_TEXT
+# include <lib/font.h>
+#endif
+#include <strings.h>
 #include <assert.h>
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/hvs.h>
+#include <platform/bcm28xx/pv.h>
 #include <platform/interrupts.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 // note, 4096 slots total
+#ifdef RPI4
+volatile uint32_t* dlist_memory = REG32(SCALER5_LIST_MEMORY);
+#else
 volatile uint32_t* dlist_memory = REG32(SCALER_LIST_MEMORY);
+#endif
 volatile struct hvs_channel *hvs_channels = (volatile struct hvs_channel*)REG32(SCALER_DISPCTRL0);
 int display_slot = 0;
 int scaled_layer_count = 0;
@@ -24,10 +33,16 @@ enum scaling_mode {
 
 struct hvs_channel_config channels[3];
 
+gfx_surface *debugText;
+
 static int cmd_hvs_dump(int argc, const console_cmd_args *argv);
+static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
+static int cmd_hvs_update(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("hvs_dump", "dump hvs state", &cmd_hvs_dump)
+STATIC_COMMAND("hvs_dump_dlist", "dump the software dlist", &cmd_hvs_dump_dlist)
+STATIC_COMMAND("hvs_update", "update the display list, without waiting for irq", &cmd_hvs_update)
 STATIC_COMMAND_END(hvs);
 
 static uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
@@ -45,6 +60,40 @@ static uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
   }
 }
 
+#ifdef RPI4
+void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
+  assert(fb);
+  printf("rendering FB of size %dx%d at %dx%d at %d\n", fb->width, fb->height, x, y, display_slot);
+#if 0
+  dlist_memory[display_slot++] = CONTROL_VALID
+    | CONTROL_WORDS(8)
+    | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
+    | (hflip ? CONTROL0_HFLIP : 0)
+    | (1<<15) // unity scaling
+    | (1<<11) // rgb expand
+    | (1<<12) // alpha expand
+    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(fb->format));
+  dlist_memory[display_slot++] = POS0_X(x) | (y << 16);
+  // control word 2
+  dlist_memory[display_slot++] = (10 << 4); // alpha?
+  /* Position Word 2: Source Image Size */
+  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width);
+  /* Position Word 3: Context.  Written by the HVS. */
+  dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
+  dlist_memory[display_slot++] = (uint32_t)fb->ptr | 0xc0000000;
+  dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
+  dlist_memory[display_slot++] = fb->stride * fb->pixelsize;
+#endif
+  dlist_memory[display_slot++] = 0x4800d807;
+  dlist_memory[display_slot++] = 0x00000000;
+  dlist_memory[display_slot++] = 0x4000fff0; // control 2
+  dlist_memory[display_slot++] = 0x04000500; // size
+  dlist_memory[display_slot++] = 0x01aa0000; // state
+  dlist_memory[display_slot++] = 0xdfa00000; // ptr word
+  dlist_memory[display_slot++] = 0xdfc14800; // state
+  dlist_memory[display_slot++] = 0x00001400; // stride
+}
+#else
 void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
   assert(fb);
   //printf("rendering FB of size %dx%d at %dx%d\n", fb->width, fb->height, x, y);
@@ -62,6 +111,7 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
   dlist_memory[display_slot++] = fb->stride * fb->pixelsize;
 }
+#endif
 
 static void write_tpz(unsigned int source, unsigned int dest) {
   uint32_t scale = (1<<16) * source / dest;
@@ -153,6 +203,7 @@ void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, uns
 }
 
 void hvs_terminate_list(void) {
+  //printf("adding termination at %d\n", display_slot);
   dlist_memory[display_slot++] = CONTROL_END;
   if (scaled_layer_count > 10) scaled_layer_count = 0;
 }
@@ -185,13 +236,30 @@ static enum handler_return ddr2_checker(struct timer *unused1, unsigned int unus
 void hvs_initialize() {
   timer_initialize(&ddr2_monitor);
   //timer_set_periodic(&ddr2_monitor, 500, ddr2_checker, NULL);
+
+#ifdef ENABLE_TEXT
+  debugText = gfx_create_surface(NULL, FONT_X * 10, FONT_Y, FONT_X * 10, GFX_FORMAT_ARGB_8888);
+  hvs_layer *debugTextLayer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(debugTextLayer, debugText, 1000, 50, 50);
+  debugTextLayer->name = "debug text";
+#endif
+
+  int hvs_channel = 1;
   *REG32(SCALER_DISPCTRL) &= ~SCALER_DISPCTRL_ENABLE; // disable HVS
   *REG32(SCALER_DISPCTRL) = SCALER_DISPCTRL_ENABLE | 0x9a0dddff; // re-enable HVS
   for (int i=0; i<3; i++) {
     hvs_channels[i].dispctrl = SCALER_DISPCTRLX_RESET;
     hvs_channels[i].dispctrl = 0;
     hvs_channels[i].dispbkgnd = 0x1020202; // bit 24
+    list_initialize(&channels[i].layers);
+    mutex_init(&channels[i].lock);
   }
+
+#ifdef ENABLE_TEXT
+  mutex_acquire(&channels[hvs_channel].lock);
+  hvs_dlist_add(hvs_channel, debugTextLayer);
+  mutex_release(&channels[hvs_channel].lock);
+#endif
 
   hvs_channels[2].dispbase = BASE_BASE(0)      | BASE_TOP(0x7f0);
   hvs_channels[1].dispbase = BASE_BASE(0xf10)  | BASE_TOP(0x50f0);
@@ -207,6 +275,76 @@ void hvs_setup_irq() {
   unmask_interrupt(33);
 }
 
+uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
+
+static enum handler_return pv_irq(void *pvnr) {
+  int hvs_channel = 1; // FIXME
+  uint32_t t = *REG32(ST_CLO);
+  struct pixel_valve *rawpv = getPvAddr((int)pvnr);
+  uint32_t stat = rawpv->int_status;
+  uint32_t ack = 0;
+  uint32_t stat1 = hvs_channels[hvs_channel].dispstat;
+  if (stat & PV_INTEN_HSYNC_START) {
+    ack |= PV_INTEN_HSYNC_START;
+    hsync = t;
+    if ((SCALER_STAT_LINE(stat1) % 5) == 0) {
+      //hvs_set_background_color(1, 0x0000ff);
+    } else {
+      //hvs_set_background_color(1, 0xffffff);
+    }
+  }
+  if (stat & PV_INTEN_HBP_START) {
+    ack |= PV_INTEN_HBP_START;
+    hbp = t;
+  }
+  if (stat & PV_INTEN_HACT_START) {
+    ack |= PV_INTEN_HACT_START;
+    hact = t;
+  };
+  if (stat & PV_INTEN_HFP_START) {
+    ack |= PV_INTEN_HFP_START;
+    hfp = t;
+  }
+  if (stat & PV_INTEN_VSYNC_START) {
+    ack |= PV_INTEN_VSYNC_START;
+    vsync = t;
+  }
+  if (stat & PV_INTEN_VBP_START) {
+    ack |= PV_INTEN_VBP_START;
+    vbp = t;
+  }
+  if (stat & PV_INTEN_VACT_START) {
+    ack |= PV_INTEN_VACT_START;
+  }
+  if (stat & PV_INTEN_VFP_START) {
+    ack |= PV_INTEN_VFP_START;
+    last_vfps = vfps;
+    vfps = t;
+
+    // actually do the page-flip
+    *REG32(SCALER_DISPLIST1) = channels[hvs_channel].dlist_target;
+
+    //hvs_set_background_color(1, 0xff0000);
+    //do_frame_update((stat1 >> 12) & 0x3f);
+    //printf("line: %d frame: %2d start: %4d ", stat1 & 0xfff, (stat1 >> 12) & 0x3f, *REG32(SCALER_DISPLIST1));
+    //uint32_t idle = *REG32(SD_IDL);
+    //uint32_t total = *REG32(SD_CYC);
+    //*REG32(SD_IDL) = 0;
+    //uint64_t idle_percent = ((uint64_t)idle * 100) / ((uint64_t)total);
+    //printf("sdram usage: %d %d, %lld\n", idle, total, idle_percent);
+    //printf("HSYNC:%5d HBP:%d HACT:%d HFP:%d VSYNC:%5d VBP:%5d VFPS:%d FRAME:%d\n", t - vsync, t-hbp, t-hact, t-hfp, t-vsync, t-vbp, t-vfps, t-last_vfps);
+    //hvs_set_background_color(1, 0xffffff);
+  }
+  if (stat & PV_INTEN_VFP_END) {
+    ack |= PV_INTEN_VFP_END;
+  }
+  if (stat & PV_INTEN_IDLE) {
+    ack |= PV_INTEN_IDLE;
+  }
+  rawpv->int_status = ack;
+  return INT_NO_RESCHEDULE;
+}
+
 void hvs_configure_channel(int channel, int width, int height, bool interlaced) {
   channels[channel].width = width;
   channels[channel].height = height;
@@ -218,6 +356,19 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
   hvs_channels[channel].dispbkgnd = SCALER_DISPBKGND_AUTOHS | 0x020202
     | (channels[channel].interlaced ? SCALER_DISPBKGND_INTERLACE : 0);
   // the SCALER_DISPBKGND_INTERLACE flag makes the HVS alternate between sending even and odd scanlines
+
+  channels[channel].dlist_target = 0;
+  if (true) {
+    puts("setting up pv interrupt");
+    int pvnr = 2;
+    struct pixel_valve *rawpv = getPvAddr(pvnr);
+    rawpv->int_enable = 0;
+    rawpv->int_status = 0xff;
+    setup_pv_interrupt(pvnr, pv_irq, (void*)pvnr);
+    rawpv->int_enable = PV_INTEN_VFP_START | 0x3f;
+    //hvs_setup_irq();
+    puts("done");
+  }
 }
 
 void hvs_wipe_displaylist(void) {
@@ -273,6 +424,7 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
   printf("SCALER_DISPLIST1: 0x%x\n", list1);
   printf("SCALER_DISPLIST2: 0x%x\n\n", *REG32(SCALER_DISPLIST2));
   for (int i=0; i<3; i++) {
+    if ((argc > 1) && (argv[1].u != i)) continue;
     printf("SCALER_DISPCTRL%d: 0x%x\n", i, hvs_channels[i].dispctrl);
     printf("  width: %d\n", (hvs_channels[i].dispctrl >> 12) & 0xfff);
     printf("  height: %d\n", hvs_channels[i].dispctrl & 0xfff);
@@ -349,4 +501,99 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   // TODO, have a base layer exposed via this
   return -1;
+}
+
+static int cmd_hvs_update(int argc, const console_cmd_args *argv) {
+  int channel = 1;
+  mutex_acquire(&channels[channel].lock);
+  cmd_hvs_dump_dlist(0, NULL);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+  return 0;
+}
+
+void hvs_update_dlist(int channel) {
+  assert(is_mutex_held(&channels[channel].lock));
+  hvs_layer *layer;
+
+  uint32_t t = *REG32(ST_CLO);
+  printf("doing dlist update at %d\n", t);
+
+  int list_start = display_slot;
+
+  list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
+    if ((layer->w == layer->fb->width) && (layer->h == layer->fb->height)) { // unity scale
+      hvs_add_plane(layer->fb, layer->x, layer->y, false);
+    } else {
+      hvs_add_plane_scaled(layer->fb, layer->x, layer->y, layer->w, layer->h, false);
+    }
+  }
+
+  hvs_terminate_list();
+
+#ifdef ENABLE_TEXT
+  if (1) {
+    char buffer[11];
+    bzero(buffer, 10);
+    //bzero(debugText->ptr, debugText->len);
+    uint32_t *t = (uint32_t*)debugText->ptr;
+    for (int i=0; i<(debugText->len/4); i++) {
+      t[i] = 0xff000000;
+    }
+    snprintf(buffer, 10, "%d", display_slot);
+    const char *c;
+    int x = 0;
+    for (c = buffer; *c; c++) {
+      font_draw_char(debugText, *c, x, 0, 0xffffffff);
+      x += FONT_X;
+    }
+  }
+#endif
+
+  if (display_slot > 4096) {
+    printf("dlist overflow!!!: %d\n", display_slot);
+    display_slot = 0;
+    hvs_update_dlist(channel);
+    return;
+  }
+
+  if (display_slot > 4000) {
+    display_slot = 0;
+    puts("dlist loop");
+  }
+
+  // TODO, defer this until vsync
+  //*REG32(SCALER_DISPLIST1) = list_start;
+  channels[channel].dlist_target = list_start;
+}
+
+static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
+  int channel = 1;
+  hvs_layer *layer;
+  list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
+    printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb
+        , layer->x, layer->y
+        , layer->w, layer->h
+        , layer->layer, layer->name ? layer->name : "NULL");
+  }
+  return 0;
+}
+
+void hvs_dlist_add(int channel, hvs_layer *new_layer) {
+  hvs_layer *layer;
+  printf("adding at layer %d\n", new_layer->layer);
+  list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
+    printf("current is %d\n", layer->layer);
+    if (layer->layer == new_layer->layer) {
+      puts("match insert");
+      list_add_after(&layer->node, &new_layer->node);
+      return;
+    } else if (layer->layer > new_layer->layer) {
+      puts("past insert");
+      list_add_before(&layer->node, &new_layer->node);
+      return;
+    }
+  }
+  puts("no match insert");
+  list_add_tail(&channels[channel].layers, &new_layer->node);
 }

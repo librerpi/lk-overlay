@@ -1,6 +1,8 @@
 #pragma once
 
+#include <kernel/mutex.h>
 #include <lib/gfx.h>
+#include <lk/list.h>
 #include <platform/bcm28xx.h>
 
 #define SCALER_BASE (BCM_PERIPH_BASE_VIRT + 0x400000)
@@ -31,9 +33,26 @@ struct hvs_channel_config {
   uint32_t width;
   uint32_t height;
   bool interlaced;
+
+  mutex_t lock;
+  struct list_node layers;
+  uint32_t dlist_target;
 };
 
 extern struct hvs_channel_config channels[3];
+
+typedef struct {
+  struct list_node node;
+  gfx_surface *fb;
+  int x;
+  int y;
+  int layer;
+  int w;
+  int h;
+  const char *name;
+} hvs_layer;
+
+#define MK_UNITY_LAYER(l, FB, LAYER, X, Y) { (l)->fb = FB; (l)->x = X; (l)->y = Y; (l)->layer = LAYER; (l)->w = FB->width; (l)->h = FB->height; }
 
 #define SCALER_STAT_LINE(n) ((n) & 0xfff)
 
@@ -51,7 +70,8 @@ extern struct hvs_channel_config channels[3];
 #define BASE_TOP(n) ((n & 0xffff) << 16)
 
 
-#define SCALER_LIST_MEMORY  (BCM_PERIPH_BASE_VIRT + 0x402000)
+#define SCALER_LIST_MEMORY  (SCALER_BASE + 0x2000)
+#define SCALER5_LIST_MEMORY  (SCALER_BASE + 0x4000)
 
 
 #define CONTROL_FORMAT(n)       (n & 0xf)
@@ -119,14 +139,17 @@ enum hvs_pixel_format {
 extern int display_slot;
 extern volatile uint32_t* dlist_memory;
 
-void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip);
-void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, unsigned int height, bool hflip);
-void hvs_terminate_list(void);
+//void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip);
+//void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, unsigned int height, bool hflip);
+//void hvs_terminate_list(void);
 void hvs_wipe_displaylist(void);
 void hvs_initialize(void);
 void hvs_configure_channel(int channel, int width, int height, bool interlaced);
 void hvs_setup_irq(void);
+void hvs_update_dlist(int channel); // must be called with channel lock held
+void hvs_dlist_add(int channel, hvs_layer *new_layer);
 
+// 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
   hvs_channels[channel].dispbkgnd = SCALER_DISPBKGND_FILL | SCALER_DISPBKGND_AUTOHS | color
     | (channels[channel].interlaced ? SCALER_DISPBKGND_INTERLACE : 0);

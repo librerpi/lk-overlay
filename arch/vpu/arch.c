@@ -45,7 +45,7 @@ void arch_init(void) {
   __asm__ volatile ("mov %0, r28" : "=r"(r28));
   __asm__ volatile ("mov %0, sp" : "=r"(sp));
   __asm__ volatile ("version %0" : "=r"(cpuid));
-  dprintf(INFO, "arch_init\nr28: 0x%x\nsp: 0x%x\ncpuid: %x\n", r28, sp, cpuid);
+  dprintf(INFO, "arch_init\nr28: 0x%x\nsp: 0x%x\ncpuid: %x\nST_CLO: %d\n", r28, sp, cpuid, *REG32(ST_CLO));
 }
 
 void arch_idle(void) {

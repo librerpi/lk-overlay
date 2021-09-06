@@ -253,6 +253,7 @@ void otp_pretty_print(void) {
   if (~serial != otp_read(29)) printf("WARNING: serial# duplicate doesnt match\n");
   uint32_t revision = otp_read(30);
   // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
+  // https://www.raspberrypi.org/documentation/computers/raspberry-pi.html#raspberry-pi-revision-codes
   printf("\nHW revision: 0x%08x\n", revision);
   if (revision & (1 <<23)) { // new style revision
     printf("  Type: %d\n", (revision >> 4) & 0xff);

@@ -502,6 +502,12 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
 
+  const bool core0_enable = true;
+  const bool core1_enable = false;
+  // which clocks to keep held when turning it all on
+  const holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0);
+  const loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0);
+
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_ANARST_SET;
 
   *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_PLLCEN_SET;
@@ -536,22 +542,22 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   *REG32(A2W_PLLC_DIG0) = A2W_PASSWORD | div | 0x555000;
 
   *REG32(A2W_PLLC_CORE0) = A2W_PASSWORD | core0_div;
+  *REG32(A2W_PLLC_CORE1) = A2W_PASSWORD | 3;
 
   *REG32(A2W_PLLC_PER) = A2W_PASSWORD | per_div;
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_DIGRST_SET |
             CM_PLLC_HOLDPER_SET | CM_PLLC_HOLDCORE2_SET |
-            CM_PLLC_HOLDCORE1_SET | CM_PLLC_HOLDCORE0_SET | CM_PLLC_LOADCORE0_SET;
+            CM_PLLC_HOLDCORE1_SET | CM_PLLC_HOLDCORE0_SET | loadflags;
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_DIGRST_SET |
             CM_PLLC_HOLDPER_SET | CM_PLLC_HOLDCORE2_SET |
             CM_PLLC_HOLDCORE1_SET | CM_PLLC_HOLDCORE0_SET;
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_DIGRST_SET |
-            CM_PLLC_HOLDCORE2_SET |
-            CM_PLLC_HOLDCORE1_SET;
+            CM_PLLC_HOLDCORE2_SET | holdflags;
 
-  //puts("waiting for lock");
+  puts("waiting for lock");
   while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKC_BIT)) {}
   //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
   *REG32(A2W_PLLC_FRAC) = A2W_PASSWORD | frac;

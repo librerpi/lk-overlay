@@ -1,8 +1,7 @@
 #include <app.h>
-#include <dance.h>
-#include <lib/tga.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll.h>
@@ -11,8 +10,14 @@
 #include <platform/bcm28xx/pv.h>
 #include <platform/bcm28xx/vec.h>
 #include <stdio.h>
+#include <stdlib.h>
 
+#ifdef WITH_TGA
+#include <dance.h>
+#include <lib/tga.h>
 #include "pi-logo.h"
+#include "ResD1_720X480.h"
+#endif
 
 //extern uint8_t* pilogo;
 
@@ -23,20 +28,32 @@ enum vec_mode {
   palm,
 };
 
-gfx_surface *framebuffer;
-gfx_surface *logo;
+
+static gfx_surface *gfx_grid;
+
+#ifdef WITH_TGA
+static gfx_surface *logo, *gfx_testimage;
+#endif
+
 int width;
 int height;
 int stride;
 
 static void draw_background_grid(void) {
-  //hvs_add_plane(framebuffer, 0, 0, false);
+  //hvs_add_plane(gfx_grid, 0, 0, false);
+  //hvs_add_plane(gfx_testimage, 0, 0, false);
 }
 
 static void vec_init(const struct app_descriptor *app) {
+  int channel = 1; // on VC4, the VEC is hard-wired to hvs channel 1
+
   power_up_usb();
   hvs_initialize();
+#ifdef RPI4
+  *REG32(CM_VECDIV) = CM_PASSWORD | 2 << 12;
+#else
   *REG32(CM_VECDIV) = CM_PASSWORD | 4 << 12;
+#endif
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   int rate = measure_clock(29);
@@ -51,7 +68,11 @@ static void vec_init(const struct app_descriptor *app) {
   *REG32(VEC_CLMP0_END) = 0xac;
   *REG32(VEC_CONFIG2) = VEC_CONFIG2_UV_DIG_DIS | VEC_CONFIG2_RGB_DIG_DIS;
   *REG32(VEC_CONFIG3) = VEC_CONFIG3_HORIZ_LEN_STD;
+#ifdef RPI4
+  *REG32(VEC_DAC_CONFIG) = VEC_DAC_CONFIG_DAC_CTRL(0x0) | VEC_DAC_CONFIG_DRIVER_CTRL(0x80) | VEC_DAC_CONFIG_LDO_BIAS_CTRL(0x61);
+#else
   *REG32(VEC_DAC_CONFIG) = VEC_DAC_CONFIG_DAC_CTRL(0xc) | VEC_DAC_CONFIG_DRIVER_CTRL(0xc) | VEC_DAC_CONFIG_LDO_BIAS_CTRL(0x46);
+#endif
   *REG32(VEC_MASK0) = 0;
   enum vec_mode mode = ntsc;
   switch (mode) {
@@ -80,12 +101,12 @@ static void vec_init(const struct app_descriptor *app) {
   bool ntsc_mode = true;
   if (ntsc_mode) {
     t.vfp = 3;
-    t.vsync = 4;
+    t.vsync = 4; // try 3
     t.vbp = 16;
     t.vactive = 240;
 
-    t.vfp_even = 4;
-    t.vsync_even = 3;
+    t.vfp_even = 4; // try 3
+    t.vsync_even = 3; // try 4
     t.vbp_even = 16;
     t.vactive_even = 240;
 
@@ -96,12 +117,20 @@ static void vec_init(const struct app_descriptor *app) {
     t.hbp = 60;
     t.hactive = 720;
   }
+#ifdef RPI4
+  setup_pixelvalve(&t, 3);
+#else
   setup_pixelvalve(&t, 2);
-  if (!framebuffer) {
+#endif
+
+  uint32_t t0 = *REG32(ST_CLO);
+  printf("NTSC on at %d\n", t0);
+
+  if (!gfx_grid) {
     width = t.hactive;
     height = t.vactive * 2;
     stride = t.hactive;
-    framebuffer = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
+    gfx_grid = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
   }
   int grid = 20;
   for (int x=0; x< width; x++) {
@@ -111,24 +140,53 @@ static void vec_init(const struct app_descriptor *app) {
       if (y % grid == 1) color |= 0xffffff;
       if (x % grid == 0) color |= 0xffffff;
       if (x % grid == 1) color |= 0xffffff;
-      gfx_putpixel(framebuffer, x, y, color);
+      gfx_putpixel(gfx_grid, x, y, color);
     }
   }
-  int list_start = display_slot;
-  hvs_add_plane(framebuffer, 0, 0, false);
-  hvs_terminate_list();
-  *REG32(SCALER_DISPLIST1) = list_start;
+
+  hvs_layer *grid_layer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(grid_layer, gfx_grid, 0, 0, 0);
+  grid_layer->name = "grid";
+
+  mutex_acquire(&channels[channel].lock);
+  hvs_dlist_add(channel, grid_layer);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
 
   hvs_configure_channel(1, width, height, true);
 
+#ifdef WITH_TGA
   logo = tga_decode(pilogo, sizeof(pilogo), GFX_FORMAT_ARGB_8888);
+  gfx_testimage = tga_decode(testimage, sizeof(testimage), GFX_FORMAT_ARGB_8888);
+#endif
+
+#if 0
   list_start = display_slot;
-  hvs_add_plane(framebuffer, 0, 0, false);
+  hvs_add_plane(gfx_grid, 0, 0, false);
   hvs_add_plane_scaled(logo, (width/2) - (logo->width/2), 0, 100, 100, false);
   hvs_terminate_list();
   *REG32(SCALER_DISPLIST1) = list_start;
+#endif
 
-  dance_start(logo, 1, &draw_background_grid);
+
+#ifdef WITH_TGA
+  hvs_layer *new_layer = malloc(sizeof(hvs_layer));
+  new_layer->layer = 100;
+  new_layer->fb = logo;
+  new_layer->x = 50;
+  new_layer->y = 50;
+  new_layer->w = logo->width / 4;
+  new_layer->h = logo->height / 4;
+  new_layer->name = "logo 1";
+
+
+  mutex_acquire(&channels[channel].lock);
+  hvs_dlist_add(channel, new_layer);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+
+  dance_start(logo, 1);
+#endif
 }
 
 static void vec_entry(const struct app_descriptor *app, void *args) {
