@@ -13,10 +13,10 @@
 #include <stdlib.h>
 
 #ifdef WITH_TGA
-#include <dance.h>
 #include <lib/tga.h>
 #include "pi-logo.h"
 #include "ResD1_720X480.h"
+#include <dance.h>
 #endif
 
 //extern uint8_t* pilogo;
@@ -180,8 +180,8 @@ static void vec_init(const struct app_descriptor *app) {
 
 
   mutex_acquire(&channels[channel].lock);
-  hvs_dlist_add(channel, new_layer);
-  hvs_update_dlist(channel);
+  //hvs_dlist_add(channel, new_layer);
+  //hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 
   dance_start(logo, 1);

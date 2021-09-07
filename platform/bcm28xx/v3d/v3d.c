@@ -1,5 +1,6 @@
 #include <app.h>
 #include <assert.h>
+#include <kernel/event.h>
 #include <lib/gfx.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
@@ -8,6 +9,7 @@
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/hexdump.h>
 #include <platform/bcm28xx/hvs.h>
+#include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/udelay.h>
 #include <platform/bcm28xx/v3d.h>
 #include <platform/interrupts.h>
@@ -39,14 +41,12 @@ static int getTileAllocationSize(int n) {
 }
 
 static int cmd_v3d_probe(int argc, const console_cmd_args *argv);
-static int cmd_v3d_bin(int argc, const console_cmd_args *argv);
-static int cmd_v3d_render(int argc, const console_cmd_args *argv);
+static int cmd_v3d(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("v3d_probe", "probe for v3d hw", &cmd_v3d_probe)
 STATIC_COMMAND("v3d_probe2", "probe for v3d hw", &cmd_v3d_probe2)
-STATIC_COMMAND("v3d_bin", "run the binner job", &cmd_v3d_bin)
-STATIC_COMMAND("v3d_render", "run the render job", &cmd_v3d_render)
+STATIC_COMMAND("v3d", "do a full frame render", &cmd_v3d)
 STATIC_COMMAND_END(v3d);
 
 typedef struct {
@@ -66,7 +66,10 @@ typedef struct {
   uint32_t binnerSize;
   void *renderer;
   uint32_t renderSize;
-  gfx_surface *surface;
+  hvs_layer layer;
+  gfx_surface *frameA;
+  gfx_surface *frameB;
+  bool frameANext;
   uint8_t tileAllocationEntrySize;
 } v3d_client_state;
 
@@ -257,9 +260,12 @@ void makeBinner(v3d_client_state *s) {
   assert(length < 0x80);
 }
 
-void makeRenderer(void *outputFrame, v3d_client_state *s) {
-  uint8_t *render = malloc(0x2000);
-  uint8_t *p = render;
+void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
+  if (allocate) {
+    uint8_t *render = malloc(0x2000);
+    s->renderer = render;
+  }
+  uint8_t *p = s->renderer;
   // Render control list
 
   // Clear color
@@ -319,9 +325,7 @@ void makeRenderer(void *outputFrame, v3d_client_state *s) {
       }
     }
   }
-  s->renderSize = p - render;
-  s->renderer = render;
-  printf("render size %d\n", s->renderSize);
+  s->renderSize = p - (uint8_t*)s->renderer;
   assert(s->renderSize < 0x2000);
 }
 
@@ -337,7 +341,7 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
   int yoff = height/2;
   int16_t x = (sin(angle) * w) + xoff;
   int16_t y = (cos(angle) * h) + yoff;
-  printf("point %d %d %d\n",x,y,degrees);
+  //printf("point %d %d %d\n",x,y,degrees);
 
   // Vertex: Top, red
   addshort(&p, x << 4); // X in 12.4 fixed point
@@ -351,7 +355,7 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
   angle = (degrees+120) / (180.0/M_PI);
   x = (sin(angle) * w) + xoff;
   y = (cos(angle) * h) + yoff;
-  printf("point %d %d %d\n",x,y,degrees);
+  //printf("point %d %d %d\n",x,y,degrees);
   // Vertex: bottom left, Green
   addshort(&p, x << 4); // X in 12.4 fixed point
   addshort(&p, y << 4); // Y in 12.4 fixed point
@@ -364,7 +368,7 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
   angle = (degrees+120+120) / (180.0/M_PI);
   x = (sin(angle) * w) + xoff;
   y = (cos(angle) * h) + yoff;
-  printf("point %d %d %d\n",x,y,degrees);
+  //printf("point %d %d %d\n",x,y,degrees);
   // Vertex: bottom right, Blue
   addshort(&p, x << 4); // X in 12.4 fixed point
   addshort(&p, y << 4); // Y in 12.4 fixed point
@@ -403,8 +407,12 @@ static void v3d_allocate(void) {
   state.primitiveList[1] = 1;
   state.primitiveList[2] = 2;
   makeBinner(&state);
-  state.surface = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
-  makeRenderer(state.surface->ptr, &state);
+  s->frameA = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
+  s->frameB = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);;
+  MK_UNITY_LAYER(&state.layer, s->frameA, 40, 0, 0);
+  s->frameANext = true;
+
+  makeRenderer(state.frameA->ptr, &state, true);
 
   makeVertexData(state.vertexData, state.width, state.height, 0);
 }
@@ -416,7 +424,7 @@ static int cmd_v3d_bin(int argc, const console_cmd_args *argv) {
   control_start = *REG32(ST_CLO);
   *REG32(V3D_CT0EA) = (uint32_t)((state.binner + state.binnerSize) - 1);
   printf("V3D_CT0CS: 0x%x\n", *REG32(V3D_CT0CS));
-  bzero(state.surface->ptr, state.surface->len);
+  bzero(state.layer.fb->ptr, state.layer.fb->len);
   hvs_set_background_color(1, 0x0);
   return 0;
 }
@@ -431,19 +439,41 @@ static int cmd_v3d_render(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+bool render_pending;
+uint32_t render_pending_addr, render_pending_size;
+event_t frame_done_event;
+uint32_t binner_time, render_time;
+
 enum handler_return v3d_irq(void *arg) {
   uint32_t control_end = *REG32(ST_CLO);
   uint32_t status = *REG32(V3D_INTCTL);
   *REG32(V3D_INTCTL) = ~0;
-  printf("V3D_INTCTL: 0x%x\n", status);
-  printf("delta-t: %d\n", control_end - control_start);
-  return INT_NO_RESCHEDULE;
+  //printf("V3D_INTCTL: 0x%x\n", status);
+  uint32_t deltat = control_end - control_start;
+  //printf("delta-t: %d\n", control_end - control_start);
+  if (status & 2) { // binner finished
+    binner_time = deltat;
+    if (render_pending) {
+      render_pending = false;
+      *REG32(V3D_CT1CS) = 0x8000; // reset control thread
+      *REG32(V3D_CT1CA) = render_pending_addr;
+      control_start = *REG32(ST_CLO);
+      *REG32(V3D_CT1EA) = render_pending_size;
+    }
+  }
+  if (status & 1) { // render finished
+    render_time = deltat;
+    event_signal(&frame_done_event, false);
+  }
+  return INT_RESCHEDULE;
 }
 
+float v3d_freq;
+
 static void v3d_init(const struct app_descriptor *app) {
-  const int src = CM_SRC_OSC ; // CM_SRC_PLLC_CORE0
+  const int src = CM_SRC_PLLC_CORE0;
   *REG32(CM_V3DCTL) = CM_PASSWORD;
-  *REG32(CM_V3DDIV) = CM_PASSWORD | (0xf << 12);
+  *REG32(CM_V3DDIV) = CM_PASSWORD | (0x1 << 12);
   *REG32(CM_V3DCTL) = CM_PASSWORD | src;
   *REG32(CM_V3DCTL) = CM_PASSWORD | src | 0x10;
 
@@ -470,10 +500,18 @@ static void v3d_init(const struct app_descriptor *app) {
   udelay(100);
 
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | 0x40); // enable v3d
+  render_pending = false;
+  v3d_freq = (float)measure_clock(4) / 1000000;
+
+  event_init(&frame_done_event, false, EVENT_FLAG_AUTOUNSIGNAL);
+
   udelay(1000);
   cmd_v3d_probe(0, 0);
   v3d_allocate();
-  *REG32(V3D_SQRSV1) = ~0;
+
+  *REG32(V3D_SQRSV0) = 0; // enable QPU 0-7
+  *REG32(V3D_SQRSV1) = ~0xffff; // enable QPU 8-11
+
   *REG32(V3D_INTENA) = (1<<1) | (1<<0);
   *REG32(V3D_INTCTL) = ~0;
   *REG32(V3D_L2CACTL) = (1<<2) | (1<<0);
@@ -482,6 +520,59 @@ static void v3d_init(const struct app_descriptor *app) {
   unmask_interrupt(10);
 }
 
+bool shown;
+int rotation = 0;
+
+static int cmd_v3d(int argc, const console_cmd_args *argv) {
+  gfx_surface *next = state.frameANext ? state.frameA : state.frameB;
+
+  // change which buffer we render into
+  makeRenderer(next->ptr, &state, false);
+  // update the xy coords
+  makeVertexData(state.vertexData, state.width, state.height, rotation++);
+
+  render_pending_addr = (uint32_t)state.renderer;
+  render_pending_size = (uint32_t)((state.renderer + state.renderSize));
+  render_pending = true;
+
+  //printf("running job that spans %p to %p\n", state.binner, state.binner + state.binnerSize);
+  *REG32(V3D_CT0CS) = 0x8000; // reset control thread
+  *REG32(V3D_CT0CA) = (uint32_t)state.binner;
+  control_start = *REG32(ST_CLO);
+  *REG32(V3D_CT0EA) = (uint32_t)((state.binner + state.binnerSize) - 1);
+  //printf("V3D_CT0CS: 0x%x\n", *REG32(V3D_CT0CS));
+  //bzero(state.surface->ptr, state.surface->len);
+  //puts("waiting");
+  event_wait(&frame_done_event);
+  //printf("binning took %d uSec(%f) and rendering took %d uSec(%f) @ %f MHz\n", binner_time, binner_time * v3d_freq, render_time, render_time * v3d_freq, v3d_freq);
+
+  int channel = 1;
+  mutex_acquire(&channels[channel].lock);
+  state.layer.fb = next;
+  state.frameANext = !state.frameANext;
+  if (!shown) {
+    hvs_dlist_add(channel, &state.layer);
+    shown = true;
+  }
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+  return 0;
+}
+
+static void v3d_entry(const struct app_descriptor *app, void *args) {
+  int hvs_channel = 1;
+  while (true) {
+    hvs_wait_vsync(hvs_channel);
+
+    cmd_v3d(0, NULL);
+
+    mutex_acquire(&channels[hvs_channel].lock);
+    hvs_update_dlist(hvs_channel);
+    mutex_release(&channels[hvs_channel].lock);
+  }
+}
+
 APP_START(v3d)
   .init = v3d_init,
+  .entry = v3d_entry,
 APP_END
