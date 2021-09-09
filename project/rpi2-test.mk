@@ -3,13 +3,22 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := rpi2
 
 MODULES += \
-	app/shell \
-	app/stringtests \
-	app/tests \
 	lib/cksum \
-	lib/debugcommands \
+	platform/bcm28xx/hvs \
+	platform/bcm28xx/mailbox \
+	app/linux-bootloader \
 	platform/bcm28xx/pll \
+	#app/shell \
+	#app/stringtests \
+	#app/tests \
+	#lib/debugcommands \
 	#platform/bcm28xx/hvs-dance \
-	#lib/tga \
+
+GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=8192
+GLOBAL_DEFINES += PL011_TX_ONLY
+
+GLOBAL_COMPILEFLAGS += -fstack-usage
 
 MEMSIZE = 0xa00000
+
+#DEBUG := 0

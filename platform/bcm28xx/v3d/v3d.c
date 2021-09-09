@@ -35,6 +35,7 @@
 #define CM_V3DDIV      0x7e10103c
 
 uint32_t control_start;
+uint32_t last_state;
 
 static int getTileAllocationSize(int n) {
   return 1 << (5 + n);
@@ -121,6 +122,8 @@ int cmd_v3d_probe2(int argc, const console_cmd_args *argv) {
   x(V3D_PCTRS0);
 
   x(V3D_ERRSTAT);
+
+  printf("last_state: %d\n", last_state);
 
   //hexdump_ram(state.tileAllocationAligned - 32, (uint32_t)state.tileAllocationAligned - 32, 0x200);
   if (0) {
@@ -543,7 +546,9 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
   //printf("V3D_CT0CS: 0x%x\n", *REG32(V3D_CT0CS));
   //bzero(state.surface->ptr, state.surface->len);
   //puts("waiting");
+  last_state = 6;
   event_wait(&frame_done_event);
+  last_state = 7;
   //printf("binning took %d uSec(%f) and rendering took %d uSec(%f) @ %f MHz\n", binner_time, binner_time * v3d_freq, render_time, render_time * v3d_freq, v3d_freq);
 
   int channel = 1;
@@ -561,14 +566,19 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
 
 static void v3d_entry(const struct app_descriptor *app, void *args) {
   int hvs_channel = 1;
+  last_state = 1;
   while (true) {
+    last_state = 2;
     hvs_wait_vsync(hvs_channel);
+    last_state = 3;
 
     cmd_v3d(0, NULL);
+    last_state = 4;
 
     mutex_acquire(&channels[hvs_channel].lock);
     hvs_update_dlist(hvs_channel);
     mutex_release(&channels[hvs_channel].lock);
+    last_state = 5;
   }
 }
 

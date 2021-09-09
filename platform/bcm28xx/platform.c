@@ -8,6 +8,7 @@
 #include <arch.h>
 #include <dev/gpio.h>
 #include <dev/uart.h>
+#include <platform/bcm28xx/hexdump.h>
 #include <kernel/spinlock.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
@@ -157,10 +158,21 @@ static int cmd_platform_reboot(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+static int cmd_arm_hd(int argc, const console_cmd_args *argv) {
+  uint32_t addr = 0;
+  uint32_t len = 32;
+  if (argc >= 2) addr = argv[1].u;
+  if (argc >= 3) len = argv[2].u;
+
+  hexdump_ram(0xc0000000 | addr, addr, len);
+  return 0;
+}
+
 STATIC_COMMAND_START
 STATIC_COMMAND("whatareyou", "print the cpu arch", &cmd_what_are_you)
 STATIC_COMMAND("shorthang", "hang for a bit", &cmd_short_hang)
 STATIC_COMMAND("r", "reboot", &cmd_platform_reboot)
+STATIC_COMMAND("arm_hd", "do a hexdump, via the arm mmu mappings", &cmd_arm_hd)
 STATIC_COMMAND_END(platform);
 
 extern void intc_init(void);

@@ -4,6 +4,8 @@
 #include <lib/fs.h>
 #include <lib/partition.h>
 #include <libfdt.h>
+#include <stdio.h>
+#include <lk/debug.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdlib.h>
@@ -21,6 +23,7 @@ struct ranges {
 
 void find_and_mount(void);
 bool load_kernel(void**, size_t *);
+void asm_set_ACTLR(uint32_t);
 
 void find_and_mount(void) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
@@ -30,6 +33,7 @@ void find_and_mount(void) {
   ret = fs_mount("/root", "ext2", "sdhostp1");
   if (ret) {
     printf("mount failure: %d\n", ret);
+    panic("unable to mount rootfs\n");
     return;
   }
 }
@@ -47,7 +51,7 @@ bool load_kernel(void **buf, size_t *size) {
 
   ret = fs_open_file("/root/zImage", &kernel);
   if (ret) {
-    printf("open failed: %d\n", ret);
+    printf("zImage open failed: %d\n", ret);
     return false;
   }
   ret = fs_stat_file(kernel, &stat);
@@ -69,7 +73,7 @@ bool load_kernel(void **buf, size_t *size) {
 
   ret = fs_open_file("/root/rpi2.dtb", &fh);
   if (ret) {
-    printf("open failed: %d\n", ret);
+    printf("dtb open failed: %d\n", ret);
     return false;
   }
   ret = fs_stat_file(fh, &stat);
@@ -91,18 +95,22 @@ static void patch_dtb(void) {
   int ret;
   void* v_fdt = (void*)DTB_LOAD_ADDRESS;
 
-  ret = fdt_open_into(v_fdt, v_fdt, 16 * 1024 * 1024);
+  ret = fdt_open_into(v_fdt, v_fdt, 16 * 1024);
   int chosen = fdt_path_offset(v_fdt, "/chosen");
-  if (chosen < 0) panic("no chosen node in fdt");
-  else {
-    const char *cmdline = "print-fatal-signals=1 console=ttyAMA0,115200 earlyprintk loglevel=7";
+  if (chosen < 0) {
+    panic("no chosen node in fdt");
+  } else {
+    const char *cmdline = "print-fatal-signals=1 console=ttyAMA0,115200 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10";
     ret = fdt_setprop(v_fdt, chosen, "bootargs", cmdline, strlen(cmdline)+1);
+    //const char *v = "simple-bus";
+    //fdt_setprop(v_fdt, chosen, "compatible", v, strlen(v) + 1);
   }
   int memory = fdt_path_offset(v_fdt, "/memory");
   if (memory < 0) panic("no memory node in fdt");
   else {
     struct mem_entry memmap[] = {
-      { .address = htonl(1024 * 128), .size = htonl(((64) * 1024 * 1024) - (1024 * 128)) },
+      { .address = htonl(0), .size = htonl(((64) * 1024 * 1024)) },
+      //{ .address = htonl(128*1024*1024), .size = htonl(1 * 1024 * 1024) },
     };
     ret = fdt_setprop(v_fdt, memory, "reg", (void*) memmap, sizeof(memmap));
   }
@@ -114,13 +122,27 @@ static void patch_dtb(void) {
       { .child = htonl(0x7e000000), .parent = htonl(MMIO_BASE_PHYS), .size = htonl(16 * 1024 * 1024) },
       { .child = htonl(0x40000000), .parent = htonl(0x40000000), .size = htonl(0x1000) }
     };
-    fdt_setprop(v_fdt, soc, "ranges", (void*)ranges, sizeof(ranges));
+    //fdt_setprop(v_fdt, soc, "ranges", (void*)ranges, sizeof(ranges));
+  }
+  int simplefb = fdt_path_offset(v_fdt, "/system/framebuffer0");
+  if (simplefb) {
+    fdt_setprop_string(v_fdt, simplefb, "status", "disabled");
+  } else {
+    puts("cant find /system/framebuffer0");
   }
 }
 
 static void execute_linux(void) {
   puts("passing control off to linux!!!");
+  asm_set_ACTLR(1<<6);
   arch_chain_load((void*)KERNEL_LOAD_ADDRESS, 0, ~0, 0x2000000, 0);
+}
+
+static void prepare_arm_core() {
+  bool need_timer = true; // FIXME, only on pi2/pi3
+  if (need_timer) {
+    __asm__ __volatile__ ("mcr p15, 0, %0, c14, c0, 0": :"r"(19200000));
+  }
 }
 
 static void loader_entry(const struct app_descriptor *app, void *args) {
@@ -129,6 +151,11 @@ static void loader_entry(const struct app_descriptor *app, void *args) {
   find_and_mount();
   load_kernel(NULL, NULL);
   patch_dtb();
+  if (false) {
+    puts("running linux in 60 seconds");
+    udelay(60 * 1000 * 1000);
+  }
+  prepare_arm_core();
   execute_linux();
 }
 

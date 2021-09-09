@@ -221,6 +221,11 @@ void sleh_irq(vc4_saved_state_t* pcb, uint32_t tp) {
   uint32_t source = status & 0xFF;
   enum handler_return ret = INT_NO_RESCHEDULE;
 
+#if THREAD_STATS
+  int corenr = 0; // FIXME
+  thread_stats[corenr].interrupts++;
+#endif
+
   //uint32_t sp, sr;
   //__asm__ volatile ("mov %0, sp" : "=r"(sp));
   //__asm__ volatile ("mov %0, sr" : "=r"(sr));

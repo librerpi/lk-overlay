@@ -83,6 +83,18 @@ static struct int_handler_struct int_handler_table[MAX_INT];
 
 static spin_lock_t lock = SPIN_LOCK_INITIAL_VALUE;
 
+void platform_quiesce(void) {
+  // linux doesnt like it when certain interrupts are unmasked upon entry
+  // once linux re-enables handling irq's, it gets stuck at:
+  // Spurious percpu IRQ161 on CPU0
+  for (int i=INTERRUPT_ARM_LOCAL_CNTPSIRQ; i<=INTERRUPT_ARM_LOCAL_CNTVIRQ; i++) {
+    mask_interrupt(i);
+  }
+  for (int i=0; i< (ARM_IRQ0_BASE+32); i++) {
+    mask_interrupt(i);
+  }
+}
+
 status_t mask_interrupt(unsigned int vector) {
     LTRACEF("vector %u\n", vector);
 

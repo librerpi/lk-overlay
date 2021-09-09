@@ -2,9 +2,11 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS += $(LOCAL_DIR)/loader.c
+MODULE_SRCS += $(LOCAL_DIR)/loader.c $(LOCAL_DIR)/asm.S
 
-MODULES += platform/bcm28xx/sdhost lib/fs lib/fs/ext2 lib/fdt
+MODULES += \
+	lib/fs lib/fs/ext2 lib/fdt lib/partition \
+	platform/bcm28xx/sdhost
 
 include make/module.mk
 

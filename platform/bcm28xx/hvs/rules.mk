@@ -4,6 +4,7 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_DEPS += \
 	lib/gfx \
+	platform/bcm28xx/pixelvalve \
 
 MODULE_SRCS += \
 	$(LOCAL_DIR)/hvs.c

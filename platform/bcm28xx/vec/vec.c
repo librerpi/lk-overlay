@@ -46,6 +46,8 @@ static void draw_background_grid(void) {
 static void vec_init(const struct app_descriptor *app) {
   int channel = 1; // on VC4, the VEC is hard-wired to hvs channel 1
 
+  puts("VEC init");
+
   power_up_usb();
   hvs_initialize();
 #ifdef RPI4
@@ -179,19 +181,28 @@ static void vec_init(const struct app_descriptor *app) {
   new_layer->name = "logo 1";
 
 
+  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | (128 * 1024 * 1024), 100, 100, 100, GFX_FORMAT_ARGB_8888);
+  hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 50);
+  //simple_fb_layer->w /= 4;
+  //simple_fb_layer->h /= 4;
+  simple_fb_layer->name = "simple-framebuffer";
+
+
   mutex_acquire(&channels[channel].lock);
   //hvs_dlist_add(channel, new_layer);
-  //hvs_update_dlist(channel);
+  hvs_dlist_add(channel, simple_fb_layer);
+  hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 
-  dance_start(logo, 1);
+  //dance_start(logo, 1);
 #endif
 }
 
-static void vec_entry(const struct app_descriptor *app, void *args) {
-}
+//static void vec_entry(const struct app_descriptor *app, void *args) {
+//}
 
 APP_START(vec)
   .init = vec_init,
-  .entry = vec_entry,
+  //.entry = vec_entry,
 APP_END

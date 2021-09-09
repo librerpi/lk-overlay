@@ -599,7 +599,7 @@ static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
   int channel = 1;
   hvs_layer *layer;
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
-    printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb
+    printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb->ptr
         , layer->x, layer->y
         , layer->w, layer->h
         , layer->layer, layer->name ? layer->name : "NULL");

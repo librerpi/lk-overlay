@@ -1,10 +1,12 @@
 #include <app.h>
+#include <dev/gpio.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/a2w.h>
 #include <platform/bcm28xx/arm.h>
 #include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>
@@ -17,6 +19,11 @@ timer_t arm_check;
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
 void setupClock(void);
 void bridgeStart(bool cycleBrespBits);
+
+
+typedef unsigned char v16b __attribute__((__vector_size__(16)));
+
+v16b testing123;
 
 #define PM_PROC_ARMRSTN_CLR 0xffffffbf
 
@@ -41,13 +48,28 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
   return INT_NO_RESCHEDULE;
 }
 
-static void arm_init(const struct app_descriptor *app) {
+static void __attribute__(( optimize("-O1"))) arm_init(const struct app_descriptor *app) {
+  testing123 = (v16b) { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  v16b b = {15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
+  v16b c = testing123 + b;
+
+  bool jtag = true;
+
+  if (jtag) {
+    gpio_config(22, kBCM2708Pinmux_ALT4);// TRST
+    gpio_config(5, kBCM2708Pinmux_ALT5); // TDO
+    gpio_config(13, kBCM2708Pinmux_ALT5); // TCK
+    gpio_config(26, kBCM2708Pinmux_ALT4); // TDI
+    gpio_config(12, kBCM2708Pinmux_ALT5); // TMS
+  }
+
   timer_initialize(&arm_check);
   //timer_set_periodic(&arm_check, 1000, arm_checker, NULL);
   power_arm_start();
   printregs();
-  printf("arm starting...\n");
   void *original_start = &arm_payload_start;
+  double a = ((double)(int)original_start) * 1.3;
+  printf("arm starting... %f\n", a);
   uint32_t size = &arm_payload_end - &arm_payload_start;
   memcpy((void*)0xc0000000, original_start, size);
   uint32_t crc = crc32(0, original_start, size);
@@ -59,6 +81,10 @@ static void arm_init(const struct app_descriptor *app) {
   mapBusToArm(0x7e000000, 0x20000000);
   mapBusToArm(0x7e000000, 0x3f000000);
   printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
+
+  if (jtag) {
+    *REG32(ARM_CONTROL0) |= ARM_C0_JTAGGPIO;
+  }
   /*
    * enable peripheral access, map arm secure bits to axi secure bits 1:1 and
    * set the mem size for who knows what reason.
