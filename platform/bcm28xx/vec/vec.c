@@ -28,15 +28,11 @@ enum vec_mode {
   palm,
 };
 
-static gfx_surface *gfx_grid;
 
 #ifdef WITH_TGA
 static gfx_surface *logo, *gfx_testimage;
 #endif
 
-int width;
-int height;
-int stride;
 
 static void draw_background_grid(void) {
   //hvs_add_plane(gfx_grid, 0, 0, false);
@@ -45,6 +41,9 @@ static void draw_background_grid(void) {
 
 static void vec_init(const struct app_descriptor *app) {
   int channel = 1; // on VC4, the VEC is hard-wired to hvs channel 1
+  int width;
+  int height;
+  gfx_surface *gfx_grid;
 
   puts("VEC init");
 
@@ -130,7 +129,6 @@ static void vec_init(const struct app_descriptor *app) {
   if (!gfx_grid) {
     width = t.hactive;
     height = t.vactive * 2;
-    stride = t.hactive;
     gfx_grid = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
   }
   int grid = 20;
@@ -158,17 +156,8 @@ static void vec_init(const struct app_descriptor *app) {
 
 #ifdef WITH_TGA
   logo = tga_decode(pilogo, sizeof(pilogo), GFX_FORMAT_ARGB_8888);
-  gfx_testimage = tga_decode(testimage, sizeof(testimage), GFX_FORMAT_ARGB_8888);
+  //gfx_testimage = tga_decode(testimage, sizeof(testimage), GFX_FORMAT_ARGB_8888);
 #endif
-
-#if 0
-  list_start = display_slot;
-  hvs_add_plane(gfx_grid, 0, 0, false);
-  hvs_add_plane_scaled(logo, (width/2) - (logo->width/2), 0, 100, 100, false);
-  hvs_terminate_list();
-  *REG32(SCALER_DISPLIST1) = list_start;
-#endif
-
 
 #ifdef WITH_TGA
   hvs_layer *new_layer = malloc(sizeof(hvs_layer));
@@ -195,7 +184,7 @@ static void vec_init(const struct app_descriptor *app) {
   hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 
-  //dance_start(logo, 1);
+  dance_start(logo, 1);
 #endif
 }
 

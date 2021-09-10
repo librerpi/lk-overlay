@@ -29,3 +29,5 @@ MODULES += \
 # 128mb        test framebuffer
 # 512mb + 16mb mmio window 1
 # 1008mb + 16mb mmio window 2
+
+GLOBAL_DEFINES += PL011_TX_ONLY

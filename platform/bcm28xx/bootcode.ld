@@ -6,11 +6,11 @@ SECTIONS {
   _start = .;
   .vectorTable : {
     . = 0x0;
-    *(.data.vectorTable)
+    KEEP(*(.data.vectorTable))
   }
   .text : {
     _text = .;
-    *(.text.start)
+    KEEP(*(.text.start))
     *(.text)
     *(.text.*)
     *(.gnu.warning)

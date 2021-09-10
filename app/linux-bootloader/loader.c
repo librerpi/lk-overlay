@@ -87,20 +87,26 @@ bool load_kernel(void **buf, size_t *size) {
     return false;
   }
   fs_close_file(fh);
+  printf("loaded DTB file to 0x%x + 0x%x\n", DTB_LOAD_ADDRESS, stat.size);
 
-  return false;
+  return true;
 }
 
-static void patch_dtb(void) {
+static bool patch_dtb(void) {
   int ret;
   void* v_fdt = (void*)DTB_LOAD_ADDRESS;
 
   ret = fdt_open_into(v_fdt, v_fdt, 16 * 1024);
+  if (ret) {
+    printf("ERROR: fdt_open_into() == %d\n", ret);
+    return false;
+  }
   int chosen = fdt_path_offset(v_fdt, "/chosen");
   if (chosen < 0) {
-    panic("no chosen node in fdt");
+    puts("ERROR: no chosen node in fdt");
+    return false;
   } else {
-    const char *cmdline = "print-fatal-signals=1 console=ttyAMA0,115200 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10";
+    const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/sw/bin/bash console=ttyAMA0 user_debug=31";
     ret = fdt_setprop(v_fdt, chosen, "bootargs", cmdline, strlen(cmdline)+1);
     //const char *v = "simple-bus";
     //fdt_setprop(v_fdt, chosen, "compatible", v, strlen(v) + 1);
@@ -130,32 +136,58 @@ static void patch_dtb(void) {
   } else {
     puts("cant find /system/framebuffer0");
   }
+  return true;
 }
 
 static void execute_linux(void) {
   puts("passing control off to linux!!!");
-  asm_set_ACTLR(1<<6);
   arch_chain_load((void*)KERNEL_LOAD_ADDRESS, 0, ~0, 0x2000000, 0);
 }
 
-static void prepare_arm_core() {
+static void prepare_arm_core(void) {
   bool need_timer = true; // FIXME, only on pi2/pi3
+  bool unlock_coproc = true; // FIXME, only on pi2/pi3
   if (need_timer) {
-    __asm__ __volatile__ ("mcr p15, 0, %0, c14, c0, 0": :"r"(19200000));
+    arm_write_cntfrq(19200000);
   }
+  if (unlock_coproc) {
+    // NSACR = all copros to non-sec
+    //arm_write_nsacr(0x63ff);
+    arm_write_nsacr(0xffff);
+  }
+  arm_write_actlr(arm_read_actlr() | 1<<6); // on cortex-A7, this is the SMP bit
+  arm_write_cpacr(0xf << 20);
+  //arm_write_scr(arm_read_scr() | 0x1); // drop to non-secure mode
+}
+
+static void dump_random_arm_regs(void) {
+  printf("ACTLR:  0x%08x\n", arm_read_actlr());
+  printf("CNTFRQ: %d\n", arm_read_cntfrq());
+  printf("CPACR:  0x%08x\n", arm_read_cpacr());
+  printf("CPSR:   0x%08x\n", read_cpsr());
+  printf("NSACR:  0x%08x\n", arm_read_nsacr());
+  //printf("SCR:    0x%x\n", arm_read_scr());
 }
 
 static void loader_entry(const struct app_descriptor *app, void *args) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   if (arch_ints_disabled()) puts("interrupts off??");
   find_and_mount();
-  load_kernel(NULL, NULL);
-  patch_dtb();
+  if (!load_kernel(NULL, NULL)) {
+    return;
+  }
+  if (!patch_dtb()) {
+    return;
+  }
   if (false) {
     puts("running linux in 60 seconds");
     udelay(60 * 1000 * 1000);
   }
+  puts("\nBEFORE:");
+  dump_random_arm_regs();
   prepare_arm_core();
+  puts("\nAFTER");
+  dump_random_arm_regs();
   execute_linux();
 }
 

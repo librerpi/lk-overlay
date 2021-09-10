@@ -8,14 +8,14 @@ MODULES += \
 	platform/bcm28xx/mailbox \
 	app/linux-bootloader \
 	platform/bcm28xx/pll \
-	#app/shell \
+	app/shell \
+	lib/debugcommands \
 	#app/stringtests \
 	#app/tests \
-	#lib/debugcommands \
 	#platform/bcm28xx/hvs-dance \
 
 GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=8192
-GLOBAL_DEFINES += PL011_TX_ONLY
+#GLOBAL_DEFINES += PL011_TX_ONLY
 
 GLOBAL_COMPILEFLAGS += -fstack-usage
 
