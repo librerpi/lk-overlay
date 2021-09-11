@@ -32,6 +32,12 @@ SECTIONS {
     _erodata = .;
   } >ram
 
+  commands : {
+    PROVIDE(__start_commands = .);
+    KEEP(*(commands))
+    PROVIDE(__stop_commands = .);
+  } >ram
+
   .init_array : {
     PROVIDE (__init_array_start = .);
     __ctor_list = .;

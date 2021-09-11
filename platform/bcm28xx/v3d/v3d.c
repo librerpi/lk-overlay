@@ -413,6 +413,7 @@ static void v3d_allocate(void) {
   s->frameA = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
   s->frameB = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);;
   MK_UNITY_LAYER(&state.layer, s->frameA, 40, 0, 0);
+  state.layer.name = "v3d";
   s->frameANext = true;
 
   makeRenderer(state.frameA->ptr, &state, true);

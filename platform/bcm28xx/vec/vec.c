@@ -1,5 +1,6 @@
 #include <app.h>
 #include <lk/console_cmd.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
@@ -39,7 +40,7 @@ static void draw_background_grid(void) {
   //hvs_add_plane(gfx_testimage, 0, 0, false);
 }
 
-static void vec_init(const struct app_descriptor *app) {
+static void vec_init(uint level) {
   int channel = 1; // on VC4, the VEC is hard-wired to hvs channel 1
   int width;
   int height;
@@ -126,19 +127,20 @@ static void vec_init(const struct app_descriptor *app) {
   uint32_t t0 = *REG32(ST_CLO);
   printf("NTSC on at %d\n", t0);
 
-  if (!gfx_grid) {
-    width = t.hactive;
-    height = t.vactive * 2;
-    gfx_grid = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
-  }
+  width = t.hactive;
+  height = t.vactive * 2;
+  gfx_grid = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
+
   int grid = 20;
   for (int x=0; x< width; x++) {
     for (int y=0; y < height; y++) {
       uint color = 0xff000000;
-      //if (y % grid == 0) color |= 0xffffff;
-      //if (y % grid == 1) color |= 0xffffff;
-      //if (x % grid == 0) color |= 0xffffff;
-      //if (x % grid == 1) color |= 0xffffff;
+      if (false) {
+        if (y % grid == 0) color |= 0xffffff;
+        if (y % grid == 1) color |= 0xffffff;
+        if (x % grid == 0) color |= 0xffffff;
+        if (x % grid == 1) color |= 0xffffff;
+      }
       gfx_putpixel(gfx_grid, x, y, color);
     }
   }
@@ -157,32 +159,18 @@ static void vec_init(const struct app_descriptor *app) {
 #ifdef WITH_TGA
   logo = tga_decode(pilogo, sizeof(pilogo), GFX_FORMAT_ARGB_8888);
   //gfx_testimage = tga_decode(testimage, sizeof(testimage), GFX_FORMAT_ARGB_8888);
-#endif
 
-#ifdef WITH_TGA
-  hvs_layer *new_layer = malloc(sizeof(hvs_layer));
-  new_layer->layer = 100;
-  new_layer->fb = logo;
-  new_layer->x = 50;
-  new_layer->y = 50;
-  new_layer->w = logo->width / 4;
-  new_layer->h = logo->height / 4;
-  new_layer->name = "logo 1";
-
-
-  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | (128 * 1024 * 1024), 100, 100, 100, GFX_FORMAT_ARGB_8888);
-  hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
-  MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 50);
-  //simple_fb_layer->w /= 4;
-  //simple_fb_layer->h /= 4;
-  simple_fb_layer->name = "simple-framebuffer";
-
-
-  mutex_acquire(&channels[channel].lock);
-  //hvs_dlist_add(channel, new_layer);
-  hvs_dlist_add(channel, simple_fb_layer);
-  hvs_update_dlist(channel);
-  mutex_release(&channels[channel].lock);
+  if (false) {
+    hvs_layer *new_layer = malloc(sizeof(hvs_layer));
+    new_layer->layer = 100;
+    new_layer->fb = logo;
+    new_layer->x = 50;
+    new_layer->y = 50;
+    new_layer->w = logo->width / 4;
+    new_layer->h = logo->height / 4;
+    new_layer->name = "logo 1";
+    hvs_dlist_add(channel, new_layer);
+  }
 
   dance_start(logo, 1);
 #endif
@@ -191,7 +179,4 @@ static void vec_init(const struct app_descriptor *app) {
 //static void vec_entry(const struct app_descriptor *app, void *args) {
 //}
 
-APP_START(vec)
-  .init = vec_init,
-  //.entry = vec_entry,
-APP_END
+LK_INIT_HOOK(vec, &vec_init, LK_INIT_LEVEL_PLATFORM - 1);

@@ -106,7 +106,7 @@ static bool patch_dtb(void) {
     puts("ERROR: no chosen node in fdt");
     return false;
   } else {
-    const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/sw/bin/bash console=ttyAMA0 user_debug=31";
+    const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init console=tty1 console=ttyAMA0 user_debug=31";
     ret = fdt_setprop(v_fdt, chosen, "bootargs", cmdline, strlen(cmdline)+1);
     //const char *v = "simple-bus";
     //fdt_setprop(v_fdt, chosen, "compatible", v, strlen(v) + 1);
@@ -130,11 +130,21 @@ static bool patch_dtb(void) {
     };
     //fdt_setprop(v_fdt, soc, "ranges", (void*)ranges, sizeof(ranges));
   }
-  int simplefb = fdt_path_offset(v_fdt, "/system/framebuffer0");
-  if (simplefb) {
-    fdt_setprop_string(v_fdt, simplefb, "status", "disabled");
+  int simplefb = fdt_path_offset(v_fdt, "/system/framebuffer@8000000");
+  if (simplefb < 0) {
+    printf("cant find /system/framebuffer0: %d", simplefb);
   } else {
-    puts("cant find /system/framebuffer0");
+    if (false) { // disables framebuffer
+      fdt_setprop_string(v_fdt, simplefb, "status", "disabled");
+    } else {
+      int w = 620;
+      int h = 210;
+      fdt_setprop_u32(v_fdt, simplefb, "width", w);
+      fdt_setprop_u32(v_fdt, simplefb, "height", h);
+      fdt_setprop_u32(v_fdt, simplefb, "stride", w * 4);
+      fdt32_t reg[2] = { cpu_to_fdt32(0x8000000), cpu_to_fdt32(w*h*4) };
+      fdt_setprop(v_fdt, simplefb, "reg", &reg, sizeof(reg));
+    }
   }
   return true;
 }

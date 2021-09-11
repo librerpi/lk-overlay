@@ -14,6 +14,22 @@
 #define CM_DPICTL_BUSY_SET 0x80
 #define CM_DPICTL_ENAB_SET                                 0x00000010
 #define CM_DPIDIV               (CM_BASE + 0x06c)
+
+#define CM_GP0CTL               (CM_BASE + 0x070)
+#define CM_GP0DIV               (CM_BASE + 0x074)
+
+#define CM_GP1CTL               (CM_BASE + 0x078)
+#define CM_GP1DIV               (CM_BASE + 0x07c)
+
+#define CM_GP2CTL               (CM_BASE + 0x080)
+#define CM_GP2DIV               (CM_BASE + 0x084)
+
+#define CM_GPnCTL_MASH_SET      0x00000600
+#define CM_GPnCTL_MASH_LSB      9
+#define CM_GPnCTL_ENAB_SET      (1<<4)
+#define CM_GPnCTL_KILL_SET      0x00000020
+#define CM_GPnCTL_BUSY_SET      0x00000080
+
 #define CM_TCNTCTL              (CM_BASE + 0x0c0)
 #define CM_TCNTCNT              (CM_BASE + 0x0c4)
 #define CM_TD0CTL               (CM_BASE + 0x0d0)

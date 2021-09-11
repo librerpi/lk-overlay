@@ -39,7 +39,6 @@ struct hvs_channel_config channels[3];
 gfx_surface *debugText;
 
 static int cmd_hvs_dump(int argc, const console_cmd_args *argv);
-static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
 static int cmd_hvs_update(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
@@ -507,7 +506,7 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   int w = 640;
-  int h = 420;
+  int h = 210;
   struct gfx_surface *gfx = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
   bzero(gfx->ptr, gfx->len);
   fb->image.pixels = gfx->ptr;
@@ -595,7 +594,7 @@ void hvs_update_dlist(int channel) {
   channels[channel].dlist_target = list_start;
 }
 
-static int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
+int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
   int channel = 1;
   hvs_layer *layer;
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
@@ -642,4 +641,4 @@ uint32_t hvs_wait_vsync(int hvs_channel) {
   return stat;
 }
 
-LK_INIT_HOOK(hvs, &hvs_init_hook, LK_INIT_LEVEL_PLATFORM - 1);
+LK_INIT_HOOK(hvs, &hvs_init_hook, LK_INIT_LEVEL_PLATFORM - 2);

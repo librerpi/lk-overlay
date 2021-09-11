@@ -2,15 +2,19 @@
 #include <dev/gpio.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/a2w.h>
 #include <platform/bcm28xx/arm.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
+#include <platform/bcm28xx/hvs.h>
+#include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern uint8_t arm_payload_start, arm_payload_end;
@@ -22,8 +26,6 @@ void bridgeStart(bool cycleBrespBits);
 
 
 typedef unsigned char v16b __attribute__((__vector_size__(16)));
-
-v16b testing123;
 
 #define PM_PROC_ARMRSTN_CLR 0xffffffbf
 
@@ -48,11 +50,67 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
   return INT_NO_RESCHEDULE;
 }
 
-static void __attribute__(( optimize("-O1"))) arm_init(const struct app_descriptor *app) {
-  testing123 = (v16b) { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-  v16b b = {15,14,13,12,11,10,9,8,7,6,5,4,3,2,1};
-  v16b c = testing123 + b;
+static void setup_framebuffer(void) {
+  int channel = 1;
+  int w = 620;
+  int h = 210;
 
+  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | (128 * 1024 * 1024), w, h, w, GFX_FORMAT_ARGB_8888);
+  gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
+  hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
+  //simple_fb_layer->w /= 4;
+  //simple_fb_layer->h /= 4;
+  simple_fb_layer->name = "simple-framebuffer";
+
+  mutex_acquire(&channels[channel].lock);
+  hvs_dlist_add(channel, simple_fb_layer);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+}
+
+static void enable_usb_host(void) {
+  uint32_t revision = otp_read(30);
+  uint32_t type = (revision >> 4) & 0xff;
+  int lan_run = 0;
+  int ethclk_pin = 0;
+
+  switch (type) {
+  case 4: // 2B
+    lan_run = 31;
+    ethclk_pin = 44;
+    break;
+  case 8: // 3B
+    lan_run = 29;
+    ethclk_pin = 42;
+    break;
+  case 0xd: // 3B+
+    lan_run = 30;
+    ethclk_pin = 42;
+    break;
+  }
+
+  if (ethclk_pin > 0) {
+    // GP1 routed to GPIO42 to drive ethernet/usb chip
+    *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
+    while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
+
+    *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
+    *REG32(CM_GP1DIV) = CM_PASSWORD | 0x1147a; // divisor * 0x1000
+    *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
+
+    gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
+  }
+
+  if (lan_run > 0) {
+    gpio_config(lan_run, kBCM2708PinmuxOut);
+    gpio_set(lan_run, 0);
+    udelay(1000);
+    gpio_set(lan_run, 1);
+  }
+}
+
+static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   bool jtag = true;
 
   if (jtag) {
@@ -75,12 +133,29 @@ static void __attribute__(( optimize("-O1"))) arm_init(const struct app_descript
   uint32_t crc = crc32(0, original_start, size);
   uint32_t crc2 = crc32(0, 0xc0000000, size);
   printf("checksums 0x%08x 0x%08x\n", crc, crc2);
+
+  // first pass, map everything to the framebuffer, to act as a default
+  for (int i=0; i<1024 ; i += 16) {
+    mapBusToArm(0xc8000000, i * 1024 * 1024);
+  }
+
+  // second pass, map the lower 64mb as plain ram
   for (int i=0; i<64 ; i += 16) {
     mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
   }
+
+  // add mmio
   mapBusToArm(0x7e000000, 0x20000000);
   mapBusToArm(0x7e000000, 0x3f000000);
+
+  // add framebuffer
+  mapBusToArm(0xc8000000, 0x08000000);
+
   printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
+
+  setup_framebuffer();
+  enable_usb_host();
+  cmd_hvs_dump_dlist(0, NULL);
 
   if (jtag) {
     *REG32(ARM_CONTROL0) |= ARM_C0_JTAGGPIO;
@@ -217,7 +292,4 @@ void bridgeStart(bool cycleBrespBits) {
   printf("\nbridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
 }
 
-APP_START(arm)
-  .init = arm_init,
-//  .entry = arm_entry,
-APP_END
+LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 1);

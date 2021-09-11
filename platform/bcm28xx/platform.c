@@ -137,6 +137,11 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
   #error Unknown BCM28XX Variant
 #endif
 
+uint32_t vpu_clock;
+// 19.2mhz for most models
+// 54mhz for rpi4
+uint32_t xtal_freq = CRYSTAL;
+
 static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
 #ifdef ARCH_VPU
   uint32_t cpuid;
@@ -179,10 +184,6 @@ extern void intc_init(void);
 extern void arm_reset(void);
 static void switch_vpu_to_pllc(void);
 
-// 19.2mhz for most models
-// 54mhz for rpi4
-uint32_t xtal_freq = CRYSTAL;
-
 #ifdef WITH_KERNEL_VM
 static pmm_arena_t arena = {
     .name = "sdram",
@@ -198,8 +199,6 @@ __WEAK uint32_t get_uart_base_freq() {
 
 void platform_init_mmu_mappings(void) {
 }
-
-uint32_t vpu_clock;
 
 static void switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);

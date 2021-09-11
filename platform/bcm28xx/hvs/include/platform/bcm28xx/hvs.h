@@ -2,6 +2,7 @@
 
 #include <kernel/mutex.h>
 #include <lib/gfx.h>
+#include <lk/console_cmd.h>
 #include <lk/list.h>
 #include <platform/bcm28xx.h>
 
@@ -162,6 +163,7 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer);
 // flip will happen at the NEXT vsync
 // returns the value of the SCALER_DISPSTATn register, which holds the current frame and scanline#
 uint32_t hvs_wait_vsync(int channel);
+int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
 
 // 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
