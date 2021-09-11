@@ -1,4 +1,4 @@
-{ stdenv, project, which, imagemagick, python }:
+{ stdenv, project, which, imagemagick, python, preBuild ? "" }:
 
 stdenv.mkDerivation {
   name = "littlekernel-${project}";
@@ -7,6 +7,7 @@ stdenv.mkDerivation {
     path = ./.;
     name = "lk-src";
   };
+  inherit preBuild;
   makeFlags = [ "PROJECT=${project}" ];
   hardeningDisable = [ "format" ];
   nativeBuildInputs = [

@@ -55,7 +55,14 @@ in lib.fix (self: {
     rpi4.recovery = vc4.callPackage ./lk.nix { project = "rpi4-recovery"; };
     rpi4.start4 = vc4.callPackage ./lk.nix { project = "rpi4-start4"; };
     vc4.stage1 = vc4.callPackage ./lk.nix { project = "vc4-stage1"; };
-    vc4.stage2 = vc4.callPackage ./lk.nix { project = "vc4-stage2"; };
+    vc4.stage2 = vc4.callPackage ./lk.nix {
+      project = "vc4-stage2";
+      preBuild = ''
+        rm -rf build-rpi2-test
+        mkdir build-rpi2-test -pv
+        ln -sv ${self.arm.rpi2-test} build-rpi2-test/lk.bin
+      '';
+    };
     vc4.start = vc4.callPackage ./lk.nix { project = "vc4-start"; };
     vc4.bootcode-fast-ntsc = vc4.callPackage ./lk.nix { project = "bootcode-fast-ntsc"; };
   };
