@@ -21,7 +21,7 @@ lk_bigtime_t current_time_hires(void) {
 }
 
 lk_time_t current_time(void) {
-  return current_time_hires();
+  return current_time_hires() / 1000;
 }
 
 static void vc4_timer_init(uint level) {
@@ -41,14 +41,19 @@ status_t platform_set_oneshot_timer (platform_timer_callback callback, void *arg
   timer_cb = callback;
   timer_arg = arg;
   if (interval < 2) interval = 2;
-  //printf("platform_set_oneshot_timer(..., ..., %d)\n", interval);
+  uint32_t now = *REG32(ST_CLO);
+  uint32_t then = now + (interval * 1000);
 #if VC4_TIMER_CHANNEL == 0
-  *REG32(ST_C0) = *REG32(ST_CLO) + (interval * 1000);
+  *REG32(ST_C0) = then;
 #elif VC4_TIMER_CHANNEL == 1
-  *REG32(ST_C1) = *REG32(ST_CLO) + (interval * 1000);
+  *REG32(ST_C1) = then;
 #else
 #error unsupported timer channel
 #endif
+  //if (interval != 10) {
+  //  printf("platform_set_oneshot_timer(%p, ..., %d)\n", callback, interval);
+  //  printf("now: %d, then: %d\n", now, then);
+  //}
   return NO_ERROR;
 }
 
