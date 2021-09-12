@@ -9,5 +9,8 @@
       vc4-stage1 = legacy.vc4.vc4.stage1;
       vc4-stage2 = legacy.vc4.vc4.stage2;
     };
+    hydraJobs.x86_64-linux = {
+      inherit (self.packages.x86_64-linux) vc4-stage1 vc4-stage2;
+    };
   };
 }
