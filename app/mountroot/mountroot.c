@@ -1,10 +1,11 @@
 #include <app.h>
 #include <lib/fs.h>
 #include <lib/partition.h>
+#include <lk/init.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <stdio.h>
 
-static void mountroot_entry(const struct app_descriptor *app, void *args) {
+static void mountroot_entry(uint level) {
   int ret;
   puts("mountroot entry\n");
 
@@ -18,6 +19,4 @@ static void mountroot_entry(const struct app_descriptor *app, void *args) {
   }
 }
 
-APP_START(mountroot)
-  .entry = mountroot_entry,
-APP_END
+LK_INIT_HOOK(mountroot, &mountroot_entry, LK_INIT_LEVEL_TARGET);

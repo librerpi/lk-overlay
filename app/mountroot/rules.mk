@@ -5,6 +5,8 @@ MODULE := $(LOCAL_DIR)
 MODULE_DEPS += \
 	lib/fs \
 	lib/fs/ext2 \
+	lib/partition \
+	platform/bcm28xx/sdhost \
 
 MODULE_SRCS += \
 	$(LOCAL_DIR)/mountroot.c

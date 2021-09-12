@@ -1,15 +1,24 @@
 #include <app.h>
-#include <lk/err.h>
-#include <platform/bcm28xx/hvs.h>
 #include <lib/fs.h>
 #include <lib/tga.h>
 #include <lk/console_cmd.h>
+#include <lk/err.h>
 #include <lk/list.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/hvs.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/*
+ * mounts partition 2 from the SD card (ext2 or ext4 supported)
+ * loads every file in `/images/*.tga` that is under 5mb
+ * displays the first image as soon as its loaded
+ * cycles between all loaded images, showing each for 10 seconds
+ * the raw image data must fit within the LENGTH in start.ld
+ * changing the ORIGIN in start.ld to 0 makes image data load more quickly
+ */
 
 struct list_node image_names;
 
@@ -182,6 +191,7 @@ static void slideshow_entry(const struct app_descriptor *app, void *args) {
   layer = malloc(sizeof(*layer));
   int channel = 1;
   bool add_layer = true;
+  uint32_t t1, t2;
   while (true) {
     list_for_every_entry(&loaded_images, entry, loaded_image, node) {
       // change the image in the hvs_hayer
@@ -200,10 +210,12 @@ static void slideshow_entry(const struct app_descriptor *app, void *args) {
       }
       // request a page-flip
       hvs_update_dlist(channel);
-      printf("flip %d\n", *REG32(ST_CLO));
+      //printf("flip %d %d\n", *REG32(ST_CLO), t2-t1);
       mutex_release(&channels[channel].lock);
 
-      thread_sleep(6 * 1000);
+      t1 = *REG32(ST_CLO);
+      thread_sleep(10 * 1000);
+      t2 = *REG32(ST_CLO);
     }
   }
 }
