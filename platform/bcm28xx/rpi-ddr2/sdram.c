@@ -67,7 +67,8 @@ enum RamSize g_RAMSize = kRamSizeUnknown;
 #define MR_REQUEST_SUCCESS(x) ((SD_MR_TIMEOUT_SET & x) != SD_MR_TIMEOUT_SET)
 #define MR_GET_RDATA(x) ((x & SD_MR_RDATA_SET) >> SD_MR_RDATA_LSB)
 
-#define SIP_DEBUG(x) x
+//#define SIP_DEBUG(x) x
+#define SIP_DEBUG(x)
 #define SCLKU_DEBUG(x) //SIP_DEBUG(x)
 
 #define BIST_pvt    0x20
@@ -515,6 +516,7 @@ void sdram_init() {
   uint32_t vendor_id, bc;
 
   logf("(0) SD_CS = 0x%X\n", *REG32(SD_CS));
+  logf("stack near %p\n", &vendor_id);
 
   *REG32(PM_SMPS) = PM_PASSWORD | 0x1;
   *REG32(A2W_SMPS_LDO1) = A2W_PASSWORD | 0x40000;
