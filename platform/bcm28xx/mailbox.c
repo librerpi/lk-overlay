@@ -129,6 +129,7 @@ inline void *paddr_to_kvaddr(paddr_t x) {
 }
 #endif
 
+#ifdef MAILBOX_FB
 /* LK display (lib/gfx.h) calls this function */
 status_t display_get_framebuffer(struct display_framebuffer *fb) {
     // VideoCore returns 32-bit bus address, which needs to be converted to kernel virtual
@@ -145,6 +146,7 @@ status_t display_get_framebuffer(struct display_framebuffer *fb) {
 
     return NO_ERROR;
 }
+#endif
 
 status_t display_get_info(struct display_info *info) {
     info->format = DISPLAY_FORMAT_ARGB_8888;
