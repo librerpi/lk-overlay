@@ -20,7 +20,7 @@ STATIC_COMMAND("pm_usb_on", "enable usb power domain", &cmd_pm_usb_on)
 STATIC_COMMAND_END(pm);
 
 void power_up_image(void) {
-  puts("image domain on...");
+  puts("image domain starting...");
   //dumpreg(PM_IMAGE);
   *REG32(PM_IMAGE) |= PM_PASSWORD | 0x10000 | BV(6); // CFG = 1
 #if 0
@@ -49,7 +49,7 @@ void power_up_image(void) {
   *REG32(PM_IMAGE) |= PM_PASSWORD | 0x40;
 #endif
   //dumpreg(PM_IMAGE);
-  power_domain_on(REG32(PM_IMAGE), ~(PM_IMAGE_ISPRSTN_SET | PM_IMAGE_H264RSTN_SET | PM_IMAGE_PERIRSTN_SET));
+  power_domain_on(REG32(PM_IMAGE), (PM_IMAGE_ISPRSTN_SET | PM_IMAGE_H264RSTN_SET | PM_IMAGE_PERIRSTN_SET), "IMAGE");
   //dumpreg(PM_IMAGE);
 }
 
@@ -69,12 +69,12 @@ void power_up_usb(void) {
   //dumpreg(CM_PERIICTL);
   //dumpreg(CM_PERIIDIV);
 
-  *REG32(PM_IMAGE) |= PM_PASSWORD | PM_V3DRSTN;
+  *REG32(PM_IMAGE) |= PM_PASSWORD | PM_V3DRSTN; // TODO, PM_V3DRSTN is actually PM_IMAGE_PERIRSTN
   *REG32(CM_PERIICTL) |= CM_PASSWORD | 0x40;
 }
 
-void power_domain_on(volatile uint32_t *reg, uint32_t rstn) {
-  puts("bringing domain up");
+void power_domain_on(volatile uint32_t *reg, uint32_t rstn, const char *name) {
+  printf("bringing up %s domain, reg: 0x%08x\n", name, reg);
   /* If it was already powered on by the fw, leave it that way. */
   if (*REG32(reg) & PM_POWUP) {
     puts("already on");
@@ -99,10 +99,13 @@ void power_domain_on(volatile uint32_t *reg, uint32_t rstn) {
   }
   /* Disable functional isolation */
   *REG32(reg) |= PM_PASSWORD | PM_ISFUNC;
+
+  printf("de-aserting reset lines\n");
+  *REG32(reg) |= PM_PASSWORD | rstn;
 }
 
 void power_arm_start(void) {
-  power_domain_on(REG32(PM_PROC), PM_PROC_ARMRSTN_CLR);
+  power_domain_on(REG32(PM_PROC), PM_PROC_ARMRSTN_CLR, "PROC");
 }
 
 static void dump_power_domain(const char *name, uint32_t pmreg) {

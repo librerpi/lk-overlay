@@ -8,7 +8,6 @@
 #include <arch.h>
 #include <dev/gpio.h>
 #include <dev/uart.h>
-#include <platform/bcm28xx/hexdump.h>
 #include <kernel/spinlock.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
@@ -22,6 +21,7 @@
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
+#include <platform/bcm28xx/hexdump.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>
@@ -74,6 +74,13 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
       .size = 32 * MB,
       .flags = 0,
       .name = "next-stage"
+    },
+    { // 1mb window for framebuffer at 128mb
+      .phys = 128 * MB,
+      .virt = KERNEL_BASE + (128 * MB),
+      .size = 1 * MB,
+      .flags = 0,
+      .name = "framebuffer",
     },
 
     /* identity map to let the boot code run */
@@ -148,7 +155,7 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   __asm__("version %0" : "=r"(cpuid));
   printf("i am VPU with cpuid 0x%08x\n", cpuid);
 #else
-  puts("i am arm");
+  printf("i am arm with MIDR 0x%x\n", arm_read_midr());
 #endif
   return 0;
 }
@@ -204,7 +211,7 @@ static void switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
-  int core0_div = 4;
+  int core0_div = 2;
   int per_div = 2;
 
   const uint64_t pllc_mhz = 108 * per_div * 4;
@@ -249,6 +256,7 @@ void platform_early_init(void) {
     intc_init();
 
 #ifdef ARCH_VPU
+    printf("PM_RSTS: 0x%x\n", *REG32(PM_RSTS));
     if (xtal_freq == 19200000) {
       switch_vpu_to_pllc();
     } else {
@@ -395,7 +403,6 @@ void platform_init(void) {
   printf("crystal is %lf MHz\n", (double)xtal_freq/1000/1000);
   printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", BCM_PERIPH_BASE_VIRT);
   printf("BCM_PERIPH_BASE_PHYS: 0x%x\n", BCM_PERIPH_BASE_PHYS);
-  puts("partition 3\n");
 }
 
 void platform_dputc(char c) {

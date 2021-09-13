@@ -1,13 +1,15 @@
 #include <app.h>
 #include <arch.h>
 #include <arch/ops.h>
+#include <dev/display.h>
 #include <lib/fs.h>
 #include <lib/partition.h>
 #include <libfdt.h>
-#include <stdio.h>
 #include <lk/debug.h>
+#include <lk/err.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/udelay.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 struct mem_entry {
@@ -41,6 +43,10 @@ void find_and_mount(void) {
 #define KERNEL_LOAD_ADDRESS 0x81000000 // 16mb from start
 #define DTB_LOAD_ADDRESS    0x82000000 // 32mb from start
 
+const int w = 620;
+const int h = 210;
+const uint32_t fb_addr = 0x8000000; // physical addr
+
 bool load_kernel(void **buf, size_t *size) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   filehandle *kernel, *fh;
@@ -49,9 +55,9 @@ bool load_kernel(void **buf, size_t *size) {
   struct file_stat stat;
   uint64_t sizeRead;
 
-  ret = fs_open_file("/root/zImage", &kernel);
+  ret = fs_open_file("/root/boot/zImage", &kernel);
   if (ret) {
-    printf("zImage open failed: %d\n", ret);
+    printf("${ext4}/boot/zImage open failed: %d\n", ret);
     return false;
   }
   ret = fs_stat_file(kernel, &stat);
@@ -71,7 +77,7 @@ bool load_kernel(void **buf, size_t *size) {
   puts("closing");
   fs_close_file(kernel);
 
-  ret = fs_open_file("/root/rpi2.dtb", &fh);
+  ret = fs_open_file("/root/boot/rpi2.dtb", &fh);
   if (ret) {
     printf("dtb open failed: %d\n", ret);
     return false;
@@ -106,10 +112,28 @@ static bool patch_dtb(void) {
     puts("ERROR: no chosen node in fdt");
     return false;
   } else {
-    const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init console=tty1 console=ttyAMA0 user_debug=31";
-    ret = fdt_setprop(v_fdt, chosen, "bootargs", cmdline, strlen(cmdline)+1);
-    //const char *v = "simple-bus";
-    //fdt_setprop(v_fdt, chosen, "compatible", v, strlen(v) + 1);
+    //const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init console=tty1 console=ttyAMA0 user_debug=31";
+    filehandle *fh;
+    ret = fs_open_file("/root/boot/cmdline.txt", &fh);
+    if (ret) {
+      printf("unable to read cmdline.txt: %d\n", ret);
+      return false;
+    }
+    struct file_stat stat;
+    ret = fs_stat_file(fh, &stat);
+    if (ret) {
+      printf("unable to stat cmdline.txt: %d\n", ret);
+      return false;
+    }
+    char *cmdline = malloc(stat.size + 1);
+    ret = fs_read_file(fh, cmdline, 0, stat.size);
+    if (ret != stat.size) {
+      printf("unable to read entire file in one shot %d vs %d\n", ret, stat.size);
+      return false;
+    }
+    cmdline[stat.size] = 0;
+    ret = fdt_setprop_string(v_fdt, chosen, "bootargs", cmdline);
+    free(cmdline);
   }
   int memory = fdt_path_offset(v_fdt, "/memory");
   if (memory < 0) panic("no memory node in fdt");
@@ -137,16 +161,27 @@ static bool patch_dtb(void) {
     if (false) { // disables framebuffer
       fdt_setprop_string(v_fdt, simplefb, "status", "disabled");
     } else {
-      int w = 620;
-      int h = 210;
       fdt_setprop_u32(v_fdt, simplefb, "width", w);
       fdt_setprop_u32(v_fdt, simplefb, "height", h);
       fdt_setprop_u32(v_fdt, simplefb, "stride", w * 4);
-      fdt32_t reg[2] = { cpu_to_fdt32(0x8000000), cpu_to_fdt32(w*h*4) };
+      fdt32_t reg[2] = { cpu_to_fdt32(fb_addr), cpu_to_fdt32(w*h*4) };
       fdt_setprop(v_fdt, simplefb, "reg", &reg, sizeof(reg));
     }
   }
   return true;
+}
+
+status_t display_get_framebuffer(struct display_framebuffer *fb) {
+  fb->image.pixels = KERNEL_BASE + fb_addr;
+  bzero(fb->image.pixels, w * h * 4);
+  fb->format = DISPLAY_FORMAT_ARGB_8888;
+  fb->image.format = IMAGE_FORMAT_ARGB_8888;
+  fb->image.rowbytes = w * 4;
+  fb->image.width = w;
+  fb->image.height = h;
+  fb->image.stride = w;
+  fb->flush = NULL;
+  return NO_ERROR;
 }
 
 static void execute_linux(void) {

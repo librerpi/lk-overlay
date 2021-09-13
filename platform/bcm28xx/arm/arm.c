@@ -126,13 +126,12 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   power_arm_start();
   printregs();
   void *original_start = &arm_payload_start;
-  double a = ((double)(int)original_start) * 1.3;
-  printf("arm starting... %f\n", a);
+  printf("arm starting...\n");
   uint32_t size = &arm_payload_end - &arm_payload_start;
   memcpy((void*)0xc0000000, original_start, size);
   uint32_t crc = crc32(0, original_start, size);
   uint32_t crc2 = crc32(0, 0xc0000000, size);
-  printf("checksums 0x%08x 0x%08x\n", crc, crc2);
+  printf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
 
   // first pass, map everything to the framebuffer, to act as a default
   for (int i=0; i<1024 ; i += 16) {
@@ -195,7 +194,7 @@ void mapBusToArm(uint32_t busAddr, uint32_t armAddr) {
 
   uint32_t index = armAddr >> 24; // div by 16mb
   uint32_t pte = busAddr >> 21; // div by 2mb
-  printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
+  //printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
 
   tte[index] = pte;
 }

@@ -3,14 +3,15 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := rpi2
 
 MODULES += \
-	lib/cksum \
-	platform/bcm28xx/hvs \
-	platform/bcm28xx/mailbox \
 	app/linux-bootloader \
-	platform/bcm28xx/pll \
 	app/shell \
+	lib/cksum \
 	lib/debugcommands \
+	lib/gfxconsole \
+	platform/bcm28xx/mailbox \
+	platform/bcm28xx/pll \
 	#app/stringtests \
+	platform/bcm28xx/hvs \
 	#app/tests \
 	#platform/bcm28xx/hvs-dance \
 

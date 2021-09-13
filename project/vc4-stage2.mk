@@ -9,8 +9,8 @@ MODULES += \
 	lib/debugcommands \
 	platform/bcm28xx/vec \
 	lib/gfxconsole \
-	platform/bcm28xx/v3d \
 	platform/bcm28xx/arm \
+	#platform/bcm28xx/v3d \
 	#app/vc4-stage2 \
 	#lib/fs/ext2 \
 	lib/cksum \

@@ -74,7 +74,7 @@ static void load_stage2(void) {
     return;
   }
   filehandle *stage2;
-  ret = fs_open_file("/root/lk.elf", &stage2);
+  ret = fs_open_file("/root/boot/lk.elf", &stage2);
   if (ret) {
     printf("open failed: %d\n", ret);
     return;
