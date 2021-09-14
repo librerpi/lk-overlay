@@ -250,13 +250,39 @@ static void switch_vpu_to_crystal(void) {
   *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET | 0x10; /* ENAB */
 }
 
+uint8_t decode_rsts(uint32_t input) {
+  return (input & BV(0)) | ((input & BV(2)) >> 1) | ((input & BV(4)) >> 2) | ((input & BV(6)) >> 3) | ((input & BV(8)) >> 4) | ((input & BV(10)) >> 5);
+}
+
 void platform_early_init(void) {
     uart_init_early();
 
     intc_init();
 
 #ifdef ARCH_VPU
-    printf("PM_RSTS: 0x%x\n", *REG32(PM_RSTS));
+    uint32_t rsts = *REG32(PM_RSTS);
+    uint8_t partition = decode_rsts(rsts);
+    printf("PM_RSTS: 0x%x 0x%x\n", rsts, partition);
+    if (rsts & PM_RSTS_HADPOR_SET) puts("  had power on reset");
+
+    if (rsts & PM_RSTS_HADSRH_SET) puts("  had software hard reset");
+    if (rsts & PM_RSTS_HADSRF_SET) puts("  had software full reset");
+    if (rsts & PM_RSTS_HADSRQ_SET) puts("  had software quick reset");
+
+    if (rsts & PM_RSTS_HADWRH_SET) puts("  had watchdog hard reset");
+    if (rsts & PM_RSTS_HADWRF_SET) puts("  had watchdog full reset");
+    if (rsts & PM_RSTS_HADWRQ_SET) puts("  had watchdog quick reset");
+
+    if (rsts & PM_RSTS_HADDRH_SET) puts("  had debugger hard reset");
+    if (rsts & PM_RSTS_HADDRF_SET) puts("  had debugger full reset");
+    if (rsts & PM_RSTS_HADDRQ_SET) puts("  had debugger quick reset");
+#ifdef BOOTCODE
+    if (partition == 0x3f) {
+      puts("OS requested shutdown");
+      platform_halt(HALT_ACTION_HALT, HALT_REASON_SW_RESET);
+    }
+#endif
+
     if (xtal_freq == 19200000) {
       switch_vpu_to_pllc();
     } else {

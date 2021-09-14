@@ -25,6 +25,8 @@
 #define PM_RSTS_HADDRH_SET      0x00000004        // bit  2 had debugger hard reset
 #define PM_RSTS_HADDRF_SET      0x00000002        // bit  1 had debugger full reset
 #define PM_RSTS_HADDRQ_SET      0x00000001        // bit  0 had debugger quick reset
+// bits 0, 2, 4, 6, 8, 10 encode a 6bit int (0-63), that represents what partition NOOBS should boot into
+// a partition of 63 means linux tried to shutdown, and bootcode.bin should halt
 #define PM_WDOG                 (PM_BASE + 0x24)
 #define PM_WDOG_MASK            0x00000fff
 #define PM_USB                  (PM_BASE + 0x5c)
