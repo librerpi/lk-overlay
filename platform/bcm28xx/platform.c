@@ -176,7 +176,7 @@ static int cmd_arm_hd(int argc, const console_cmd_args *argv) {
   if (argc >= 2) addr = argv[1].u;
   if (argc >= 3) len = argv[2].u;
 
-  hexdump_ram(0xc0000000 | addr, addr, len);
+  hexdump_ram((void*)(0xc0000000 | addr), addr, len);
   return 0;
 }
 
@@ -241,7 +241,7 @@ static void switch_vpu_to_pllc() {
   vpu_clock = vpu/1000/1000;
 }
 
-static void switch_vpu_to_crystal() {
+static void switch_vpu_to_crystal(void) {
   const uint32_t vpu_source = CM_SRC_OSC;
   const uint32_t vpu_divisor = 1;
   *REG32(CM_VPUCTL) = CM_PASSWORD | CM_VPUCTL_FRAC_SET | CM_SRC_OSC | CM_VPUCTL_GATE_SET;
@@ -357,7 +357,7 @@ void platform_early_init(void) {
 
 static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
   volatile uint32_t temp[16];
-  printf("temp is at 0x%x, ", temp);
+  printf("temp is at %p, ", temp);
   //register uint32_t x __asm__("r5");
   spin_lock_saved_state_t state;
   arch_interrupt_save(&state, SPIN_LOCK_FLAG_INTERRUPTS);
@@ -378,7 +378,7 @@ static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
   arch_interrupt_restore(state, SPIN_LOCK_FLAG_INTERRUPTS);
   uint32_t delta = stop - start;
   if (delta > 0) {
-    float rate = ((float)limit) / delta;
+    double rate = ((float)limit) / delta;
     printf("%dMHz %f loops per tick, averaged over %d ticks, %f clocks per loop, -11: %f\n", vpu_clock, rate, delta, vpu_clock / rate, (vpu_clock/rate) - 11);
   } else {
     puts("delta zero");

@@ -486,14 +486,26 @@ static void v3d_init(const struct app_descriptor *app) {
   *REG32(ASB_V3D_S_CTRL) |= CLR_REQ;
   while ((*REG32(ASB_V3D_S_CTRL) & CLR_ACK) == 0) {}
 
+  printf("PM_GRAFX: 0x%x\n", *REG32(PM_GRAFX));
+
   udelay(100);
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) & ~0x40); // disable v3d
   udelay(100);
+  puts("enabling power");
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_POWUP_SET); // enable power
-  while ((*REG32(PM_GRAFX) & PM_GRAFX_POWOK_SET) == 0) {} // wait for power ok
+  int count = 1000;
+  while ((*REG32(PM_GRAFX) & PM_GRAFX_POWOK_SET) == 0) { // wait for power ok
+    udelay(1);
+    if (count-- == 0) {
+      printf("timeout bringing PM_GRAFX online: 0x%x\n", *REG32(PM_GRAFX));
+      return;
+    }
+  }
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_ISPOW_SET);
+  puts("memory repair");
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_MEMREP_SET); // do memory repair
   while ((*REG32(PM_GRAFX) & PM_GRAFX_MRDONE_SET) == 0) {} // wait for memory repair to complete
+  puts("no more functional isolation");
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_ISFUNC_SET); // disable functional isolation
   udelay(100);
 

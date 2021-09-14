@@ -1,5 +1,6 @@
 #include <app.h>
 #include <arch.h>
+#include <arch/arm/mmu.h>
 #include <arch/ops.h>
 #include <dev/display.h>
 #include <lib/fs.h>
@@ -47,53 +48,68 @@ const int w = 620;
 const int h = 210;
 const uint32_t fb_addr = 0x8000000; // physical addr
 
-bool load_kernel(void **buf, size_t *size) {
-  uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
-  filehandle *kernel, *fh;
-  void *buffer = (void*)KERNEL_LOAD_ADDRESS;
+void *read_file(void *buffer, size_t maxSize, const char *filepath) {
   int ret;
+  filehandle *fh;
   struct file_stat stat;
   uint64_t sizeRead;
 
-  ret = fs_open_file("/root/boot/zImage", &kernel);
+  ret = fs_open_file(filepath, &fh);
   if (ret) {
-    printf("${ext4}/boot/zImage open failed: %d\n", ret);
-    return false;
+    printf("failed to open %s: %d\n", filepath, ret);
+    return NULL;
   }
-  ret = fs_stat_file(kernel, &stat);
-  if (ret) {
-    printf("failed to stat: %d\n", ret);
-    return false;
-  }
-  //buffer = malloc(stat.size);
-  printf("size is %lld, buffer 0x%x\n", stat.size, buffer);
-  sizeRead = fs_read_file(kernel, buffer, 0, stat.size);
-  printf("read %lld bytes\n", sizeRead);
-  if (sizeRead != stat.size) {
-    printf("failed to read entire file: %lld %lld\n", sizeRead, stat.size);
-    //free(buffer);
-    return false;
-  }
-  puts("closing");
-  fs_close_file(kernel);
 
-  ret = fs_open_file("/root/boot/rpi2.dtb", &fh);
-  if (ret) {
-    printf("dtb open failed: %d\n", ret);
-    return false;
-  }
   ret = fs_stat_file(fh, &stat);
   if (ret) {
     printf("failed to stat: %d\n", ret);
-    return false;
+    return NULL;
   }
-  sizeRead = fs_read_file(fh, (void*)DTB_LOAD_ADDRESS, 0, stat.size);
+
+  if (maxSize & (stat.size > maxSize)) {
+    printf("file %s is too big (%lld > %d) aborting\n", filepath, stat.size, maxSize);
+    fs_close_file(fh);
+    return NULL;
+  }
+
+  if (!buffer) {
+    buffer = malloc(stat.size + 1);
+    // incase the file is getting used as a string, make it null terminated
+    ((char*)buffer)[stat.size] = 0;
+  }
+
+  printf("file size is %lld, buffer %p\n", stat.size, buffer);
+
+  sizeRead = fs_read_file(fh, buffer, 0, stat.size);
+  printf("read %lld bytes\n", sizeRead);
   if (sizeRead != stat.size) {
     printf("failed to read entire file: %lld %lld\n", sizeRead, stat.size);
+    if (buffer) free(buffer);
+    return NULL;
+  }
+  puts("closing");
+  fs_close_file(fh);
+
+  return buffer;
+}
+
+bool load_kernel(void **buf, size_t *size) {
+  uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
+  void *buffer;
+
+  buffer = read_file((void*)KERNEL_LOAD_ADDRESS, 16 * MB, "/root/boot/zImage");
+  if (!buffer) {
+    puts("failed to read kernel file");
     return false;
   }
-  fs_close_file(fh);
-  printf("loaded DTB file to 0x%x + 0x%x\n", DTB_LOAD_ADDRESS, stat.size);
+
+  buffer = read_file((void*)DTB_LOAD_ADDRESS, 1 * MB, "/root/boot/rpi2.dtb");
+  if (!buffer) {
+    puts("failed to read DTB file");
+    return false;
+  }
+
+  printf("loaded DTB file to 0x%x\n", DTB_LOAD_ADDRESS);
 
   return true;
 }
@@ -113,26 +129,14 @@ static bool patch_dtb(void) {
     return false;
   } else {
     //const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init console=tty1 console=ttyAMA0 user_debug=31";
-    filehandle *fh;
-    ret = fs_open_file("/root/boot/cmdline.txt", &fh);
-    if (ret) {
-      printf("unable to read cmdline.txt: %d\n", ret);
+
+    char *cmdline = read_file(NULL, 0, "/root/boot/cmdline.txt");
+    if (!cmdline) {
+      puts("error reading cmdline.txt");
       return false;
     }
-    struct file_stat stat;
-    ret = fs_stat_file(fh, &stat);
-    if (ret) {
-      printf("unable to stat cmdline.txt: %d\n", ret);
-      return false;
-    }
-    char *cmdline = malloc(stat.size + 1);
-    ret = fs_read_file(fh, cmdline, 0, stat.size);
-    if (ret != stat.size) {
-      printf("unable to read entire file in one shot %d vs %d\n", ret, stat.size);
-      return false;
-    }
-    cmdline[stat.size] = 0;
     ret = fdt_setprop_string(v_fdt, chosen, "bootargs", cmdline);
+    printf("kernel cmdline is: %s\n", cmdline);
     free(cmdline);
   }
   int memory = fdt_path_offset(v_fdt, "/memory");
@@ -172,7 +176,7 @@ static bool patch_dtb(void) {
 }
 
 status_t display_get_framebuffer(struct display_framebuffer *fb) {
-  fb->image.pixels = KERNEL_BASE + fb_addr;
+  fb->image.pixels = (void*)(KERNEL_BASE + fb_addr);
   bzero(fb->image.pixels, w * h * 4);
   fb->format = DISPLAY_FORMAT_ARGB_8888;
   fb->image.format = IMAGE_FORMAT_ARGB_8888;
@@ -185,7 +189,7 @@ status_t display_get_framebuffer(struct display_framebuffer *fb) {
 }
 
 static void execute_linux(void) {
-  puts("passing control off to linux!!!");
+  printf("core %d passing control off to linux!!!\n", arch_curr_cpu_num());
   arch_chain_load((void*)KERNEL_LOAD_ADDRESS, 0, ~0, 0x2000000, 0);
 }
 
@@ -198,10 +202,10 @@ static void prepare_arm_core(void) {
   if (unlock_coproc) {
     // NSACR = all copros to non-sec
     //arm_write_nsacr(0x63ff);
-    arm_write_nsacr(0xffff);
+    //arm_write_nsacr(0xffff);
   }
-  arm_write_actlr(arm_read_actlr() | 1<<6); // on cortex-A7, this is the SMP bit
-  arm_write_cpacr(0xf << 20);
+  //arm_write_actlr(arm_read_actlr() | 1<<6); // on cortex-A7, this is the SMP bit
+  //arm_write_cpacr(0xf << 20);
   //arm_write_scr(arm_read_scr() | 0x1); // drop to non-secure mode
 }
 
@@ -228,11 +232,13 @@ static void loader_entry(const struct app_descriptor *app, void *args) {
     puts("running linux in 60 seconds");
     udelay(60 * 1000 * 1000);
   }
+#if 0
   puts("\nBEFORE:");
   dump_random_arm_regs();
-  prepare_arm_core();
   puts("\nAFTER");
   dump_random_arm_regs();
+#endif
+  prepare_arm_core();
   execute_linux();
 }
 

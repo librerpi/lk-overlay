@@ -1,8 +1,7 @@
-#include <arch/ops.h>
 #ifdef ENABLE_TEXT
 # include <lib/font.h>
 #endif
-#include <strings.h>
+#include <arch/ops.h>
 #include <assert.h>
 #include <dev/display.h>
 #include <kernel/timer.h>
@@ -16,6 +15,7 @@
 #include <platform/interrupts.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 
 // note, 4096 slots total
 #ifdef RPI4

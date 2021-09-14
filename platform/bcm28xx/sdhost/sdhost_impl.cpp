@@ -379,7 +379,7 @@ struct BCM2708SDHost : BlockDevice {
 				break;
 			}
 
-			uint32_t hsts_err = *REG32(SH_HSTS) & SDHSTS_ERROR_MASK;
+			hsts_err = *REG32(SH_HSTS) & SDHSTS_ERROR_MASK;
 			if (hsts_err) {
 				logf("ERROR: transfer error on FIFO word %d: 0x%x\n", i, *REG32(SH_HSTS));
 				break;

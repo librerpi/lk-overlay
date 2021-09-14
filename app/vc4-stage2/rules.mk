@@ -7,8 +7,9 @@ MODULE_DEPS += \
 	lib/fs \
 	lib/fs/fat32 \
 	lib/fs/ext2 \
-	platform/bcm28xx/dpi \
 	app/tests \
+	platform/bcm28xx/sdhost \
+	#platform/bcm28xx/dpi \
 	#app/shell \
 	lib/debugcommands \
 	app/stringtests \

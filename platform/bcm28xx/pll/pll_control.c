@@ -505,8 +505,8 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   const bool core0_enable = true;
   const bool core1_enable = false;
   // which clocks to keep held when turning it all on
-  const holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0);
-  const loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0);
+  const uint32_t holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0);
+  const uint32_t loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0);
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_ANARST_SET;
 
