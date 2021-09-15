@@ -8,6 +8,21 @@
 -rwxr-xr-x 1 clever users 113K Mar 31 23:27 build-rpi3-bootcode/lk.bin
 ```
 
+# what features work
+- [x] composite NTSC video
+- [ ] DSI video
+- [ ] HDMI video
+- [x] DPI video, partially tested
+- [x] v3d partially working
+- [x] full 2d composition under firmware control
+- [ ] CSI, untested
+- [x] i2c host
+- [ ] SPI, untested
+- [ ] ISP, lacking code
+- [ ] video decode accel, lacking code
+- [ ] PWM audio, lacking code
+- [x] booting linux on pi2
+
 # projects:
 ## rpi1-test
 builds LK for the armv6 found on the pi0 and pi1
