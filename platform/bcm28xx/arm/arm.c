@@ -291,4 +291,4 @@ void bridgeStart(bool cycleBrespBits) {
   printf("\nbridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
 }
 
-LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 1);
+LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 10);

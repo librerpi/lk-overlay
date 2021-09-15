@@ -9,6 +9,7 @@ MODULES += \
 	lib/debugcommands \
 	platform/bcm28xx/vec \
 	lib/gfxconsole \
+	platform/bcm28xx/usb-phy \
 	platform/bcm28xx/arm \
 	#platform/bcm28xx/v3d \
 	#app/vc4-stage2 \
