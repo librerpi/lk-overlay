@@ -5,11 +5,12 @@
  * USB PHY initialization driver.
  */
 
+#include <lk/console_cmd.h>
 #include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx.h>
-#include <stdio.h>
 #include <platform/bcm28xx/udelay.h>
+#include <stdio.h>
 
 #define USB_GUSBCFG   0x7e98000c
 #define USB_GUSBCFG_USB_TRD_TIM_LSB         10
@@ -49,6 +50,17 @@ static uint16_t usb_read(int reg) {
   write_bare(reg, 0, 0x60020000);
   return *REG32(USB_GMDIOCSR) & 0xFFFFF;
 }
+
+static int cmd_phy_dump(int argc, const console_cmd_args *argv) {
+  for (int i=0; i<0x20; i++) {
+    printf("0x%02x == 0x%04x\n", i, usb_read(i));
+  }
+  return 0;
+}
+
+STATIC_COMMAND_START
+STATIC_COMMAND("phy_dump", "dump all usb phy control regs", &cmd_phy_dump)
+STATIC_COMMAND_END(usbphy);
 
 static void usb_write(int reg, uint16_t value) {
   write_bare(reg, value, 0x50020000);

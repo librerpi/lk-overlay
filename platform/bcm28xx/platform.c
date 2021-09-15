@@ -277,7 +277,10 @@ void platform_early_init(void) {
     if (rsts & PM_RSTS_HADDRF_SET) puts("  had debugger full reset");
     if (rsts & PM_RSTS_HADDRQ_SET) puts("  had debugger quick reset");
 #ifdef BOOTCODE
-    if (partition == 0x3f) {
+    // if you `reboot 42` in linux, then partition will be 42
+    // the NOOBS protocol uses this to load start.elf from a different fat32 partition on boot
+    // a partition code of 63 is a request to shutdown
+    if (partition == 63) {
       puts("OS requested shutdown");
       platform_halt(HALT_ACTION_HALT, HALT_REASON_SW_RESET);
     }
