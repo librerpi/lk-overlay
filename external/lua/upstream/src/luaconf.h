@@ -786,7 +786,7 @@
 
 
 unsigned int lk_luai_makeseed (void);
-#define luai_makeseed(L) lk_luai_makeseed
+#define luai_makeseed(L) lk_luai_makeseed()
 
 #endif
 

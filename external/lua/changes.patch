@@ -9,7 +9,7 @@ diff -ru --color upstream-orig/src/luaconf.h upstream/src/luaconf.h
  
  
 +unsigned int lk_luai_makeseed (void);
-+#define luai_makeseed(L) lk_luai_makeseed
++#define luai_makeseed(L) lk_luai_makeseed()
  
  #endif
  
