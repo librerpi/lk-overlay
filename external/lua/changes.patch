@@ -1,0 +1,15 @@
+Only in upstream/src: .ldebug.c.swp
+Only in upstream/src: .ldo.c.swp
+Binary files upstream-orig/src/.lstate.c.swp and upstream/src/.lstate.c.swp differ
+diff -ru --color upstream-orig/src/luaconf.h upstream/src/luaconf.h
+--- upstream-orig/src/luaconf.h	2021-09-15 18:11:14.748352089 -0300
++++ upstream/src/luaconf.h	2021-09-18 18:53:12.790808354 -0300
+@@ -785,6 +785,8 @@
+ 
+ 
+ 
++unsigned int lk_luai_makeseed (void);
++#define luai_makeseed(L) lk_luai_makeseed
+ 
+ #endif
+ 
