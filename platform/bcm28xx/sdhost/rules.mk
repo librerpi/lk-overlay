@@ -4,6 +4,6 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_SRCS += $(LOCAL_DIR)/sdhost_impl.cpp $(LOCAL_DIR)/sdhost.c
 
-MODULES += lib/bio lib/partition
+MODULES += lib/bio lib/partition lib/libcpp
 
 include make/module.mk
