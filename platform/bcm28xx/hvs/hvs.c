@@ -49,13 +49,13 @@ STATIC_COMMAND_END(hvs);
 
 static uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
   switch (fmt) {
-  case GFX_FORMAT_RGB_565:
-    return HVS_PIXEL_FORMAT_RGB565;
   case GFX_FORMAT_RGB_332:
-    return HVS_PIXEL_FORMAT_RGB332;
+    return HVS_PIXEL_FORMAT_RGB332; // 0
+  case GFX_FORMAT_RGB_565:
+    return HVS_PIXEL_FORMAT_RGB565; // 4
   case GFX_FORMAT_ARGB_8888:
   case GFX_FORMAT_RGB_x888:
-    return HVS_PIXEL_FORMAT_RGBA8888;
+    return HVS_PIXEL_FORMAT_RGBA8888; // 7
   default:
     printf("warning, unsupported pixel format: %d\n", fmt);
     return 0;

@@ -170,6 +170,7 @@ static bool patch_dtb(void) {
       fdt_setprop_u32(v_fdt, simplefb, "stride", w * 4);
       fdt32_t reg[2] = { cpu_to_fdt32(fb_addr), cpu_to_fdt32(w*h*4) };
       fdt_setprop(v_fdt, simplefb, "reg", &reg, sizeof(reg));
+      fdt_setprop_string(v_fdt, simplefb, "format", "a8r8g8b8");
       fdt_setprop_string(v_fdt, simplefb, "status", "okay");
     }
   }
