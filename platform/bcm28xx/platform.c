@@ -154,6 +154,8 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   uint32_t cpuid;
   __asm__("version %0" : "=r"(cpuid));
   printf("i am VPU with cpuid 0x%08x\n", cpuid);
+#elif defined(ARCH_ARM64)
+  printf("i am aarch64 with MIDR_EL1 0x%x\n", ARM64_READ_SYSREG(midr_el1));
 #else
   printf("i am arm with MIDR 0x%x\n", arm_read_midr());
 #endif

@@ -11,7 +11,4 @@ MODULES += \
     lib/gfx \
     lib/gfxconsole \
 
-
-
-
-
+GLOBAL_DEFINES += MAILBOX_FB=1
