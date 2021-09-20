@@ -75,13 +75,6 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
       .flags = 0,
       .name = "next-stage"
     },
-    { // 1mb window for framebuffer at 128mb
-      .phys = 128 * MB,
-      .virt = KERNEL_BASE + (128 * MB),
-      .size = 1 * MB,
-      .flags = 0,
-      .name = "framebuffer",
-    },
 
     /* identity map to let the boot code run */
     {

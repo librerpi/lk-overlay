@@ -2,13 +2,16 @@
 #include <dev/gpio.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
+#include <libfdt.h>
 #include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/a2w.h>
 #include <platform/bcm28xx/arm.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/hvs.h>
+#include <platform/bcm28xx/inter-arch.h>
 #include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
@@ -50,12 +53,14 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
   return INT_NO_RESCHEDULE;
 }
 
+static const int w = 620;
+static const int h = 210;
+static const uint32_t fb_phys_addr = 128 * 1024 * 1024;
+
 static void setup_framebuffer(void) {
   int channel = 1;
-  int w = 620;
-  int h = 210;
 
-  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | (128 * 1024 * 1024), w, h, w, GFX_FORMAT_ARGB_8888);
+  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | fb_phys_addr, w, h, w, GFX_FORMAT_ARGB_8888);
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
   MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
@@ -67,6 +72,50 @@ static void setup_framebuffer(void) {
   hvs_dlist_add(channel, simple_fb_layer);
   hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
+}
+
+#define checkerr if (ret < 0) { printf("%s():%d error %d %s\n", __FUNCTION__, __LINE__, ret, fdt_strerror(ret)); return NULL; }
+
+static void *setupInterArchDtb(void) {
+  size_t buffer_size = 1 * 1024 * 1024;
+  void *v_fdt = malloc(buffer_size);
+  int ret;
+
+  ret = fdt_create(v_fdt, buffer_size);
+  checkerr;
+  puts("a");
+
+  ret = fdt_finish_reservemap(v_fdt);
+  checkerr;
+  printf("b %d\n", fdt_size_dt_struct(v_fdt));
+
+  ret = fdt_begin_node(v_fdt, "root");
+  checkerr;
+  printf("c %d\n", fdt_size_dt_struct(v_fdt));
+
+
+  {
+    ret = fdt_begin_node(v_fdt, "framebuffer");
+    checkerr;
+    printf("c2 %d\n", fdt_size_dt_struct(v_fdt));
+
+    fdt_property_u32(v_fdt, "width", w);
+    fdt_property_u32(v_fdt, "height", h);
+    fdt_property_u32(v_fdt, "reg", fb_phys_addr);
+
+    ret = fdt_end_node(v_fdt);
+    checkerr;
+  }
+
+  ret = fdt_end_node(v_fdt);
+  checkerr;
+  puts("d");
+
+  ret = fdt_finish(v_fdt);
+  checkerr;
+  puts("e");
+
+  return v_fdt;
 }
 
 static void enable_usb_host(void) {
@@ -110,6 +159,52 @@ static void enable_usb_host(void) {
   }
 }
 
+static uint32_t payload_size;
+
+
+static void copy_arm_payload(void) {
+  void *original_start = &arm_payload_start;
+  uint32_t size = &arm_payload_end - &arm_payload_start;
+  memcpy((void*)0xc0000000, original_start, size);
+  uint32_t crc = crc32(0, original_start, size);
+  uint32_t crc2 = crc32(0, 0xc0000000, size);
+  printf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
+
+  payload_size = size;
+  printf("MEMORY: 0x0 + 0x%x: arm payload\n", payload_size);
+}
+
+static inter_core_header *find_header(uint32_t *start, size_t size) {
+  for (uint32_t *i = start; (i - start) < size; i += 4) { // increment by 16 bytes
+    if (*i == INTER_ARCH_MAGIC) return (inter_core_header*)i;
+  }
+  return NULL;
+}
+
+static void patch_arm_payload(void) {
+  void *dtb_src = setupInterArchDtb();
+  if (!dtb_src) return;
+  void *dtb_dst = (void*) ROUNDUP(payload_size, 4);
+
+  uint32_t t0 = *REG32(ST_CLO);
+  inter_core_header *hdr = find_header((uint32_t*)0xc0000000, payload_size);
+  uint32_t t1 = *REG32(ST_CLO);
+  if (hdr) {
+    printf("header found at %p in %d uSec\n", hdr, t1-t0);
+    printf("MEMORY: 0x0 + 0x%x: payload ram\n", hdr->end_of_ram);
+    dtb_dst = ROUNDUP(hdr->end_of_ram, 4);
+  }
+
+  int ret;
+  size_t size = fdt_totalsize(dtb_src);
+
+  ret = fdt_move(dtb_src, (void*)(0xc0000000 | (uint32_t)dtb_dst), size);
+  checkerr;
+  free(dtb_src);
+  hdr->dtb_base = dtb_dst;
+  printf("MEMORY: %p + 0x%x: inter arch dtb\n", dtb_dst, size);
+}
+
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   bool jtag = true;
 
@@ -125,13 +220,10 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   //timer_set_periodic(&arm_check, 1000, arm_checker, NULL);
   power_arm_start();
   printregs();
-  void *original_start = &arm_payload_start;
   printf("arm starting...\n");
-  uint32_t size = &arm_payload_end - &arm_payload_start;
-  memcpy((void*)0xc0000000, original_start, size);
-  uint32_t crc = crc32(0, original_start, size);
-  uint32_t crc2 = crc32(0, 0xc0000000, size);
-  printf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
+
+  copy_arm_payload();
+  patch_arm_payload();
 
   // first pass, map everything to the framebuffer, to act as a default
   for (int i=0; i<1024 ; i += 16) {
