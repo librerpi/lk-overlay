@@ -55,7 +55,7 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
 
 static const int w = 620;
 static const int h = 210;
-static const uint32_t fb_phys_addr = 128 * 1024 * 1024;
+static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
 
 static void setup_framebuffer(void) {
   int channel = 1;
@@ -102,6 +102,17 @@ static void *setupInterArchDtb(void) {
     fdt_property_u32(v_fdt, "width", w);
     fdt_property_u32(v_fdt, "height", h);
     fdt_property_u32(v_fdt, "reg", fb_phys_addr);
+
+    ret = fdt_end_node(v_fdt);
+    checkerr;
+  }
+
+  {
+    ret = fdt_begin_node(v_fdt, "timestamps");
+    checkerr;
+
+    fdt_property_u32(v_fdt, "3stage2_arch_init", arch_init_timestamp);
+    fdt_property_u32(v_fdt, "4stage2_arm_start", *REG32(ST_CLO));
 
     ret = fdt_end_node(v_fdt);
     checkerr;
@@ -227,11 +238,15 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
 
   // first pass, map everything to the framebuffer, to act as a default
   for (int i=0; i<1024 ; i += 16) {
-    mapBusToArm(0xc8000000, i * 1024 * 1024);
+    mapBusToArm(0xc0000000 | fb_phys_addr, i * 1024 * 1024);
   }
 
   // second pass, map the lower 64mb as plain ram
   for (int i=0; i<64 ; i += 16) {
+    mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
+  }
+
+  for (int i=112; i<512 ; i += 16) {
     mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
   }
 
@@ -240,7 +255,7 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   mapBusToArm(0x7e000000, 0x3f000000);
 
   // add framebuffer
-  mapBusToArm(0xc8000000, 0x08000000);
+  mapBusToArm(0xc0000000 | fb_phys_addr, fb_phys_addr);
 
   printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
 
@@ -286,7 +301,7 @@ void mapBusToArm(uint32_t busAddr, uint32_t armAddr) {
 
   uint32_t index = armAddr >> 24; // div by 16mb
   uint32_t pte = busAddr >> 21; // div by 2mb
-  //printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
+  printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
 
   tte[index] = pte;
 }
@@ -333,13 +348,14 @@ void setupClock(void) {
   *REG32(A2W_PLLB_DIG0) = A2W_PASSWORD | dig0;
 
 
-  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 4;
+  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 2;
 
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET | CM_PLLB_LOADARM_SET;
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;
   *REG32(CM_PLLB) = CM_PASSWORD;
 
-  *REG32(CM_ARMCTL) = CM_PASSWORD | 4 | CM_ARMCTL_ENAB_SET;
+  const int src = 4;
+  *REG32(CM_ARMCTL) = CM_PASSWORD | src | CM_ARMCTL_ENAB_SET;
 
   printf("KAIP  = 0x%X\n", *REG32(A2W_PLLB_ANA_KAIP)); /* 0x228 */
   printf("MULTI = 0x%X\n", *REG32(A2W_PLLB_ANA_MULTI)); /* 0x613277 */

@@ -18,15 +18,15 @@ static int cmd_jitter(int argc, const console_cmd_args *argv);
 
 static char core2_stack[512];
 uint32_t core2_stack_top = 0;
+extern uint8_t _fbss;
+extern uint8_t _ebss;
+uint32_t arch_init_timestamp;
 
 STATIC_COMMAND_START
 STATIC_COMMAND("boot_other_core", "boot the 2nd vpu core", &cmd_boot_other_core)
 STATIC_COMMAND("testit", "do some asm tests", &cmd_testit)
 //STATIC_COMMAND("jitter", "jitter test", &cmd_jitter)
 STATIC_COMMAND_END(arch);
-
-extern uint8_t _fbss;
-extern uint8_t _ebss;
 
 void zero_bss(void) {
   bzero(&_fbss, &_ebss - &_fbss);
@@ -38,6 +38,7 @@ void arch_early_init(void) {
   __asm__ volatile ("mov %0, sp" : "=r"(sp));
   __asm__ volatile ("mov %0, sr" : "=r"(sr));
   //dprintf(INFO, "arch_early_init\nr28: 0x%x\nsp: 0x%x\nsr: 0x%x\n", r28, sp, sr);
+  arch_init_timestamp = *REG32(ST_CLO);
 }
 
 void arch_init(void) {

@@ -107,7 +107,7 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
     | CONTROL_UNITY
     | CONTROL_FORMAT(gfx_to_hvs_pixel_format(fb->format));
   dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);
-  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width);
+  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width) | (1 << 30); // TODO SCALER_POS2_ALPHA_MODE_FIXED
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
   dlist_memory[display_slot++] = (uint32_t)fb->ptr | 0xc0000000;
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
@@ -505,6 +505,8 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 }
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
+  //return ERR_NOT_SUPPORTED;
+
   int w = 640;
   int h = 210;
   struct gfx_surface *gfx = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);

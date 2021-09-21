@@ -10,7 +10,9 @@
 #include <lk/debug.h>
 #include <lk/err.h>
 #include <lk/init.h>
+#include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/inter-arch.h>
+#include <platform/bcm28xx/platform.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
@@ -45,6 +47,7 @@ paddr_t fb_addr = 0;
 vaddr_t fb_addr_virt = 0;
 #define KERNEL_LOAD_ADDRESS 0x81000000 // 16mb from start
 #define DTB_LOAD_ADDRESS    0x82000000 // 32mb from start
+uint32_t stage2_arch_init, stage2_arm_start;
 
 void find_and_mount(void) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
@@ -179,6 +182,9 @@ static void parse_dtb_from_vpu(void) {
           fb_addr, 0, 0);
       assert(ret2 == NO_ERROR);
       printf("%d x %d @ 0x%lx / 0x%lx\n", w, h, fb_addr, fb_addr_virt);
+    } else if (strcmp(name, "timestamps") == 0) {
+      if (!fdt_getprop_u32(v_fdt, offset, "3stage2_arch_init", &stage2_arch_init)) puts("err4");
+      if (!fdt_getprop_u32(v_fdt, offset, "4stage2_arm_start", &stage2_arm_start)) puts("err5");
     }
   }
 }
@@ -212,8 +218,8 @@ static bool patch_dtb(void) {
   if (memory < 0) panic("no memory node in fdt");
   else {
     struct mem_entry memmap[] = {
-      { .address = htonl(0), .size = htonl(((64) * 1024 * 1024)) },
-      //{ .address = htonl(128*1024*1024), .size = htonl(1 * 1024 * 1024) },
+      { .address = htonl(0), .size = htonl(64 * MB) },
+      { .address = htonl(112 * MB), .size = htonl(400 * MB) },
     };
     ret = fdt_setprop(v_fdt, memory, "reg", (void*) memmap, sizeof(memmap));
   }
@@ -242,6 +248,16 @@ static bool patch_dtb(void) {
       fdt_setprop_string(v_fdt, simplefb, "format", "a8r8g8b8");
       fdt_setprop_string(v_fdt, simplefb, "status", "okay");
     }
+  }
+
+  ret = fdt_add_subnode(v_fdt, 0, "timestamps");
+  if (ret < 0) {
+    printf("unable to add timestamps: %d\n", ret);
+  } else {
+    fdt_setprop_u32(v_fdt, ret, "3stage2_arch_init", stage2_arch_init);
+    fdt_setprop_u32(v_fdt, ret, "4stage2_arm_start", stage2_arm_start);
+    fdt_setprop_u32(v_fdt, ret, "5arm_platform_init", platform_init_timestamp);
+    fdt_setprop_u32(v_fdt, ret, "6arm_linux_soon", *REG32(ST_CLO));
   }
   return true;
 }

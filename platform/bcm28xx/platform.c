@@ -141,6 +141,7 @@ uint32_t vpu_clock;
 // 19.2mhz for most models
 // 54mhz for rpi4
 uint32_t xtal_freq = CRYSTAL;
+uint32_t platform_init_timestamp;
 
 static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
 #ifdef ARCH_VPU
@@ -250,6 +251,7 @@ uint8_t decode_rsts(uint32_t input) {
 }
 
 void platform_early_init(void) {
+    platform_init_timestamp = *REG32(ST_CLO);
     uart_init_early();
 
     intc_init();
@@ -279,6 +281,11 @@ void platform_early_init(void) {
       puts("OS requested shutdown");
       platform_halt(HALT_ACTION_HALT, HALT_REASON_SW_RESET);
     }
+#endif
+
+#if !defined(BOOTCODE)
+    // TODO, auto-detect
+    printf("MEMORY: 0x4000000 + 0x1400000: VPU firmware\n"); // copied from start.ld
 #endif
 
     if (xtal_freq == 19200000) {

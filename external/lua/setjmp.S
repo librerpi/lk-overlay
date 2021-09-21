@@ -1,8 +1,7 @@
-#include <platform/bcm28xx/clock.h>
-
 .global setjmp_post
 .global longjmp_pre
 
+; TODO, use stm instead
 .section .text.setjmp
 .global setjmp
 setjmp:
@@ -68,11 +67,4 @@ longjmp:
   ld r23, (r0+76)
   mov sr, r3    ; restore interrupt state
   mov r0, r1    ; return r1
-  rts
-
-.section .text.time
-.global time
-time:
-  mov r1, ST_CLO
-  ld r0, (r1)
   rts

@@ -3,6 +3,8 @@
 #include <lk/compiler.h>
 #include <lk/debug.h>
 
+extern uint32_t arch_init_timestamp;
+
 static inline void arch_enable_ints(void) {
   __asm__ volatile("ei");
 }
