@@ -10,5 +10,6 @@ MODULES += \
 	lib/debugcommands \
     lib/gfx \
     lib/gfxconsole \
+    app/inter-arch \
 
-GLOBAL_DEFINES += MAILBOX_FB=1
+#GLOBAL_DEFINES += MAILBOX_FB=1

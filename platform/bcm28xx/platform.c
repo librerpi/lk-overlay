@@ -24,6 +24,7 @@
 #include <platform/bcm28xx/hexdump.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/udelay.h>
 #include <platform/interrupts.h>
 
@@ -35,9 +36,19 @@
 #include <dev/timer/arm_generic.h>
 #endif
 
-#if BCM2836 || BCM2835
-#include <arch/arm.h>
-#include <arch/arm/mmu.h>
+#if ARCH_HAS_MMU == 1
+
+  #if defined(ARCH_ARM)
+    #include <arch/arm.h>
+    #include <arch/arm/mmu.h>
+  #elif defined(ARCH_ARM64)
+    #include <libfdt.h>
+    #include <arch/arm64.h>
+    #include <arch/arm64/mmu.h>
+    #include <platform/mailbox.h>
+  #endif
+
+  #define MB (1024*1024)
 
 /* initial memory mappings. parsed by start.S */
 struct mmu_initial_mapping mmu_initial_mappings[] = {
@@ -58,7 +69,7 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
         .name = "bcm peripherals"
     },
-#ifdef WITH_SMP
+  #ifdef WITH_SMP
     /* arm local peripherals */
     {
         .phys = 0x40000000,
@@ -67,7 +78,8 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
         .name = "arm local peripherals"
     },
-#endif
+  #endif
+#if 0
     { // 32mb window for linux+dtb
       .phys = 16 * MB,
       .virt = KERNEL_BASE + (16 * MB),
@@ -83,59 +95,21 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .size = 16*1024*1024,
         .flags = MMU_INITIAL_MAPPING_TEMPORARY
     },
+#endif
     /* null entry to terminate the list */
     { 0 }
 };
+#endif
 
 #define DEBUG_UART 0
 
-#elif BCM2837
-#include <libfdt.h>
-#include <arch/arm64.h>
-#include <arch/arm64/mmu.h>
-#include <platform/mailbox.h>
-
-/* initial memory mappings. parsed by start.S */
-struct mmu_initial_mapping mmu_initial_mappings[] = {
-    /* 1GB of sdram space */
-    {
-        .phys = SDRAM_BASE,
-        .virt = KERNEL_BASE,
-        .size = MEMSIZE,
-        .flags = 0,
-        .name = "memory"
-    },
-
-    /* peripherals */
-    {
-        .phys = BCM_PERIPH_BASE_PHYS,
-        .virt = BCM_PERIPH_BASE_VIRT,
-        .size = BCM_PERIPH_SIZE,
-        .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
-        .name = "bcm peripherals"
-    },
-#ifdef WITH_SMP
-    /* arm local peripherals */
-    {
-        .phys = 0x40000000,
-        .virt = BCM_LOCAL_PERIPH_BASE_VIRT,
-        .size = 1 * 1024 * 1024,
-        .flags = MMU_INITIAL_MAPPING_FLAG_DEVICE,
-        .name = "arm local peripherals"
-    },
-#endif
-
-    /* null entry to terminate the list */
-    { 0 }
-};
-
-#define DEBUG_UART 1
-
-#elif ARCH_VPU
-  #define DEBUG_UART 0
+#ifdef ARCH_VPU
+#define arch "VPU"
 #else
-  #error Unknown BCM28XX Variant
+#define arch "ARM"
 #endif
+
+#define logf(fmt, ...) do { print_timestamp(); printf("[" arch ":PLATFORM:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); } while(0)
 
 uint32_t vpu_clock;
 // 19.2mhz for most models
@@ -149,7 +123,7 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   __asm__("version %0" : "=r"(cpuid));
   printf("i am VPU with cpuid 0x%08x\n", cpuid);
 #elif defined(ARCH_ARM64)
-  printf("i am aarch64 with MIDR_EL1 0x%x\n", ARM64_READ_SYSREG(midr_el1));
+  printf("i am aarch64 with MIDR_EL1 0x%lx\n", ARM64_READ_SYSREG(midr_el1));
 #else
   printf("i am arm with MIDR 0x%x\n", arm_read_midr());
 #endif
@@ -256,6 +230,8 @@ void platform_early_init(void) {
 
     intc_init();
 
+    logf("\n");
+
 #ifdef ARCH_VPU
     uint32_t rsts = *REG32(PM_RSTS);
     uint8_t partition = decode_rsts(rsts);
@@ -301,7 +277,7 @@ void platform_early_init(void) {
 
 #if BCM2835
 #elif BCM2837
-    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, 0);
+    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, xtal_freq);
 
     /* look for a flattened device tree just before the kernel */
     const void *fdt = (void *)KERNEL_BASE;
@@ -363,6 +339,7 @@ void platform_early_init(void) {
     pmm_alloc_range(MEMBASE, 0x80000 / PAGE_SIZE, &list);
 #endif
 
+#if 0
 #if WITH_SMP
 #if BCM2837
     uintptr_t sec_entry = (uintptr_t)(&arm_reset - KERNEL_ASPACE_BASE);
@@ -383,7 +360,8 @@ void platform_early_init(void) {
     }
 #endif
 #endif
-    puts("done platform early init");
+#endif
+    logf("done platform early init");
 }
 
 static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
@@ -417,6 +395,7 @@ static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
 }
 
 void platform_init(void) {
+  logf("\n");
 #if BCM2835 == 1
   gpio_config(16, kBCM2708PinmuxOut);
 #endif
@@ -424,15 +403,15 @@ void platform_init(void) {
 #ifdef RPI4
   gpio_config(42, kBCM2708PinmuxOut);
 #endif
-    uart_init();
-    udelay(1000);
-    //benchmark_self();
-    printf("A2W_SMPS_A_VOLTS: 0x%x\n", *REG32(A2W_SMPS_A_VOLTS));
-#if BCM2837
+  uart_init();
+  udelay(1000);
+  //benchmark_self();
+  printf("A2W_SMPS_A_VOLTS: 0x%x\n", *REG32(A2W_SMPS_A_VOLTS));
+#if 0
     init_framebuffer();
 #endif
   printf("crystal is %lf MHz\n", (double)xtal_freq/1000/1000);
-  printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", BCM_PERIPH_BASE_VIRT);
+  printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", (int)BCM_PERIPH_BASE_VIRT);
   printf("BCM_PERIPH_BASE_PHYS: 0x%x\n", BCM_PERIPH_BASE_PHYS);
 }
 

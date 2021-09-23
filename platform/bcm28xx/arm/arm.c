@@ -1,4 +1,5 @@
 #include <app.h>
+#include <assert.h>
 #include <dev/gpio.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
@@ -15,20 +16,33 @@
 #include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-extern uint8_t arm_payload_start, arm_payload_end;
+typedef struct {
+  uint8_t *payload_addr;
+  uint32_t payload_size;
+} arm_payload;
+
+extern arm_payload arm_payload_array[3];
+static arm_payload *chosenPayload;
+bool aarch64 = false;
+
 timer_t arm_check;
+uint32_t w = 620;
+uint32_t h = 210;
+static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
 
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
 void setupClock(void);
 void bridgeStart(bool cycleBrespBits);
 
-
 typedef unsigned char v16b __attribute__((__vector_size__(16)));
+
+#define logf(fmt, ...) { print_timestamp(); printf("[ARM:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); }
 
 #define PM_PROC_ARMRSTN_CLR 0xffffffbf
 
@@ -53,14 +67,13 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
   return INT_NO_RESCHEDULE;
 }
 
-static const int w = 620;
-static const int h = 210;
-static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
 
 static void setup_framebuffer(void) {
   int channel = 1;
 
-  gfx_surface *simple_fb = gfx_create_surface(0xc0000000 | fb_phys_addr, w, h, w, GFX_FORMAT_ARGB_8888);
+  void *fb_addr = (void*)(0xc0000000 | fb_phys_addr);
+
+  gfx_surface *simple_fb = gfx_create_surface(fb_addr, w, h, w, GFX_FORMAT_ARGB_8888);
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
   MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
@@ -170,19 +183,47 @@ static void enable_usb_host(void) {
   }
 }
 
-static uint32_t payload_size;
+static void choose_arm_payload(void) {
+  uint32_t revision = otp_read(30);
+  uint32_t processor = (revision >> 12) & 0xf;
+  assert(processor <= 2);
+  chosenPayload = &arm_payload_array[processor];
+  assert(chosenPayload->payload_addr);
 
+  logf("detected a bcm%d, picking payload at %p size 0x%x\n", 2835 + processor, chosenPayload->payload_addr, chosenPayload->payload_size);
+  if (processor == 2) aarch64 = true;
+}
+
+uint32_t orig_checksum;
 
 static void copy_arm_payload(void) {
-  void *original_start = &arm_payload_start;
-  uint32_t size = &arm_payload_end - &arm_payload_start;
-  memcpy((void*)0xc0000000, original_start, size);
-  uint32_t crc = crc32(0, original_start, size);
-  uint32_t crc2 = crc32(0, 0xc0000000, size);
-  printf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
+  void *original_start = chosenPayload->payload_addr;
+  uint32_t size = chosenPayload->payload_size;
 
-  payload_size = size;
-  printf("MEMORY: 0x0 + 0x%x: arm payload\n", payload_size);
+  void *dest = (void*)0xc0000000;
+
+  memcpy(dest, original_start, size);
+  uint32_t crc = crc32(0, original_start, size);
+  uint32_t crc2 = crc32(0, dest, size);
+  logf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
+
+  logf("MEMORY: 0x0 + 0x%x: arm payload\n", chosenPayload->payload_size);
+  orig_checksum = crc;
+}
+
+static void rechecksum_arm(void) {
+  uint32_t *dest = (uint32_t*)0xc0000000;
+  uint32_t size = chosenPayload->payload_size;
+  uint32_t crc = crc32(0, dest, size);
+  logf("checksum after: 0x%08x\n", crc);
+
+  if (crc != orig_checksum) {
+    logf("arm payload modified, its alive\n");
+    uint32_t *orig = chosenPayload->payload_addr;
+    for (int i=0; i<(chosenPayload->payload_size/4); i++) {
+      if (orig[i] != dest[i]) logf("0x%x: 0x%x != 0x%x\n", i*4, orig[i], dest[i]);
+    }
+  }
 }
 
 static inter_core_header *find_header(uint32_t *start, size_t size) {
@@ -195,10 +236,10 @@ static inter_core_header *find_header(uint32_t *start, size_t size) {
 static void patch_arm_payload(void) {
   void *dtb_src = setupInterArchDtb();
   if (!dtb_src) return;
-  void *dtb_dst = (void*) ROUNDUP(payload_size, 4);
+  void *dtb_dst = (void*) ROUNDUP(chosenPayload->payload_size, 4);
 
   uint32_t t0 = *REG32(ST_CLO);
-  inter_core_header *hdr = find_header((uint32_t*)0xc0000000, payload_size);
+  inter_core_header *hdr = find_header((uint32_t*)0xc0000000, chosenPayload->payload_size);
   uint32_t t1 = *REG32(ST_CLO);
   if (hdr) {
     printf("header found at %p in %d uSec\n", hdr, t1-t0);
@@ -212,12 +253,14 @@ static void patch_arm_payload(void) {
   ret = fdt_move(dtb_src, (void*)(0xc0000000 | (uint32_t)dtb_dst), size);
   checkerr;
   free(dtb_src);
-  hdr->dtb_base = dtb_dst;
+  hdr->dtb_base = (uint32_t)dtb_dst;
   printf("MEMORY: %p + 0x%x: inter arch dtb\n", dtb_dst, size);
 }
 
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   bool jtag = true;
+
+  choose_arm_payload();
 
   if (jtag) {
     gpio_config(22, kBCM2708Pinmux_ALT4);// TRST
@@ -257,7 +300,7 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   // add framebuffer
   mapBusToArm(0xc0000000 | fb_phys_addr, fb_phys_addr);
 
-  printf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
+  logf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
 
   setup_framebuffer();
   enable_usb_host();
@@ -265,6 +308,11 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
 
   if (jtag) {
     *REG32(ARM_CONTROL0) |= ARM_C0_JTAGGPIO;
+    logf("enabling jtag\n");
+  }
+  if (aarch64) {
+    *REG32(ARM_CONTROL0) |= ARM_C0_AARCH64;
+    logf("enabling aarch64\n");
   }
   /*
    * enable peripheral access, map arm secure bits to axi secure bits 1:1 and
@@ -278,7 +326,6 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
                 | (0x8 << 20)                         // ARM_C0_PRIO_PER
                 | (0x5 << 24)                         // ARM_C0_PRIO_L2
                 | (0xa << 28);                        // ARM_C0_PRIO_UC
-  // | ARM_C0_AARCH64;
   *REG32(ARM_CONTROL1) |= ARM_C1_PERSON;
 
   //printregs();
@@ -301,7 +348,7 @@ void mapBusToArm(uint32_t busAddr, uint32_t armAddr) {
 
   uint32_t index = armAddr >> 24; // div by 16mb
   uint32_t pte = busAddr >> 21; // div by 2mb
-  printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
+  //printf("mapBusToArm(0x%x, 0x%x) index:%x, pte:%x\n", busAddr, armAddr, index, pte);
 
   tte[index] = pte;
 }
@@ -387,16 +434,21 @@ void bridgeStart(bool cycleBrespBits) {
     udelay(300);
   }
 
-  puts("starting async bridge now!");
-  udelay(1000000);
+  logf("starting async bridge now!\n");
+  //udelay(6 * 1000 * 1000);
+
   *REG32(ARM_CONTROL1) &= ~ARM_C1_REQSTOP;
+
 
   if (!cycleBrespBits) {
     *REG32(PM_PROC) |= PM_PASSWORD | ~PM_PROC_ARMRSTN_CLR;
   }
 
-  udelay(6 * 1000 * 1000);
-  printf("\nbridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
+  //udelay(6 * 1000 * 1000);
+  //puts("");
+
+  //rechecksum_arm();
+  logf("bridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
 }
 
 LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 10);
