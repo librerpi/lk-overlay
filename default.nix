@@ -61,9 +61,10 @@ in lib.fix (self: {
     vc4.stage2 = vc4.callPackage ./lk.nix {
       project = "vc4-stage2";
       preBuild = ''
-        rm -rf build-rpi2-test
-        mkdir build-rpi2-test -pv
+        rm -rf build-rpi2-test build-rpi3-test
+        mkdir build-rpi2-test build-rpi3-test -pv
         ln -sv ${self.arm.rpi2-test}/lk.bin build-rpi2-test/lk.bin
+        ln -sv ${self.arm.rpi3-test}/lk.bin build-rpi3-test/lk.bin
       '';
     };
     vc4.start = vc4.callPackage ./lk.nix {
