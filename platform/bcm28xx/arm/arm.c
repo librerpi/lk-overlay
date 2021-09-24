@@ -444,7 +444,7 @@ void bridgeStart(bool cycleBrespBits) {
     *REG32(PM_PROC) |= PM_PASSWORD | ~PM_PROC_ARMRSTN_CLR;
   }
 
-  //udelay(6 * 1000 * 1000);
+  udelay(6 * 1000 * 1000);
   //puts("");
 
   //rechecksum_arm();

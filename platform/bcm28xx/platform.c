@@ -79,6 +79,15 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
         .name = "arm local peripherals"
     },
   #endif
+  #ifdef ARCH_ARM
+    /* identity map to let the boot code run */
+    {
+        .phys = SDRAM_BASE,
+        .virt = SDRAM_BASE,
+        .size = 16*1024*1024,
+        .flags = MMU_INITIAL_MAPPING_TEMPORARY
+    },
+  #endif
 #if 0
     { // 32mb window for linux+dtb
       .phys = 16 * MB,
@@ -88,13 +97,6 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
       .name = "next-stage"
     },
 
-    /* identity map to let the boot code run */
-    {
-        .phys = SDRAM_BASE,
-        .virt = SDRAM_BASE,
-        .size = 16*1024*1024,
-        .flags = MMU_INITIAL_MAPPING_TEMPORARY
-    },
 #endif
     /* null entry to terminate the list */
     { 0 }
@@ -123,7 +125,8 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   __asm__("version %0" : "=r"(cpuid));
   printf("i am VPU with cpuid 0x%08x\n", cpuid);
 #elif defined(ARCH_ARM64)
-  printf("i am aarch64 with MIDR_EL1 0x%lx\n", ARM64_READ_SYSREG(midr_el1));
+  unsigned int current_el = ARM64_READ_SYSREG(CURRENTEL) >> 2;
+  printf("i am aarch64 with MIDR_EL1 0x%lx in EL %d\n", ARM64_READ_SYSREG(midr_el1), current_el);
 #else
   printf("i am arm with MIDR 0x%x\n", arm_read_midr());
 #endif

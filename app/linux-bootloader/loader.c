@@ -33,8 +33,11 @@ void find_and_mount(void);
 bool load_kernel(void**, size_t *);
 void asm_set_ACTLR(uint32_t);
 
-#define KERNEL_LOAD_ADDRESS 0x81000000 // 16mb from start
-#define DTB_LOAD_ADDRESS    0x82000000 // 32mb from start
+#define KERNEL_LOAD_ADDRESS 0x1000000 // 16mb from start
+#define DTB_LOAD_ADDRESS    0x2000000 // 32mb from start
+
+void *kernel_virtual;
+void *dtb_virtual;
 
 void find_and_mount(void) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
@@ -94,30 +97,45 @@ void *read_file(void *buffer, size_t maxSize, const char *filepath) {
   return buffer;
 }
 
+static bool map_physical(uint32_t phys_addr, void **virt_addr, uint32_t size, const char *name) {
+  status_t ret = vmm_alloc_physical(vmm_get_kernel_aspace(), name, ROUNDUP(size, PAGE_SIZE), virt_addr, 0, phys_addr, 0, 0);
+  return ret == NO_ERROR;
+}
+
 bool load_kernel(void **buf, size_t *size) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   void *buffer;
 
-  buffer = read_file((void*)KERNEL_LOAD_ADDRESS, 16 * MB, "/root/boot/zImage");
+  if (!map_physical(KERNEL_LOAD_ADDRESS, &kernel_virtual, 16 * MB, "zImage")) {
+    puts("unable to map kernel");
+    return false;
+  }
+
+  buffer = read_file(kernel_virtual, 16 * MB, "/root/boot/zImage");
   if (!buffer) {
     puts("failed to read kernel file");
     return false;
   }
 
-  buffer = read_file((void*)DTB_LOAD_ADDRESS, 1 * MB, "/root/boot/rpi2.dtb");
+  if (!map_physical(DTB_LOAD_ADDRESS, &dtb_virtual, 1 * MB, "raw dtb")) {
+    puts("unable to map dtb");
+    return false;
+  }
+
+  buffer = read_file(dtb_virtual, 1 * MB, "/root/boot/rpi2.dtb");
   if (!buffer) {
     puts("failed to read DTB file");
     return false;
   }
 
-  printf("loaded DTB file to 0x%x\n", DTB_LOAD_ADDRESS);
+  printf("loaded DTB file to %p\n", dtb_virtual);
 
   return true;
 }
 
 static bool patch_dtb(void) {
   int ret;
-  void* v_fdt = (void*)DTB_LOAD_ADDRESS;
+  void* v_fdt = dtb_virtual;
 
   ret = fdt_open_into(v_fdt, v_fdt, 16 * 1024);
   if (ret) {
@@ -190,7 +208,7 @@ static bool patch_dtb(void) {
 
 static void execute_linux(void) {
   printf("core %d passing control off to linux!!!\n", arch_curr_cpu_num());
-  arch_chain_load((void*)KERNEL_LOAD_ADDRESS, 0, ~0, 0x2000000, 0);
+  arch_chain_load(kernel_virtual, 0, ~0, 0x2000000, 0);
 }
 
 static void prepare_arm_core(void) {
