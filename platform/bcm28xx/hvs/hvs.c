@@ -235,7 +235,15 @@ static enum handler_return ddr2_checker(struct timer *unused1, unsigned int unus
   return INT_NO_RESCHEDULE;
 }
 
+#define DSP3_MUX(n) ((n & 0x3) << 18)
+
 void hvs_initialize() {
+  static bool initialized = false;
+  if (initialized) return;
+  initialized = true;
+
+  puts("hvs_initialize()");
+
   timer_initialize(&ddr2_monitor);
   //timer_set_periodic(&ddr2_monitor, 500, ddr2_checker, NULL);
 
@@ -248,7 +256,9 @@ void hvs_initialize() {
 
   int hvs_channel = 1;
   *REG32(SCALER_DISPCTRL) &= ~SCALER_DISPCTRL_ENABLE; // disable HVS
-  *REG32(SCALER_DISPCTRL) = SCALER_DISPCTRL_ENABLE | 0x9a0dddff; // re-enable HVS
+  *REG32(SCALER_DISPCTRL) = SCALER_DISPCTRL_ENABLE // re-enable HVS
+    | DSP3_MUX(3)
+    | 0x7f; // irq en
   for (int i=0; i<3; i++) {
     hvs_channels[i].dispctrl = SCALER_DISPCTRLX_RESET;
     hvs_channels[i].dispctrl = 0;
@@ -279,7 +289,13 @@ uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
 
 static enum handler_return pv_irq(void *pvnr) {
   enum handler_return ret = INT_NO_RESCHEDULE;
-  int hvs_channel = 1; // FIXME
+  int hvs_channel = 1;
+#ifdef RPI4
+  // FIXME
+#else
+  if (pvnr == 0) hvs_channel = 0;
+  else if (pvnr == 2) hvs_channel = 1;
+#endif
   uint32_t t = *REG32(ST_CLO);
   struct pixel_valve *rawpv = getPvAddr((int)pvnr);
   uint32_t stat = rawpv->int_status;
@@ -323,7 +339,11 @@ static enum handler_return pv_irq(void *pvnr) {
     vfps = t;
 
     // actually do the page-flip
-    *REG32(SCALER_DISPLIST1) = channels[hvs_channel].dlist_target;
+    if (hvs_channel == 0) {
+      *REG32(SCALER_DISPLIST0) = channels[hvs_channel].dlist_target;
+    } else if (hvs_channel == 1) {
+      *REG32(SCALER_DISPLIST1) = channels[hvs_channel].dlist_target;
+    }
 
     THREAD_LOCK(state);
     int woken = wait_queue_wake_all(&channels[hvs_channel].vsync, false, NO_ERROR);
@@ -352,6 +372,7 @@ static enum handler_return pv_irq(void *pvnr) {
 }
 
 void hvs_configure_channel(int channel, int width, int height, bool interlaced) {
+  printf("hvs_configure_channel(%d, %d, %d, %s)\n", channel, width, height, interlaced ? "true" : "false");
   channels[channel].width = width;
   channels[channel].height = height;
   channels[channel].interlaced = interlaced;
@@ -367,6 +388,9 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
   if (true) {
     puts("setting up pv interrupt");
     int pvnr = 2;
+    if (channel == 0) pvnr = 0;
+    if (channel == 1) pvnr = 2;
+
     struct pixel_valve *rawpv = getPvAddr(pvnr);
     rawpv->int_enable = 0;
     rawpv->int_status = 0xff;
@@ -506,6 +530,7 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
+  puts("creating framebuffer for text console\n");
 
   int w = 640;
   int h = 210;
@@ -529,11 +554,23 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 
+
+  console_layer = malloc(sizeof(hvs_layer));
+  MK_UNITY_LAYER(console_layer, gfx, 50, 50, 130);
+  console_layer->name = "console0";
+  channel=0;
+  mutex_acquire(&channels[channel].lock);
+  hvs_dlist_add(channel, console_layer);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
+
   return NO_ERROR;
 }
 
 static int cmd_hvs_update(int argc, const console_cmd_args *argv) {
   int channel = 1;
+  if (argc >= 2) channel = argv[1].u;
+
   mutex_acquire(&channels[channel].lock);
   cmd_hvs_dump_dlist(0, NULL);
   hvs_update_dlist(channel);
@@ -545,8 +582,8 @@ void hvs_update_dlist(int channel) {
   assert(is_mutex_held(&channels[channel].lock));
   hvs_layer *layer;
 
-  //uint32_t t = *REG32(ST_CLO);
-  //printf("doing dlist update at %d\n", t);
+  uint32_t t = *REG32(ST_CLO);
+  printf("doing dlist update at %d\n", t);
 
   int list_start = display_slot;
 
@@ -588,22 +625,28 @@ void hvs_update_dlist(int channel) {
 
   if (display_slot > 4000) {
     display_slot = 0;
-    //puts("dlist loop");
+    puts("dlist loop");
   }
 
-  // TODO, defer this until vsync
-  //*REG32(SCALER_DISPLIST1) = list_start;
   channels[channel].dlist_target = list_start;
 }
 
 int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
-  int channel = 1;
-  hvs_layer *layer;
-  list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
-    printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb->ptr
-        , layer->x, layer->y
-        , layer->w, layer->h
-        , layer->layer, layer->name ? layer->name : "NULL");
+  int start = 1, end = 1;
+  if (argc >= 2) {
+    start = argv[1].u;
+    end = start;
+  }
+  if (argc >= 3) end = argv[2].u;
+  for (int channel = start; channel <= end; channel++) {
+    printf("hvs channel %d, dlist start %d\n", channel, channels[channel].dlist_target);
+    hvs_layer *layer;
+    list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
+      printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb->ptr
+          , layer->x, layer->y
+          , layer->w, layer->h
+          , layer->layer, layer->name ? layer->name : "NULL");
+    }
   }
   return 0;
 }
@@ -628,6 +671,7 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer) {
 }
 
 static void hvs_init_hook(uint level) {
+  puts("hvs_init_hook()\n");
   for (int i=0; i<3; i++) {
     list_initialize(&channels[i].layers);
     mutex_init(&channels[i].lock);

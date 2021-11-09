@@ -2,12 +2,17 @@
 
 #include <platform/interrupts.h>
 
+enum clock_source {
+  clk_dpi_smi_hdmi,
+  clk_vec,
+};
+
 struct pv_timings {
   uint16_t vfp, vsync, vbp, vactive;
   uint16_t hfp, hsync, hbp, hactive;
   uint16_t vfp_even, vsync_even, vbp_even, vactive_even;
   bool interlaced;
-  int clock_mux;
+  enum clock_source clock_mux;
 };
 
 struct pixel_valve {

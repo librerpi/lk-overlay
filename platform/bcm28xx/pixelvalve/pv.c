@@ -67,6 +67,7 @@ unsigned int getPvIrq(int pvnr) {
 
 void setup_pixelvalve(struct pv_timings *t, int pvnr) {
   struct pixel_valve *rawpv = getPvAddr(pvnr);
+  printf("setup_pixelvalve, pvnr=%d, %dx%d\n", pvnr, t->hactive, t->vactive);
 
   // reset the PV fifo
   rawpv->c = 0;
@@ -80,6 +81,7 @@ void setup_pixelvalve(struct pv_timings *t, int pvnr) {
   rawpv->vertb = (t->vfp << 16) | t->vactive;
 
   if (t->interlaced) {
+    puts("interlaced pv");
     rawpv->verta_even = (t->vbp_even << 16) | t->vsync_even;
     rawpv->vertb_even = (t->vfp << 16) | t->vactive_even;
   }
@@ -100,14 +102,17 @@ void setup_pixelvalve(struct pv_timings *t, int pvnr) {
   uint32_t fifo_len_bytes = 64;
   fifo_len_bytes = fifo_len_bytes - 3 * 6;
 
+  int clk = 0;
+  if (t->clock_mux == clk_dpi_smi_hdmi) clk = PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI;
+#ifdef RPI4
+  else if (t->clock_mux == clk_vec) clk = 0;
+#else
+  else if (t->clock_mux == clk_vec) clk = PV_CONTROL_CLK_SELECT_VEC;
+#endif
+
   rawpv->c = PV_CONTROL_EN |
             PV_CONTROL_FIFO_CLR |
-            //CLK_SELECT(PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI) | // set to DPI clock
-#ifdef RPI4
-            CLK_SELECT(0) | // vec
-#else
-            CLK_SELECT(PV_CONTROL_CLK_SELECT_VEC) | // vec
-#endif
+            CLK_SELECT(clk) |
             PIXEL_REP(1 - 1) |
             BV(12) | // wait for h-start
             BV(13) | // trigger underflow

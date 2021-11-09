@@ -48,12 +48,14 @@ static void vec_init(uint level) {
 
   puts("VEC init");
 
+#if !defined(RPI4)
   power_up_usb();
+#endif
   hvs_initialize();
 #ifdef RPI4
-  *REG32(CM_VECDIV) = CM_PASSWORD | 2 << 12;
+  *REG32(CM_VECDIV) = CM_PASSWORD | 13 << 12;
 #else
-  *REG32(CM_VECDIV) = CM_PASSWORD | 4 << 12;
+  *REG32(CM_VECDIV) = CM_PASSWORD | 3 << 12;
 #endif
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
@@ -99,6 +101,7 @@ static void vec_init(uint level) {
   *REG32(VEC_DAC_MISC) = VEC_DAC_MISC_VID_ACT | VEC_DAC_MISC_DAC_RST_N;
   *REG32(VEC_CFG) = VEC_CFG_VEC_EN;
   struct pv_timings t;
+  t.clock_mux = clk_vec;
   bool ntsc_mode = true;
   if (ntsc_mode) {
     t.vfp = 3;

@@ -1,12 +1,14 @@
 #include <dev/gpio.h>
 #include <kernel/timer.h>
 #include <lk/console_cmd.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/dpi.h>
 #include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll_read.h>
+#include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/pv.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,12 +31,16 @@ timer_t updater;
 uint8_t count;
 uint32_t count2;
 
-#define HYPERPIXEL
+//#define HYPERPIXEL
+#define GERTVGA
 
 int cmd_dpi_start(int argc, const console_cmd_args *argv) {
+  power_up_image();
   hvs_initialize();
 
   struct pv_timings t;
+  t.clock_mux = clk_dpi_smi_hdmi;
+  t.interlaced = false;
 #ifdef HYPERPIXEL
   t.vfp = 15;
   t.vsync = 113;
@@ -45,6 +51,16 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   t.hsync = 16;
   t.hbp = 59;
   t.hactive = 480;
+#elif defined(GERTVGA)
+  t.vfp = 3;
+  t.vsync = 4;
+  t.vbp = 13;
+  t.vactive = 480;
+
+  t.hfp = 60;
+  t.hsync = 64;
+  t.hbp = 80;
+  t.hactive = 640;
 #else
   t.vfp = 0;
   t.vsync = 1;
@@ -68,8 +84,9 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
       gfx_putpixel(framebuffer, x, y, (0xff<<24) | (y << 16) | (y << 8) | y);
     }
   }
-  hvs_configure_channel(0, width, height, true);
+  hvs_configure_channel(0, width, height, false);
 
+#if 0
   int list_start = display_slot;
   hvs_add_plane(framebuffer, 0, 0, false);
   hvs_terminate_list();
@@ -77,11 +94,18 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   *REG32(SCALER_DISPLIST0) = list_start;
   *REG32(SCALER_DISPLIST1) = list_start;
   *REG32(SCALER_DISPLIST2) = list_start;
+#endif
 
 
   // 0x200 means clock/2
 #ifdef HYPERPIXEL
   *REG32(CM_DPIDIV) = CM_PASSWORD | (0xe00 << 4);
+  *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_KILL_SET | CM_SRC_PLLC_CORE0;
+  while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
+  *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_ENAB_SET | CM_SRC_PLLC_CORE0;
+  while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
+#elif defined(GERTVGA)
+  *REG32(CM_DPIDIV) = CM_PASSWORD | (0xc00 << 4);
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_KILL_SET | CM_SRC_PLLC_CORE0;
   while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_ENAB_SET | CM_SRC_PLLC_CORE0;
@@ -95,14 +119,21 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
 #endif
   printf("DPI clock set\n");
   int rate = measure_clock(17);
-  printf("DPI clock measured at %d\n", rate);
+  printf("DPI clock measured at %d KHz, ", rate/1000);
 
+  int htotal = t.hfp + t.hsync + t.hbp + t.hactive;
+  int vtotal = t.vfp + t.vsync + t.vbp + t.vactive;
+  printf("hsync rate: %d Hz, ", rate / htotal);
+  printf("vsync rate: %d Hz, ", rate / (htotal * vtotal));
+  printf("htotal: %d, vtotal: %d\n", htotal, vtotal);
 
   setup_pixelvalve(&t, 0);
 
   int dpi_output_format;
 #ifdef HYPERPIXEL
   dpi_output_format = 0x7f226;
+#elif defined(GERTVGA)
+  dpi_output_format = 0x15;
 #else
   dpi_output_format = 0x6;
 #endif
@@ -176,6 +207,8 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   for (int x=0; x<26; x++) {
     if (x == 10) {}
     else if (x == 11) {}
+    else if (x == 14) {}
+    else if (x == 15) {}
     else if (x == 18) {}
     else if (x == 19) {}
     else gpio_config(x, kBCM2708Pinmux_ALT2);
@@ -193,6 +226,18 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   gpio_config(3, kBCM2708Pinmux_ALT2); // hsync
   gpio_config(4, kBCM2708Pinmux_ALT2); // D0
   gpio_config(5, kBCM2708Pinmux_ALT2); // D1
+
+  for (int i=4; i<=9; i++) {
+    gpio_config(i, kBCM2708Pinmux_ALT2);
+  }
+  for (int i=10; i<=15; i++) {
+    if (i == 14) continue;
+    if (i == 15) continue;
+    gpio_config(i, kBCM2708Pinmux_ALT2);
+  }
+  for (int i=16; i<=21; i++) {
+    gpio_config(i, kBCM2708Pinmux_ALT2);
+  }
 #endif
   return 0;
 }
@@ -229,3 +274,9 @@ int cmd_dpi_move(int argc, const console_cmd_args *argv) {
   timer_set_periodic(&updater, 10, mover_entry, NULL);
   return 0;
 }
+
+static void dpi_init(uint level) {
+  cmd_dpi_start(0, NULL);
+}
+
+LK_INIT_HOOK(dpi, &dpi_init, LK_INIT_LEVEL_PLATFORM - 1);

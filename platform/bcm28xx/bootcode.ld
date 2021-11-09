@@ -23,6 +23,12 @@ SECTIONS {
     _erodata = .;
   }
 
+  commands : {
+    PROVIDE(__start_commands = .);
+    KEEP(*(commands))
+    PROVIDE(__stop_commands = .);
+  } >ram
+
   .init_array : {
     . = ALIGN(16);
     PROVIDE(__ctor_list = .);
@@ -35,6 +41,7 @@ SECTIONS {
 
   .data : {
     *(.data)
+    *(.data.*)
     _edata = .;
   }
 
@@ -42,6 +49,7 @@ SECTIONS {
     . = ALIGN(4);
     _fbss = .;
     *(.bss)
+    *(.bss.*)
     *(COMMON)
     . = ALIGN(4);
     _ebss = .;

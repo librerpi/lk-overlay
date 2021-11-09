@@ -6,10 +6,11 @@ MODULES += \
 	platform/bcm28xx/otp \
 	platform/bcm28xx/rpi-ddr2/autoram \
 	app/shell \
-	platform/bcm28xx/vec \
 	lib/gfxconsole \
-	lib/fs/ext2 \
-	app/mountroot \
+	platform/bcm28xx/dpi \
+	platform/bcm28xx/vec \
+	#lib/fs/ext2 \
+	#app/mountroot \
 
 MODULES += platform/bcm28xx/sdhost
 
