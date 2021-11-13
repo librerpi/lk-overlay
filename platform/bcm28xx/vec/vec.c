@@ -44,7 +44,6 @@ static void vec_init(uint level) {
   int channel = 1; // on VC4, the VEC is hard-wired to hvs channel 1
   int width;
   int height;
-  gfx_surface *gfx_grid;
 
   puts("VEC init");
 
@@ -132,36 +131,10 @@ static void vec_init(uint level) {
 
   width = t.hactive;
   height = t.vactive * 2;
-  if (false) {
-    gfx_grid = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
 
-    int grid = 20;
-    for (int x=0; x< width; x++) {
-      for (int y=0; y < height; y++) {
-        uint color = 0xff000000;
-        if (false) {
-          if (y % grid == 0) color |= 0xffffff;
-          if (y % grid == 1) color |= 0xffffff;
-          if (x % grid == 0) color |= 0xffffff;
-          if (x % grid == 1) color |= 0xffffff;
-        }
-        gfx_putpixel(gfx_grid, x, y, color);
-      }
-    }
-
-    hvs_layer *grid_layer = malloc(sizeof(hvs_layer));
-    MK_UNITY_LAYER(grid_layer, gfx_grid, 0, 0, 0);
-    grid_layer->name = "grid";
-
-    mutex_acquire(&channels[channel].lock);
-    hvs_dlist_add(channel, grid_layer);
-    hvs_update_dlist(channel);
-    mutex_release(&channels[channel].lock);
-  } else {
-    mutex_acquire(&channels[channel].lock);
-    hvs_update_dlist(channel);
-    mutex_release(&channels[channel].lock);
-  }
+  mutex_acquire(&channels[channel].lock);
+  hvs_update_dlist(channel);
+  mutex_release(&channels[channel].lock);
 
   hvs_configure_channel(1, width, height, true);
   hvs_set_background_color(channel, 0x0);

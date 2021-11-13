@@ -2,7 +2,6 @@
 #include <arch/ops.h>
 #include <assert.h>
 #include <dance.h>
-#include <kernel/timer.h>
 #include <lib/tga.h>
 #include <lk/console_cmd.h>
 #include <lk/err.h>

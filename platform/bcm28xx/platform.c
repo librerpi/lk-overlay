@@ -134,7 +134,10 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
 }
 
 static int cmd_short_hang(int argc, const console_cmd_args *argv) {
+  spin_lock_saved_state_t state;
+  arch_interrupt_save(&state, SPIN_LOCK_FLAG_INTERRUPTS);
   udelay(10 * 1000 * 1000);
+  arch_interrupt_restore(state, SPIN_LOCK_FLAG_INTERRUPTS);
   return 0;
 }
 

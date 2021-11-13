@@ -11,6 +11,7 @@
 #define SCALER_DISPCTRL     (SCALER_BASE + 0x00)
 #define SCALER_DISPSTAT     (SCALER_BASE + 0x04)
 #define SCALER_DISPCTRL_ENABLE  (1<<31)
+#define SCALER_DISPDITHER   (SCALER_BASE + 0x14)
 #define SCALER_DISPEOLN     (SCALER_BASE + 0x18)
 #define SCALER_DISPLIST0    (SCALER_BASE + 0x20)
 #define SCALER_DISPLIST1    (SCALER_BASE + 0x24)
@@ -43,18 +44,45 @@ struct hvs_channel_config {
 
 extern struct hvs_channel_config channels[3];
 
+enum hvs_pixel_format {
+	/* 8bpp */
+	HVS_PIXEL_FORMAT_RGB332 = 0,
+	/* 16bpp */
+	HVS_PIXEL_FORMAT_RGBA4444 = 1,
+	HVS_PIXEL_FORMAT_RGB555 = 2,
+	HVS_PIXEL_FORMAT_RGBA5551 = 3,
+	HVS_PIXEL_FORMAT_RGB565 = 4,
+	/* 24bpp */
+	HVS_PIXEL_FORMAT_RGB888 = 5,
+	HVS_PIXEL_FORMAT_RGBA6666 = 6,
+	/* 32bpp */
+	HVS_PIXEL_FORMAT_RGBA8888 = 7,
+
+	HVS_PIXEL_FORMAT_YCBCR_YUV420_3PLANE = 8,
+	HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE = 9,
+	HVS_PIXEL_FORMAT_YCBCR_YUV422_3PLANE = 10,
+	HVS_PIXEL_FORMAT_YCBCR_YUV422_2PLANE = 11,
+	HVS_PIXEL_FORMAT_H264 = 12,
+	HVS_PIXEL_FORMAT_PALETTE = 13,
+	HVS_PIXEL_FORMAT_YUV444_RGB = 14,
+	HVS_PIXEL_FORMAT_AYUV444_RGB = 15,
+	HVS_PIXEL_FORMAT_RGBA1010102 = 16,
+	HVS_PIXEL_FORMAT_YCBCR_10BIT = 17,
+};
+
 typedef struct {
   struct list_node node;
   gfx_surface *fb;
   int x;
   int y;
   int layer;
-  int w;
-  int h;
+  unsigned int w;
+  unsigned int h;
   const char *name;
+  enum hvs_pixel_format pixfmt;
 } hvs_layer;
 
-#define MK_UNITY_LAYER(l, FB, LAYER, X, Y) { (l)->fb = FB; (l)->x = X; (l)->y = Y; (l)->layer = LAYER; (l)->w = FB->width; (l)->h = FB->height; }
+//#define MK_UNITY_LAYER(l, FB, LAYER, X, Y) { (l)->fb = FB; (l)->x = X; (l)->y = Y; (l)->layer = LAYER; (l)->w = FB->width; (l)->h = FB->height; }
 
 #define SCALER_STAT_LINE(n) ((n) & 0xfff)
 
@@ -85,32 +113,6 @@ typedef struct {
 #define CONTROL0_VFLIP          (1<<15)
 #define CONTROL_PIXEL_ORDER(n)  ((n & 3) << 13)
 #define CONTROL_UNITY           (1<<4)
-
-enum hvs_pixel_format {
-	/* 8bpp */
-	HVS_PIXEL_FORMAT_RGB332 = 0,
-	/* 16bpp */
-	HVS_PIXEL_FORMAT_RGBA4444 = 1,
-	HVS_PIXEL_FORMAT_RGB555 = 2,
-	HVS_PIXEL_FORMAT_RGBA5551 = 3,
-	HVS_PIXEL_FORMAT_RGB565 = 4,
-	/* 24bpp */
-	HVS_PIXEL_FORMAT_RGB888 = 5,
-	HVS_PIXEL_FORMAT_RGBA6666 = 6,
-	/* 32bpp */
-	HVS_PIXEL_FORMAT_RGBA8888 = 7,
-
-	HVS_PIXEL_FORMAT_YCBCR_YUV420_3PLANE = 8,
-	HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE = 9,
-	HVS_PIXEL_FORMAT_YCBCR_YUV422_3PLANE = 10,
-	HVS_PIXEL_FORMAT_YCBCR_YUV422_2PLANE = 11,
-	HVS_PIXEL_FORMAT_H264 = 12,
-	HVS_PIXEL_FORMAT_PALETTE = 13,
-	HVS_PIXEL_FORMAT_YUV444_RGB = 14,
-	HVS_PIXEL_FORMAT_AYUV444_RGB = 15,
-	HVS_PIXEL_FORMAT_RGBA1010102 = 16,
-	HVS_PIXEL_FORMAT_YCBCR_10BIT = 17,
-};
 
 #define HVS_PIXEL_ORDER_RGBA			0
 #define HVS_PIXEL_ORDER_BGRA			1
@@ -169,4 +171,29 @@ int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
   hvs_channels[channel].dispbkgnd = SCALER_DISPBKGND_FILL | SCALER_DISPBKGND_AUTOHS | color
     | (channels[channel].interlaced ? SCALER_DISPBKGND_INTERLACE : 0);
+}
+
+static inline uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
+  switch (fmt) {
+  case GFX_FORMAT_RGB_332:
+    return HVS_PIXEL_FORMAT_RGB332; // 0
+  case GFX_FORMAT_RGB_565:
+    return HVS_PIXEL_FORMAT_RGB565; // 4
+  case GFX_FORMAT_ARGB_8888:
+  case GFX_FORMAT_RGB_x888:
+    return HVS_PIXEL_FORMAT_RGBA8888; // 7
+  default:
+    printf("warning, unsupported pixel format: %d\n", fmt);
+    return 0;
+  }
+}
+
+static inline void mk_unity_layer(hvs_layer *l, gfx_surface *fb, int layer, unsigned int x, unsigned int y) {
+  l->fb = fb;
+  l->layer = layer;
+  l->x = x;
+  l->y = y;
+  l->w = fb->width;
+  l->h = fb->height;
+  l->pixfmt = gfx_to_hvs_pixel_format(fb->format);
 }

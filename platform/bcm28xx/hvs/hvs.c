@@ -17,16 +17,20 @@
 #include <stdlib.h>
 #include <strings.h>
 
-// note, 4096 slots total
 #ifdef RPI4
 volatile uint32_t* dlist_memory = REG32(SCALER5_LIST_MEMORY);
 #else
+// note, 4096 slots total
 volatile uint32_t* dlist_memory = REG32(SCALER_LIST_MEMORY);
 #endif
 volatile struct hvs_channel *hvs_channels = (volatile struct hvs_channel*)REG32(SCALER_DISPCTRL0);
-int display_slot = 0;
+int display_slot = 11;
 int scaled_layer_count = 0;
 timer_t ddr2_monitor;
+const int scaling_kernel = 4080;
+
+#define DSP3_MUX(n) ((n & 0x3) << 18)
+#define SCALER_PPF_AGC (1<<30)
 
 enum scaling_mode {
   none,
@@ -37,30 +41,21 @@ enum scaling_mode {
 struct hvs_channel_config channels[3];
 
 gfx_surface *debugText;
+bool hvs_debug = false;
 
 static int cmd_hvs_dump(int argc, const console_cmd_args *argv);
 static int cmd_hvs_update(int argc, const console_cmd_args *argv);
+static int cmd_hvs_debug(int argc, const console_cmd_args *argv) {
+  hvs_debug = true;
+  return 0;
+}
 
 STATIC_COMMAND_START
 STATIC_COMMAND("hvs_dump", "dump hvs state", &cmd_hvs_dump)
 STATIC_COMMAND("hvs_dump_dlist", "dump the software dlist", &cmd_hvs_dump_dlist)
 STATIC_COMMAND("hvs_update", "update the display list, without waiting for irq", &cmd_hvs_update)
+STATIC_COMMAND("hvs_debug", "print debug info for the next frame", &cmd_hvs_debug)
 STATIC_COMMAND_END(hvs);
-
-static uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
-  switch (fmt) {
-  case GFX_FORMAT_RGB_332:
-    return HVS_PIXEL_FORMAT_RGB332; // 0
-  case GFX_FORMAT_RGB_565:
-    return HVS_PIXEL_FORMAT_RGB565; // 4
-  case GFX_FORMAT_ARGB_8888:
-  case GFX_FORMAT_RGB_x888:
-    return HVS_PIXEL_FORMAT_RGBA8888; // 7
-  default:
-    printf("warning, unsupported pixel format: %d\n", fmt);
-    return 0;
-  }
-}
 
 #ifdef RPI4
 void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
@@ -118,56 +113,88 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
 static void write_tpz(unsigned int source, unsigned int dest) {
   uint32_t scale = (1<<16) * source / dest;
   uint32_t recip = ~0 / scale;
+  if (hvs_debug) printf("TPZ 0x%x 0x%x\n", scale, recip);
   dlist_memory[display_slot++] = scale << 8;
-  dlist_memory[display_slot++] = recip;
+  dlist_memory[display_slot++] = recip & 0xffff;
 }
 
-void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, unsigned int height, bool hflip) {
-  assert(fb);
-  if ((x < 0) || (y < 0)) printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", fb->width, fb->height, x, y, width, height);
-  enum scaling_mode xmode, ymode;
-  if (fb->width > width) xmode = TPZ;
-  else if (fb->width < width) xmode = PPF;
-  else xmode = none;
+static void write_ppf(unsigned int source, unsigned int dest) {
+  uint32_t scale = (1<<16) * source / dest;
+  if (hvs_debug) printf("PPF 0x%x\n", scale);
+  dlist_memory[display_slot++] = SCALER_PPF_AGC |
+    (scale << 8) | (0 << 0);
+}
 
-  if (fb->height > height) ymode = TPZ;
-  else if (fb->height < height) ymode = PPF;
-  else ymode = none;
+void hvs_add_plane_scaled(hvs_layer *layer) {
+  assert(layer->fb);
+  int x = layer->x;
+  int y = layer->y;
+  unsigned int width = layer->w;
+  unsigned int height = layer->h;
+  const bool hflip = false;
+
+  if (hvs_debug) printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+
+  enum scaling_mode xmode, ymode;
+
+  if (layer->fb->width > width) xmode = TPZ;
+  else if (layer->fb->width < width) xmode = PPF;
+  else xmode = TPZ;
+
+  if (layer->fb->height > height) ymode = TPZ;
+  else if (layer->fb->height < height) ymode = PPF;
+  else ymode = TPZ;
 
   int scl0;
   switch ((xmode << 2) | ymode) {
   case (PPF << 2) | PPF:
-    scl0 = SCALER_CTL0_SCL_H_PPF_V_PPF;
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_PPF;     // 0
     break;
   case (TPZ << 2) | PPF:
-    scl0 = SCALER_CTL0_SCL_H_TPZ_V_PPF;
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_PPF;     // 1
     break;
   case (PPF << 2) | TPZ:
-    scl0 = SCALER_CTL0_SCL_H_PPF_V_TPZ;
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_TPZ;     // 2
     break;
   case (TPZ << 2) | TPZ:
-    scl0 = SCALER_CTL0_SCL_H_TPZ_V_TPZ;
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_TPZ;     // 3
+    break;
+  case (PPF << 2) | none:
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_NONE;    // 4
+    break;
+  case (none << 2) | PPF:
+    scl0 = SCALER_CTL0_SCL_H_NONE_V_PPF;    // 5
+    break;
+  case (none << 2) | TPZ:
+    scl0 = SCALER_CTL0_SCL_H_NONE_V_TPZ;    // 6
+    break;
+  case (TPZ << 2) | none:
+    // randomly doesnt work right
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_NONE;    // 7
     break;
   default:
     puts("unsupported scale combination");
+    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+    return;
   }
+
+  if (hvs_debug) printf("scl0: %d\n", scl0);
 
   int start = display_slot;
   dlist_memory[display_slot++] = 0 // CONTROL_VALID
-//    | CONTROL_WORDS(14)
     | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
 //    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
     | (hflip ? CONTROL0_HFLIP : 0)
-    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(fb->format))
+    | CONTROL_FORMAT(layer->pixfmt)
     | (scl0 << 5)
     | (scl0 << 8); // SCL1
-  dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);  // position word 0
-  dlist_memory[display_slot++] = width | (height << 16);                    // position word 1
-  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width);    // position word 2
-  dlist_memory[display_slot++] = 0xDEADBEEF;                                // position word 3, dummy for HVS state
-  dlist_memory[display_slot++] = (uint32_t)fb->ptr | 0x80000000;            // pointer word 0
-  dlist_memory[display_slot++] = 0xDEADBEEF;                                // pointer context word 0 dummy for HVS state
-  dlist_memory[display_slot++] = fb->stride * fb->pixelsize;                // pitch word 0
+  dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);              // position word 0
+  dlist_memory[display_slot++] = width | (height << 16);                                // position word 1
+  dlist_memory[display_slot++] = POS2_H(layer->fb->height) | POS2_W(layer->fb->width);  // position word 2
+  dlist_memory[display_slot++] = 0xDEADBEEF;                                            // position word 3, dummy for HVS state
+  dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                 // pointer word 0
+  dlist_memory[display_slot++] = 0xDEADBEEF;                                            // pointer context word 0 dummy for HVS state
+  dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;              // pitch word 0
   dlist_memory[display_slot++] = (scaled_layer_count * 720);         // LBM base addr
   scaled_layer_count++;
 
@@ -184,20 +211,30 @@ void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, uns
 #endif
 
   if (xmode == PPF) {
-    puts("unfinished");
+    write_ppf(layer->fb->width, width);
   }
 
   if (ymode == PPF) {
-    puts("unfinished");
+    write_ppf(layer->fb->height, height);
+    dlist_memory[display_slot++] = 0xDEADBEEF; // context for scaling
   }
 
   if (xmode == TPZ) {
-    write_tpz(fb->width, width);
+    write_tpz(layer->fb->width, width);
   }
 
   if (ymode == TPZ) {
-    write_tpz(fb->height, height);
+    write_tpz(layer->fb->height, height);
     dlist_memory[display_slot++] = 0xDEADBEEF; // context for scaling
+  }
+
+  if (ymode == PPF || xmode == PPF) {
+    // TODO, if PPF is in use, write 4 pointers to the scaling kernels
+    uint32_t kernel = scaling_kernel;
+    dlist_memory[display_slot++] = kernel;
+    dlist_memory[display_slot++] = kernel;
+    dlist_memory[display_slot++] = kernel;
+    dlist_memory[display_slot++] = kernel;
   }
 
   //printf("entry size: %d, spans 0x%x-0x%x\n", display_slot - start, start, display_slot);
@@ -219,12 +256,12 @@ static enum handler_return hvs_irq(void *unused) {
 //#define SD_CYC 0x7ee00030
 
 static void check_sdram_usage(void) {
-  static float last_time = 1;
+  static double last_time = 1;
   uint64_t idle = *REG32(SD_IDL);
   uint64_t total = *REG32(SD_CYC);
   *REG32(SD_IDL) = 0;
   uint32_t idle_percent = (idle * 100) / (total);
-  float time = ((float)*REG32(ST_CLO)) / 1000000;
+  double time = ((float)*REG32(ST_CLO)) / 1000000;
   uint32_t clock = total / (time - last_time) / 1000 / 1000;
   last_time = time;
   printf("[%f] DDR2 was idle 0x%x / 0x%x cycles (%d%%) %dMHz\n", time, (uint32_t)idle, (uint32_t)total, idle_percent, clock);
@@ -235,7 +272,19 @@ static enum handler_return ddr2_checker(struct timer *unused1, unsigned int unus
   return INT_NO_RESCHEDULE;
 }
 
-#define DSP3_MUX(n) ((n & 0x3) << 18)
+static void upload_scaling_kernel(void) {
+  int kernel_start = scaling_kernel;
+#define PACK(a,b,c) ( (((a) & 0x1ff) << 0) | (((b) & 0x1ff) << 9) | (((c) & 0x1ff) << 18) )
+  // the Mitchell/Netravali filter copied from the linux source
+  const uint32_t half_kernel[] = { PACK(0, -2, -6), PACK(-8, -10, -8), PACK(-3, 2, 18), PACK(50, 82, 119), PACK(115, 187, 213), PACK(227, 227, 0) };
+  for (int i=0; i<11; i++) {
+    if (i < 6) {
+      dlist_memory[kernel_start + i] = half_kernel[i];
+    } else {
+      dlist_memory[kernel_start + i] = half_kernel[11 - i - 1];
+    }
+  }
+}
 
 void hvs_initialize() {
   static bool initialized = false;
@@ -254,7 +303,6 @@ void hvs_initialize() {
   debugTextLayer->name = "debug text";
 #endif
 
-  int hvs_channel = 1;
   *REG32(SCALER_DISPCTRL) &= ~SCALER_DISPCTRL_ENABLE; // disable HVS
   *REG32(SCALER_DISPCTRL) = SCALER_DISPCTRL_ENABLE // re-enable HVS
     | DSP3_MUX(3)
@@ -266,6 +314,7 @@ void hvs_initialize() {
   }
 
 #ifdef ENABLE_TEXT
+  int hvs_channel = 1;
   mutex_acquire(&channels[hvs_channel].lock);
   hvs_dlist_add(hvs_channel, debugTextLayer);
   mutex_release(&channels[hvs_channel].lock);
@@ -276,6 +325,7 @@ void hvs_initialize() {
   hvs_channels[0].dispbase = BASE_BASE(0x800) | BASE_TOP(0xf00);
 
   hvs_wipe_displaylist();
+  upload_scaling_kernel();
 
   *REG32(SCALER_DISPEOLN) = 0x40000000;
 }
@@ -287,7 +337,8 @@ void hvs_setup_irq() {
 
 uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
 
-static enum handler_return pv_irq(void *pvnr) {
+static enum handler_return pv_irq(void *arg) {
+  int pvnr = (int)arg;
   enum handler_return ret = INT_NO_RESCHEDULE;
   int hvs_channel = 1;
 #ifdef RPI4
@@ -395,9 +446,26 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
     rawpv->int_enable = 0;
     rawpv->int_status = 0xff;
     setup_pv_interrupt(pvnr, pv_irq, (void*)pvnr);
-    rawpv->int_enable = PV_INTEN_VFP_START | 0x3f;
+    rawpv->int_enable = PV_INTEN_VFP_START; // | 0x3f;
     //hvs_setup_irq();
     puts("done");
+  }
+
+  if (channel == 0) {
+    // 0 rgb888
+    // 1 rgb666
+    // 2 rgb565
+    // 3 rgb555
+    int dither_depth = 1;
+    // 0 none
+    // 1 Accumulate rounding error horizontally
+    // 2 As 1, but also apply pseudo-random noise. The noise generator is reset at the start of each frame
+    // 3 As 2, but the noise generator is free-running. This setting will produce a shimmering effect on static images that may be distracting.
+    int dither_mode = 1;
+
+    uint32_t dither = *REG32(SCALER_DISPDITHER);
+    uint32_t new = (dither_depth << 2) | dither_mode;
+    *REG32(SCALER_DISPDITHER) = (dither & (0xf << (channel * 4))) | (new << (channel * 4));
   }
 }
 
@@ -405,7 +473,7 @@ void hvs_wipe_displaylist(void) {
   for (int i=0; i<1024; i++) {
     dlist_memory[i] = CONTROL_END;
   }
-  display_slot = 0;
+  display_slot = 11;
 }
 
 static bool bcm_host_is_model_pi4(void) {
@@ -453,7 +521,7 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
   uint32_t list1 = *REG32(SCALER_DISPLIST1);
   printf("SCALER_DISPLIST1: 0x%x\n", list1);
   printf("SCALER_DISPLIST2: 0x%x\n\n", *REG32(SCALER_DISPLIST2));
-  for (int i=0; i<3; i++) {
+  for (unsigned int i=0; i<3; i++) {
     if ((argc > 1) && (argv[1].u != i)) continue;
     printf("SCALER_DISPCTRL%d: 0x%x\n", i, hvs_channels[i].dispctrl);
     printf("  width: %d\n", (hvs_channels[i].dispctrl >> 12) & 0xfff);
@@ -528,15 +596,43 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+struct gfx_surface *gfx_console;
+hvs_layer *console_layer[3];
+
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
-  puts("creating framebuffer for text console\n");
+  const int w = 640;
+  const int h = 480;
+  if (!gfx_console) {
+    puts("creating framebuffer for text console\n");
+    gfx_console = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
 
-  int w = 640;
-  int h = 210;
-  struct gfx_surface *gfx = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
-  bzero(gfx->ptr, gfx->len);
-  fb->image.pixels = gfx->ptr;
+    bzero(gfx_console->ptr, gfx_console->len);
+
+    // make visible on HVS1
+    int channel = 1;
+    console_layer[channel] = malloc(sizeof(hvs_layer));
+    mk_unity_layer(console_layer[channel], gfx_console, 50, 50, 30);
+    console_layer[channel]->name = "console";
+
+    mutex_acquire(&channels[channel].lock);
+    hvs_dlist_add(channel, console_layer[channel]);
+    hvs_update_dlist(channel);
+    mutex_release(&channels[channel].lock);
+
+    // make visible on HVS0
+    channel = 0;
+    console_layer[channel] = malloc(sizeof(hvs_layer));
+    mk_unity_layer(console_layer[channel], gfx_console, 50, 0, 0);
+    console_layer[channel]->name = "console0";
+
+    mutex_acquire(&channels[channel].lock);
+    hvs_dlist_add(channel, console_layer[channel]);
+    hvs_update_dlist(channel);
+    mutex_release(&channels[channel].lock);
+  }
+
+  fb->image.pixels = gfx_console->ptr;
   fb->format = DISPLAY_FORMAT_ARGB_8888;
   fb->image.format = IMAGE_FORMAT_ARGB_8888;
   fb->image.rowbytes = w * 4;
@@ -544,25 +640,6 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   fb->image.height = h;
   fb->image.stride = w;
   fb->flush = NULL;
-  hvs_layer *console_layer = malloc(sizeof(hvs_layer));
-  MK_UNITY_LAYER(console_layer, gfx, 50, 50, 30);
-  console_layer->name = "console";
-
-  int channel = 1;
-  mutex_acquire(&channels[channel].lock);
-  hvs_dlist_add(channel, console_layer);
-  hvs_update_dlist(channel);
-  mutex_release(&channels[channel].lock);
-
-
-  console_layer = malloc(sizeof(hvs_layer));
-  MK_UNITY_LAYER(console_layer, gfx, 50, 50, 130);
-  console_layer->name = "console0";
-  channel=0;
-  mutex_acquire(&channels[channel].lock);
-  hvs_dlist_add(channel, console_layer);
-  hvs_update_dlist(channel);
-  mutex_release(&channels[channel].lock);
 
   return NO_ERROR;
 }
@@ -582,8 +659,8 @@ void hvs_update_dlist(int channel) {
   assert(is_mutex_held(&channels[channel].lock));
   hvs_layer *layer;
 
-  uint32_t t = *REG32(ST_CLO);
-  printf("doing dlist update at %d\n", t);
+  //uint32_t t = *REG32(ST_CLO);
+  //printf("doing dlist update at %d\n", t);
 
   int list_start = display_slot;
 
@@ -591,7 +668,7 @@ void hvs_update_dlist(int channel) {
     if ((layer->w == layer->fb->width) && (layer->h == layer->fb->height)) { // unity scale
       hvs_add_plane(layer->fb, layer->x, layer->y, false);
     } else {
-      hvs_add_plane_scaled(layer->fb, layer->x, layer->y, layer->w, layer->h, false);
+      hvs_add_plane_scaled(layer);
     }
   }
 
@@ -623,12 +700,17 @@ void hvs_update_dlist(int channel) {
     return;
   }
 
-  if (display_slot > 4000) {
+  if (hvs_debug) {
+    printf("channel %d will next display %d-%d\n", channel, list_start, display_slot);
+  }
+
+  if (display_slot > 3000) {
     display_slot = 0;
-    puts("dlist loop");
+    //puts("dlist loop");
   }
 
   channels[channel].dlist_target = list_start;
+  hvs_debug = false;
 }
 
 int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {

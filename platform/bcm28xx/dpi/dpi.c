@@ -133,7 +133,7 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
 #ifdef HYPERPIXEL
   dpi_output_format = 0x7f226;
 #elif defined(GERTVGA)
-  dpi_output_format = 0x15;
+  dpi_output_format = 0x45;
 #else
   dpi_output_format = 0x6;
 #endif
@@ -238,6 +238,7 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   for (int i=16; i<=21; i++) {
     gpio_config(i, kBCM2708Pinmux_ALT2);
   }
+  hvs_set_background_color(0, 0xff0000);
 #endif
   return 0;
 }
