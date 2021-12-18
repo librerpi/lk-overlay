@@ -475,7 +475,7 @@ struct BCM2708SDHost : BlockDevice {
 			return false;
 		}
 
-		printf("    BlockLen: 0x%x\n", block_length);
+		printf("    BlockLen: 0x%llx\n", block_length);
 
 		if (!select_card()) {
 			//logf("ERROR: Failed to select card!\n");
@@ -593,8 +593,9 @@ struct BCM2708SDHost *sdhost = 0;
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
   //printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
-  for (int i=0; i<count; i++) {
-    uint32_t *dest = reinterpret_cast<uint32_t*>(buf + (sdhost->get_block_size() * i));
+  for (uint i=0; i<count; i++) {
+    // TODO, wont add right if buf is a 64bit pointer
+    uint32_t *dest = reinterpret_cast<uint32_t*>((uint32_t)buf + (sdhost->get_block_size() * i));
     bool ret = dev->real_read_block(block + i, dest);
     if (!ret) return -1;
   }

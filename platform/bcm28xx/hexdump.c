@@ -20,7 +20,7 @@ void hexdump_ram(volatile void *realaddr, uint32_t reportaddr, uint32_t count) {
   count = ROUNDUP(count, 16);
   for (uint32_t i = 0, fakeaddr = reportaddr; i < count; i += 16, fakeaddr += 16) {
     uint32_t fragment;
-    printf("0x%08lx ", fakeaddr);
+    printf("0x%08x ", fakeaddr);
     for (int j=0; j<4; j++) {
       fragment = buffer_start[((i/4)+j)];
       uint8_t a,b,c,d;
