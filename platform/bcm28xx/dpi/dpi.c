@@ -14,31 +14,49 @@
 #include <stdlib.h>
 
 int cmd_dpi_start(int argc, const console_cmd_args *argv);
-int cmd_dpi_count(int argc, const console_cmd_args *argv);
-int cmd_dpi_move(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("dpi_start", "start DPI interface", &cmd_dpi_start)
-STATIC_COMMAND("dpi_count", "begin counting on framebuffer", &cmd_dpi_count)
-STATIC_COMMAND("dpi_move", "move a pixel on the frame", &cmd_dpi_move)
 STATIC_COMMAND_END(dpi);
-
-gfx_surface *framebuffer;
-int width;
-int height;
-int stride;
-timer_t updater;
-uint8_t count;
-uint32_t count2;
 
 //#define HYPERPIXEL
 #define GERTVGA
+#define AVOID_MASH true
+
+static void timings_vga(struct pv_timings *t, int *fps) {
+  t->vfp = 3;
+  t->vsync = 4;
+  t->vbp = 13;
+  t->vactive = 480;
+
+  t->hfp = 60;
+  t->hsync = 64;
+  t->hbp = 80;
+  t->hactive = 640;
+  *fps = 60;
+}
+
+static void timings_1280_1024(struct pv_timings *t, int *fps) {
+  t->vfp = 3;
+  t->vsync = 7;
+  t->vbp = 29;
+  t->vactive = 1024;
+
+  t->hfp = 80;
+  t->hsync = 136;
+  t->hbp = 216;
+  t->hactive = 1280;
+  *fps = 60;
+}
 
 int cmd_dpi_start(int argc, const console_cmd_args *argv) {
+  // temp goal, 1280x1024@60Hz
   power_up_image();
   hvs_initialize();
 
   struct pv_timings t;
+  int fps;
+
   t.clock_mux = clk_dpi_smi_hdmi;
   t.interlaced = false;
 #ifdef HYPERPIXEL
@@ -52,15 +70,8 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   t.hbp = 59;
   t.hactive = 480;
 #elif defined(GERTVGA)
-  t.vfp = 3;
-  t.vsync = 4;
-  t.vbp = 13;
-  t.vactive = 480;
-
-  t.hfp = 60;
-  t.hsync = 64;
-  t.hbp = 80;
-  t.hactive = 640;
+  //timings_vga(&t, &fps);
+  timings_1280_1024(&t, &fps);
 #else
   t.vfp = 0;
   t.vsync = 1;
@@ -73,31 +84,21 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   t.hactive = 10;
 #endif
 
-  if (!framebuffer) {
-    width = t.hactive;
-    height = t.vactive;
-    stride = t.hactive;
-    framebuffer = gfx_create_surface(NULL, width, height, width, GFX_FORMAT_ARGB_8888);
+  hvs_configure_channel(0, t.hactive, t.vactive, false);
+
+  int htotal = t.hfp + t.hsync + t.hbp + t.hactive;
+  int vtotal = t.vfp + t.vsync + t.vbp + t.vactive;
+  int total_pixels = htotal * vtotal;
+
+  double desired_divider = (double)freq_pllc_per / total_pixels / fps;
+
+  int lower_fps = freq_pllc_per / (int)desired_divider / total_pixels;
+  int higher_fps = freq_pllc_per / ((int)desired_divider+1) / total_pixels;
+  printf("divisor %f, fps bounds %d-%d, ", desired_divider, lower_fps, higher_fps);
+  if (AVOID_MASH) {
+    desired_divider = (int)(desired_divider + 0.5);
   }
-  for (int x=0; x< height; x++) {
-    for (int y=0; y < width; y++) {
-      gfx_putpixel(framebuffer, x, y, (0xff<<24) | (y << 16) | (y << 8) | y);
-    }
-  }
-  hvs_configure_channel(0, width, height, false);
 
-#if 0
-  int list_start = display_slot;
-  hvs_add_plane(framebuffer, 0, 0, false);
-  hvs_terminate_list();
-
-  *REG32(SCALER_DISPLIST0) = list_start;
-  *REG32(SCALER_DISPLIST1) = list_start;
-  *REG32(SCALER_DISPLIST2) = list_start;
-#endif
-
-
-  // 0x200 means clock/2
 #ifdef HYPERPIXEL
   *REG32(CM_DPIDIV) = CM_PASSWORD | (0xe00 << 4);
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_KILL_SET | CM_SRC_PLLC_CORE0;
@@ -105,7 +106,8 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
 #elif defined(GERTVGA)
-  *REG32(CM_DPIDIV) = CM_PASSWORD | (0xc00 << 4);
+  int fixed_point_divider = desired_divider * 0x100;
+  *REG32(CM_DPIDIV) = CM_PASSWORD | (fixed_point_divider << 4);
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_KILL_SET | CM_SRC_PLLC_CORE0;
   while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_ENAB_SET | CM_SRC_PLLC_CORE0;
@@ -117,14 +119,11 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   *REG32(CM_DPICTL) = CM_PASSWORD | CM_DPICTL_ENAB_SET | CM_SRC_OSC;
   while (*REG32(CM_DPICTL) & CM_DPICTL_BUSY_SET) {};
 #endif
-  printf("DPI clock set\n");
   int rate = measure_clock(17);
   printf("DPI clock measured at %d KHz, ", rate/1000);
 
-  int htotal = t.hfp + t.hsync + t.hbp + t.hactive;
-  int vtotal = t.vfp + t.vsync + t.vbp + t.vactive;
   printf("hsync rate: %d Hz, ", rate / htotal);
-  printf("vsync rate: %d Hz, ", rate / (htotal * vtotal));
+  printf("vsync rate: %d Hz, ", rate / total_pixels);
   printf("htotal: %d, vtotal: %d\n", htotal, vtotal);
 
   setup_pixelvalve(&t, 0);
@@ -240,39 +239,6 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   }
   hvs_set_background_color(0, 0xff0000);
 #endif
-  return 0;
-}
-
-static enum handler_return updater_entry(struct timer *t, lk_time_t now, void *arg) {
-  for (int y=0; y<height; y++) {
-    for (int x=0; x<width; x++) {
-      gfx_putpixel(framebuffer, x, y, 0xff000000 | (count << 16));
-    }
-  }
-  count++;
-  return INT_NO_RESCHEDULE;
-}
-
-int cmd_dpi_count(int argc, const console_cmd_args *argv) {
-  timer_initialize(&updater);
-  timer_set_periodic(&updater, 1000, updater_entry, NULL);
-  return 0;
-}
-
-static enum handler_return mover_entry(struct timer *t, lk_time_t now, void *arg) {
-  int y = count2 / width;
-  int x = count2 % width;
-  gfx_putpixel(framebuffer, x, y, 0xff000000);
-  count2 = (count2+1) % (width*height);
-  y = count2 / width;
-  x = count2 % width;
-  gfx_putpixel(framebuffer, x, y, 0xffffffff);
-  return INT_NO_RESCHEDULE;
-}
-
-int cmd_dpi_move(int argc, const console_cmd_args *argv) {
-  timer_initialize(&updater);
-  timer_set_periodic(&updater, 10, mover_entry, NULL);
   return 0;
 }
 
