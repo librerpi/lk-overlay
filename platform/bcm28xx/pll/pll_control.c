@@ -16,6 +16,9 @@ STATIC_COMMAND_START
 STATIC_COMMAND("set_pll_freq", "set pll frequency", &cmd_set_pll_freq)
 STATIC_COMMAND_END(pll_control);
 
+unsigned int freq_pllc_core0;
+uint64_t freq_pllc_per;
+
 const struct pll_def pll_def[] = {
 #if 0
   [PLL_A] = {
@@ -490,17 +493,24 @@ void switch_vpu_to_src(int src) {
   while (*REG32(CM_VPUCTL) & CM_VPUCTL_BUSY_SET) {};
 }
 
+// linux source says PLLC has a range of 600mhz to 3ghz
+// above 1.75ghz, the pre-div should be enabled
 void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   int pdiv = 1;
+  bool prediv = true;
   uint64_t xtal_in = xtal_freq;
   printf("xtal_in = %llu\n", xtal_in);
-  uint64_t goal_freq = target_freq / 2;
+  uint64_t goal_freq = target_freq;
+
+  // if over 1.75ghz, enable an extra /2 stage
+  if (prediv) goal_freq /= 2;
+
   printf("goal_freq = %llu\n", goal_freq);
   uint64_t divisor = (goal_freq<<20) / xtal_in;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
   printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
 
   const bool core0_enable = true;
   const bool core1_enable = false;
@@ -514,11 +524,11 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
 
   *REG32(A2W_PLLC_FRAC) = A2W_PASSWORD | frac;
   *REG32(A2W_PLLC_CTRL) = A2W_PASSWORD | div | PDIV(pdiv);
-  printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLC_FRAC), frac);
+  //printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLC_FRAC), frac);
 
   *REG32(A2W_PLLC_ANA3) = A2W_PASSWORD | KA(2);
   *REG32(A2W_PLLC_ANA2) = A2W_PASSWORD | 0x0;
-  *REG32(A2W_PLLC_ANA1) = A2W_PASSWORD | ANA1_DOUBLE | KI(2) | KP(8);
+  *REG32(A2W_PLLC_ANA1) = A2W_PASSWORD | (prediv ? ANA1_DOUBLE : 0) | KI(2) | KP(8);
   *REG32(A2W_PLLC_ANA0) = A2W_PASSWORD | 0x0;
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_DIGRST_SET;
@@ -562,4 +572,69 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
   *REG32(A2W_PLLC_FRAC) = A2W_PASSWORD | frac;
   //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
+
+  freq_pllc_core0 = target_freq / core0_div;
+  freq_pllc_per = target_freq / per_div;
+  //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
+}
+
+void setup_pllh(uint64_t target_freq) {
+  int pdiv = 1;
+  uint64_t xtal_in = xtal_freq;
+  printf("xtal_in = %llu\n", xtal_in);
+  uint64_t goal_freq = target_freq / 2;
+  printf("goal_freq = %llu\n", goal_freq);
+  uint64_t divisor = (goal_freq<<20) / xtal_in;
+  int div = divisor >> 20;
+  int frac = divisor & 0xfffff;
+  printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_ANARST_SET;
+
+  *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_HDMIEN_SET;
+
+  *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
+  *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv);
+  printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLH_FRAC), frac);
+
+  *REG32(A2W_PLLH_ANA3) = A2W_PASSWORD | KA(2);
+  *REG32(A2W_PLLH_ANA2) = A2W_PASSWORD | 0x0;
+  *REG32(A2W_PLLH_ANA1) = A2W_PASSWORD | ANA1_DOUBLE | KI(2) | KP(8);
+  *REG32(A2W_PLLH_ANA0) = A2W_PASSWORD | 0x0;
+
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+
+  /* hold all */
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+
+  *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x0;
+  *REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x400000;
+  *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x5;
+  *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
+
+  *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLLH_CTRL_PRSTN_SET;
+  *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
+
+  *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x42;
+  *REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x500401;
+  *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x4005;
+  *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
+
+  //*REG32(A2W_PLLH_CORE0) = A2W_PASSWORD | core0_div;
+  //*REG32(A2W_PLLH_CORE1) = A2W_PASSWORD | 3;
+
+  //*REG32(A2W_PLLH_PER) = A2W_PASSWORD | per_div;
+
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+
+  puts("waiting for lock");
+  while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKC_BIT)) {}
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 }

@@ -74,7 +74,7 @@ void power_up_usb(void) {
 }
 
 void power_domain_on(volatile uint32_t *reg, uint32_t rstn, const char *name) {
-  printf("bringing up %s domain, reg: 0x%08x\n", name, reg);
+  printf("bringing up %s domain, reg: 0x%08x\n", name, (uint32_t)reg);
   /* If it was already powered on by the fw, leave it that way. */
   if (*REG32(reg) & PM_POWUP) {
     puts("already on");

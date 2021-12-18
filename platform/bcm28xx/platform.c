@@ -196,11 +196,14 @@ void platform_init_mmu_mappings(void) {
 
 static void vpu_clock_updated(int core0_div, int vpu_divisor) {
   int vpu = measure_clock(5);
-  printf("vpu raw: %d\n", vpu);
+  //printf("vpu raw: %d\n", vpu);
+
   int pllc_core0 = vpu*vpu_divisor;
   uint32_t pllc = pllc_core0 * core0_div;
+
   dprintf(INFO, "VPU now at %dmhz(%d), ", vpu/1000/1000, vpu_clock);
   dprintf(INFO, "PLLC_CORE0 at %dmhz, ", pllc_core0/1000/1000);
+  dprintf(INFO, "PLLC_PER at %lldMHz, ", freq_pllc_per / 1000 / 1000);
   dprintf(INFO, "PLLC at %dmhz\n", pllc / 1000 / 1000);
   vpu_clock = vpu/1000/1000;
 }
@@ -305,18 +308,25 @@ static void platform_setup_pllc(float pllc_mhz) {
 #endif
 }
 
+// TODO, these claims are likely a combination of both VPU and CORE0 clocks?
+// if CM_VPU is below 116mhz, the HVS cant support 1280x1024 at all
+// if CM_VPU is below 116-350mhz, the HVS has trouble with v-scaling
 static void old_switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
   int core0_div = 2;
-  int per_div = 2;
+  int per_div = 3;
 
-  const uint64_t pllc_mhz = 108 * per_div * 3;
+  uint64_t pllc_mhz = 108 * per_div * 4;
+
+  pllc_mhz = 108 * 9;
+
+  printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 
   setup_pllc(    pllc_mhz * 1000 * 1000, core0_div, per_div);
 
-  int vpu_divisor = 4;
+  int vpu_divisor = 1;
   vpu_clock = pllc_mhz / core0_div / vpu_divisor;
 
   const uint32_t vpu_source = CM_SRC_PLLC_CORE0;
@@ -521,6 +531,7 @@ static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
   uint32_t limit = 100000;
   asm volatile ("nop");
   for (uint32_t i=0; i<limit; i++) {
+    asm volatile ("ld r5, (%0)" : : "r"(0xc0000000): "r5");
     /*asm volatile(
         //"v8ld H(0++,0), (%0+=%1) REP64"
         "v32ld HY(0++,0), (%0+=%1)"
@@ -553,7 +564,7 @@ void platform_init(void) {
 #endif
   uart_init();
   udelay(1000);
-  benchmark_self();
+  //benchmark_self();
   printf("A2W_SMPS_A_VOLTS: 0x%x\n", *REG32(A2W_SMPS_A_VOLTS));
 #if 0
     init_framebuffer();

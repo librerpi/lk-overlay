@@ -68,7 +68,10 @@ struct pll_chan_def {
 };
 
 extern uint32_t xtal_freq;
+extern unsigned int freq_pllc_core0;
+extern uint64_t freq_pllc_per;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
 void setup_pllc(uint64_t freq, int core0_div, int per_div);
+void setup_pllh(uint64_t freq);
 void switch_vpu_to_src(int src);

@@ -189,9 +189,10 @@ typedef struct {
 
 // 7.8 / (1.0 / 400)
 
+// 2021-11-29 08:40:57 < zid> tCL tRP are cas and ras usually
 lpddr2_timings_t g_InitSdramParameters = {
   /* SA (us) */
-  .tREFI = 3113, //Refresh rate: 3113 * (1.0 / 400) = 7.78us
+  .tREFI = 3113,    //Refresh rate: 3113 * (1.0 / 400) = 7.78us
   /* SC (ns) */
   .tRFCab = 50,
   .tRRD = 2,
@@ -203,15 +204,15 @@ lpddr2_timings_t g_InitSdramParameters = {
   .tXP = 1,
   .tRASmin = 15,
   .tRPpb = 6,
-  .tRCD = 6,
+  .tRCD = 6,        // 2021-11-29 08:42:11 < zid> trcd = ras to cas delay
   /* SE (ns) */
   .tFAW = 18,
-  .tRTP = 1,
+  .tRTP = 1,        // 2021-11-29 08:40:25 < zid> tRTP is precharge time..
   .tXSR = 54,
   /* PT */
-  .tINIT1 = 40, // Minimum CKE low time after completion of power ramp: 40 * (1.0 / 0.4) = 100ns
-  .tINIT3 = 79800, // Minimum Idle time after first CKE assertion: 79800 * (1.0 / 400) = 199.5us ~ 200us
-  .tINIT5 = 3990, //Max DAI: 3990* (1.0 / 400) = 9.9us ~ 10us
+  .tINIT1 = 40,     // Minimum CKE low time after completion of power ramp: 40 * (1.0 / 0.4) = 100ns
+  .tINIT3 = 79800,  // Minimum Idle time after first CKE assertion: 79800 * (1.0 / 400) = 199.5us ~ 200us
+  .tINIT5 = 3990,   // Max DAI: 3990* (1.0 / 400) = 9.9us ~ 10us
   /* SB */
   .rowbits = 2,
   .colbits = 1,
@@ -244,7 +245,9 @@ static void reset_with_timing(lpddr2_timings_t* T) {
   *REG32(APHY_CSR_DDR_PLL_POST_DIV_RESET) = 0;
 
   /* 400MHz */
-  *REG32(APHY_CSR_DDR_PLL_VCO_FREQ_CNTRL0) = (1 << 16) | 0x53;
+  // (19.2mhz * 83) / 4 == 398.4 mhz
+  int divisor = 83;
+  *REG32(APHY_CSR_DDR_PLL_VCO_FREQ_CNTRL0) = (1 << 16) | divisor;
   *REG32(APHY_CSR_DDR_PLL_VCO_FREQ_CNTRL1) = 0;
   *REG32(APHY_CSR_DDR_PLL_MDIV_VALUE) = 0;
 

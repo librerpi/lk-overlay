@@ -186,7 +186,7 @@ static const char *clock_names[] = {
   [0x1c] = "uart",
   [0x1d] = "vec",
   [0x26] = "aveo",
-  [0x26] = "emmc",
+  //[0x26] = "emmc",
   [0x2a] = "emmc2"
 };
 
@@ -244,7 +244,7 @@ int cmd_measure_clocks(int argc, const console_cmd_args *argv) {
 // source 2 is PLLB_ARM, only works with pllnr 1
 // source 3 is PLLC/2, works on pllnr 0/1/2
 float measure_clock2(int pllnr, int source) {
-  uint32_t pllbit;
+  uint32_t pllbit = 0;
   switch (pllnr) {
   case 0:
     pllbit = CM_TDCLKEN_PLLADIV2_SET;
