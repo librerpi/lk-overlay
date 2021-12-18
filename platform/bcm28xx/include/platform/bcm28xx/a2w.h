@@ -159,3 +159,15 @@
 #define A2W_PLLD_ANA_VCO        (A2W_BASE + 0x650)
 #define A2W_PLLH_ANA_VCO        (A2W_BASE + 0x670)
 #define A2W_PLLB_ANA_VCO        (A2W_BASE + 0x6f0)
+
+#define A2W_PLLH_ANA1           (A2W_BASE + 0x074)
+#define A2W_PLLH_ANA2           (A2W_BASE + 0x078)
+#define A2W_PLLH_ANA3           (A2W_BASE + 0x07c)
+#define A2W_PLLH_DIG1           (A2W_BASE + 0x064)
+#define A2W_PLLH_DIG2           (A2W_BASE + 0x068)
+#define A2W_PLLH_DIG3           (A2W_BASE + 0x06c)
+
+#define CM_PLLH_ANARST_SET                                 0x00000100
+#define A2W_XOSC_CTRL_HDMIEN_SET                           0x00000002
+#define CM_PLLH_DIGRST_SET                                 0x00000200
+#define A2W_PLLH_CTRL_PRSTN_SET                            0x00020000
