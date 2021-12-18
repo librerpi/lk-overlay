@@ -1,13 +1,14 @@
 #include <app.h>
+#include <lib/console.h>
 #include <lk/init.h>
 #include <platform/bcm28xx/hvs.h>
 #include <stdlib.h>
 
 gfx_surface *gfx_grid;
 hvs_layer *grid_layer;
+int channel = PRIMARY_HVS_CHANNEL;
 
 static void grid_init(uint level) {
-  int channel = 0;
   int width = 102;
   int height = 102;
 
@@ -40,15 +41,16 @@ static void grid_init(uint level) {
 }
 
 static void grid_entry(const struct app_descriptor *app, void *args) {
-  int channel = 0;
   bool grow_w = true;
   bool grow_h = true;
+
+  thread_sleep(10 * 1000);
 
   thread_set_real_time(get_current_thread());
   thread_set_priority(HIGHEST_PRIORITY);
 
   while (true) {
-    hvs_wait_vsync(0);
+    hvs_wait_vsync(channel);
 
     {
       if (grow_w && (grid_layer->w >= 300)) grow_w = false;
