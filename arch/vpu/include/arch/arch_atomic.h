@@ -24,3 +24,28 @@ static inline int atomic_add(volatile int *ptr, int val) {
   if (!state) arch_enable_ints();
   return temp;
 }
+
+static inline int atomic_and(volatile int *ptr, int val) {
+  int temp;
+  bool state;
+
+  state = arch_ints_disabled();
+  arch_disable_ints();
+  temp = *ptr;
+  *ptr = temp & val;
+  if (!state)
+      arch_enable_ints();
+  return temp;
+}
+static inline int atomic_or(volatile int *ptr, int val) {
+    int temp;
+    bool state;
+
+    state = arch_ints_disabled();
+    arch_disable_ints();
+    temp = *ptr;
+    *ptr = temp | val;
+    if (!state)
+        arch_enable_ints();
+    return temp;
+}
