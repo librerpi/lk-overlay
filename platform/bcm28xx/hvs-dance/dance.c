@@ -179,7 +179,7 @@ void dance_start(gfx_surface* fbin, int hvs_channel) {
   for (int i=0; i<ITEMS; i++) {
     struct item *it = &items[i];
     it->visible = false;
-    MK_UNITY_LAYER(&it->layer, fbin, i, 150, 150);
+    mk_unity_layer(&it->layer, fbin, i, 150, 150);
     it->layer.name = malloc(10);
     snprintf(it->layer.name, 10, "sprite %d", i);
     it->layer.w /= 4;
@@ -216,7 +216,7 @@ static void dance_entry(const struct app_descriptor *app, void *args) {
   while (true) {
     uint32_t stat = hvs_wait_vsync(hvs_channel);
 
-    uint32_t line = SCALER_STAT_LINE(stat);
+    //uint32_t line = SCALER_STAT_LINE(stat);
     uint32_t frame = (stat >> 12) & 0x3f;
     //printf("frame %d\n", frame);
     do_frame_update(frame);
