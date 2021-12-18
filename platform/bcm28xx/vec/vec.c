@@ -12,12 +12,13 @@
 #include <platform/bcm28xx/vec.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef WITH_TGA
 #include <lib/tga.h>
 #include "pi-logo.h"
 #include "ResD1_720X480.h"
-#include <dance.h>
+//#include <dance.h>
 #endif
 
 //extern uint8_t* pilogo;
@@ -31,13 +32,12 @@ enum vec_mode {
 
 
 #ifdef WITH_TGA
-static gfx_surface *logo, *gfx_testimage;
+static gfx_surface *logo;
 #endif
 
 
 static void draw_background_grid(void) {
   //hvs_add_plane(gfx_grid, 0, 0, false);
-  //hvs_add_plane(gfx_testimage, 0, 0, false);
 }
 
 static void vec_init(uint level) {
@@ -51,11 +51,12 @@ static void vec_init(uint level) {
   power_up_usb();
 #endif
   hvs_initialize();
-#ifdef RPI4
-  *REG32(CM_VECDIV) = CM_PASSWORD | 13 << 12;
-#else
-  *REG32(CM_VECDIV) = CM_PASSWORD | 3 << 12;
-#endif
+
+  // TODO, this assumes freq_pllc_per is a multiple of 108mhz
+  // it should check if it isnt, and report an error
+  int desired_divider = freq_pllc_per / 108000000;
+
+  *REG32(CM_VECDIV) = CM_PASSWORD | desired_divider << 12;
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   int rate = measure_clock(29);
@@ -141,7 +142,6 @@ static void vec_init(uint level) {
 
 #ifdef WITH_TGA
   //logo = tga_decode(pilogo, sizeof(pilogo), GFX_FORMAT_ARGB_8888);
-  //gfx_testimage = tga_decode(testimage, sizeof(testimage), GFX_FORMAT_ARGB_8888);
 
   if (false) {
     hvs_layer *new_layer = malloc(sizeof(hvs_layer));
@@ -151,7 +151,7 @@ static void vec_init(uint level) {
     new_layer->y = 50;
     new_layer->w = logo->width / 4;
     new_layer->h = logo->height / 4;
-    new_layer->name = "logo 1";
+    new_layer->name = strdup("logo 1");
     hvs_dlist_add(channel, new_layer);
   }
 
