@@ -201,6 +201,8 @@ void sleh_fatal(vc4_saved_state_t* pcb, uint32_t n) {
     printf("L2_L2_ALIAS_EXCEPTION_ADDR: 0x%x\n", *REG32(L2_L2_ALIAS_EXCEPTION_ADDR));
   }
 
+  dump_all_threads();
+
   printf("We are hanging here ...\n");
   //platform_halt(HALT_ACTION_REBOOT, HALT_REASON_SW_RESET);
 
