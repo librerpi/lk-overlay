@@ -34,6 +34,8 @@ bool aarch64 = false;
 timer_t arm_check;
 uint32_t w = 620;
 uint32_t h = 210;
+
+// place arm framebuffer 96mb into ram
 static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
 
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
@@ -71,15 +73,15 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
 static void setup_framebuffer(void) {
   int channel = 1;
 
-  void *fb_addr = (void*)(0xc0000000 | fb_phys_addr);
+  void *fb_addr_uncached = (void*)(0xc0000000 | fb_phys_addr);
 
-  gfx_surface *simple_fb = gfx_create_surface(fb_addr, w, h, w, GFX_FORMAT_ARGB_8888);
+  gfx_surface *simple_fb = gfx_create_surface(fb_addr_uncached, w, h, w, GFX_FORMAT_ARGB_8888);
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
-  MK_UNITY_LAYER(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
+  mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
   //simple_fb_layer->w /= 4;
   //simple_fb_layer->h /= 4;
-  simple_fb_layer->name = "simple-framebuffer";
+  simple_fb_layer->name = strdup("simple-framebuffer");
 
   mutex_acquire(&channels[channel].lock);
   hvs_dlist_add(channel, simple_fb_layer);
@@ -214,28 +216,28 @@ static void copy_arm_payload(void) {
 static void rechecksum_arm(void) {
   uint32_t *dest = (uint32_t*)0xc0000000;
   uint32_t size = chosenPayload->payload_size;
-  uint32_t crc = crc32(0, dest, size);
+  uint32_t crc = crc32(0, (unsigned char*)dest, size);
   logf("checksum after: 0x%08x\n", crc);
 
   if (crc != orig_checksum) {
     logf("arm payload modified, its alive\n");
-    uint32_t *orig = chosenPayload->payload_addr;
-    for (int i=0; i<(chosenPayload->payload_size/4); i++) {
+    uint32_t *orig = (uint32_t*)chosenPayload->payload_addr;
+    for (unsigned int i=0; i<(chosenPayload->payload_size/4); i++) {
       if (orig[i] != dest[i]) logf("0x%x: 0x%x != 0x%x\n", i*4, orig[i], dest[i]);
     }
   }
 }
 
-static inter_core_header *find_header(uint32_t *start, size_t size) {
-  for (uint32_t *i = start; (i - start) < size; i += 4) { // increment by 16 bytes
+static inter_core_header *find_header(uint32_t *start, uint32_t size) {
+  for (uint32_t *i = start; i < (start + size); i += 4) { // increment by 16 bytes
     if (*i == INTER_ARCH_MAGIC) return (inter_core_header*)i;
   }
   return NULL;
 }
 
-static void patch_arm_payload(void) {
+static bool patch_arm_payload(void) {
   void *dtb_src = setupInterArchDtb();
-  if (!dtb_src) return;
+  if (!dtb_src) return false;
   void *dtb_dst = (void*) ROUNDUP(chosenPayload->payload_size, 4);
 
   uint32_t t0 = *REG32(ST_CLO);
@@ -244,7 +246,7 @@ static void patch_arm_payload(void) {
   if (hdr) {
     printf("header found at %p in %d uSec\n", hdr, t1-t0);
     printf("MEMORY: 0x0 + 0x%x: payload ram\n", hdr->end_of_ram);
-    dtb_dst = ROUNDUP(hdr->end_of_ram, 4);
+    dtb_dst = (void*)(ROUNDUP(hdr->end_of_ram, 4));
   }
 
   int ret;
@@ -255,6 +257,15 @@ static void patch_arm_payload(void) {
   free(dtb_src);
   hdr->dtb_base = (uint32_t)dtb_dst;
   printf("MEMORY: %p + 0x%x: inter arch dtb\n", dtb_dst, size);
+  return true;
+}
+
+#define PM_CAM1 0x7e100048
+static void cam1_enable(void) {
+  uint32_t t = *REG32(PM_CAM1);
+  *REG32(PM_CAM1) = t | PM_PASSWORD | 0x1;
+  t = *REG32(PM_CAM1);
+  *REG32(PM_CAM1) = t | PM_PASSWORD | 0x4;
 }
 
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
@@ -275,6 +286,10 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   power_arm_start();
   printregs();
   printf("arm starting...\n");
+  printf("CAM1_ICTL: 0x%x\n", *REG32(0x7e801100));
+
+  cam1_enable();
+
 
   copy_arm_payload();
   patch_arm_payload();
