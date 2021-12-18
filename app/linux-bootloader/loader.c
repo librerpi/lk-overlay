@@ -1,8 +1,8 @@
 #include <app.h>
 #include <arch.h>
-#include <arch/arm/mmu.h>
 #include <arch/ops.h>
 #include <dev/display.h>
+#include <kernel/thread.h>
 #include <kernel/vm.h>
 #include <lib/fs.h>
 #include <lib/partition.h>
@@ -17,6 +17,12 @@
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#if defined(ARCH_ARM)
+#include <arch/arm/mmu.h>
+#elif defined(ARCH_ARM64)
+#include <arch/arm64/mmu.h>
+#endif
 
 struct mem_entry {
   uint32_t address;
@@ -33,8 +39,8 @@ void find_and_mount(void);
 bool load_kernel(void**, size_t *);
 void asm_set_ACTLR(uint32_t);
 
-#define KERNEL_LOAD_ADDRESS 0x1000000 // 16mb from start
-#define DTB_LOAD_ADDRESS    0x2000000 // 32mb from start
+#define DTB_LOAD_ADDRESS    (32 * MB)
+#define KERNEL_LOAD_ADDRESS (16 * MB)
 
 void *kernel_virtual;
 void *dtb_virtual;
@@ -70,7 +76,7 @@ void *read_file(void *buffer, size_t maxSize, const char *filepath) {
     return NULL;
   }
 
-  if (maxSize & (stat.size > maxSize)) {
+  if (maxSize && (stat.size > maxSize)) {
     printf("file %s is too big (%lld > %d) aborting\n", filepath, stat.size, maxSize);
     fs_close_file(fh);
     return NULL;
@@ -98,7 +104,9 @@ void *read_file(void *buffer, size_t maxSize, const char *filepath) {
 }
 
 static bool map_physical(uint32_t phys_addr, void **virt_addr, uint32_t size, const char *name) {
+  printf("map_physical(%x, %p, %d, %s)\n", phys_addr, virt_addr, size, name);
   status_t ret = vmm_alloc_physical(vmm_get_kernel_aspace(), name, ROUNDUP(size, PAGE_SIZE), virt_addr, 0, phys_addr, 0, 0);
+  puts("done");
   return ret == NO_ERROR;
 }
 
@@ -194,6 +202,20 @@ static bool patch_dtb(void) {
     }
   }
 
+  int unicam = fdt_path_offset(v_fdt, "/soc/csi@7e801000");
+  if (unicam < 0) {
+    printf("cant find unicam node: %d\n", unicam);
+  } else {
+    fdt_setprop_string(v_fdt, unicam, "status", "okay");
+  }
+
+  int sensor = fdt_path_offset(v_fdt, "/soc/i2cmux0/i2c@1/ov5647@36");
+  if (sensor < 0) {
+    printf("cant find sensor node: %d\n", sensor);
+  } else {
+    fdt_setprop_string(v_fdt, sensor, "status", "okay");
+  }
+
   ret = fdt_add_subnode(v_fdt, 0, "timestamps");
   if (ret < 0) {
     printf("unable to add timestamps: %d\n", ret);
@@ -207,9 +229,22 @@ static bool patch_dtb(void) {
 }
 
 static void execute_linux(void) {
+#ifdef ARCH_ARM
   printf("core %d passing control off to linux!!!\n", arch_curr_cpu_num());
-  arch_chain_load(kernel_virtual, 0, ~0, 0x2000000, 0);
+  arch_chain_load(kernel_virtual, 0, ~0, DTB_LOAD_ADDRESS, 0);
+#endif
+#ifdef ARCH_ARM64
+  printf("core %d passing control off to linux!!!\n", arch_curr_cpu_num());
+  arch_chain_load(kernel_virtual, DTB_LOAD_ADDRESS, 0, 0, 0);
+#endif
 }
+
+#ifdef ARCH_ARM64
+static void arm_write_cntfrq(uint32_t val) {
+  //ARM64_WRITE_SYSREG(cntfrq_el1, val);
+  //ARM64_WRITE_SYSREG(cntfrq_el0, val);
+}
+#endif
 
 static void prepare_arm_core(void) {
   bool need_timer = true; // FIXME, only on pi2/pi3
@@ -228,12 +263,14 @@ static void prepare_arm_core(void) {
 }
 
 static void dump_random_arm_regs(void) {
+#ifdef ARCH_ARM
   printf("ACTLR:  0x%08x\n", arm_read_actlr());
   printf("CNTFRQ: %d\n", arm_read_cntfrq());
   printf("CPACR:  0x%08x\n", arm_read_cpacr());
   printf("CPSR:   0x%08x\n", read_cpsr());
   printf("NSACR:  0x%08x\n", arm_read_nsacr());
   //printf("SCR:    0x%x\n", arm_read_scr());
+#endif
 }
 
 static void loader_entry(const struct app_descriptor *app, void *args) {
@@ -257,8 +294,11 @@ static void loader_entry(const struct app_descriptor *app, void *args) {
   puts("\nAFTER");
   dump_random_arm_regs();
 #endif
+  thread_sleep(1000);
   prepare_arm_core();
   execute_linux();
+  thread_sleep(1000);
+  puts("linux didnt execute, thread exiting");
 }
 
 APP_START(loader)
