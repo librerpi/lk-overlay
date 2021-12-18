@@ -15,6 +15,7 @@
 #include <platform/interrupts.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 
 #ifdef RPI4
@@ -195,7 +196,7 @@ void hvs_add_plane_scaled(hvs_layer *layer) {
   dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                 // pointer word 0
   dlist_memory[display_slot++] = 0xDEADBEEF;                                            // pointer context word 0 dummy for HVS state
   dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;              // pitch word 0
-  dlist_memory[display_slot++] = (scaled_layer_count * 720);         // LBM base addr
+  dlist_memory[display_slot++] = (scaled_layer_count * 1280);         // LBM base addr
   scaled_layer_count++;
 
 #if 0
@@ -244,7 +245,7 @@ void hvs_add_plane_scaled(hvs_layer *layer) {
 void hvs_terminate_list(void) {
   //printf("adding termination at %d\n", display_slot);
   dlist_memory[display_slot++] = CONTROL_END;
-  if (scaled_layer_count > 10) scaled_layer_count = 0;
+  if (scaled_layer_count > 10) scaled_layer_count = 1;
 }
 
 static enum handler_return hvs_irq(void *unused) {
@@ -335,7 +336,9 @@ void hvs_setup_irq() {
   unmask_interrupt(33);
 }
 
-uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
+#ifdef TIMESTAMP_TIMINGS
+static uint32_t hsync, hbp, hact, hfp, vsync, vbp, vfps, last_vfps;
+#endif
 
 static enum handler_return pv_irq(void *arg) {
   int pvnr = (int)arg;
@@ -347,14 +350,20 @@ static enum handler_return pv_irq(void *arg) {
   if (pvnr == 0) hvs_channel = 0;
   else if (pvnr == 2) hvs_channel = 1;
 #endif
+
+#ifdef TIMESTAMP_TIMINGS
   uint32_t t = *REG32(ST_CLO);
+#endif
+
   struct pixel_valve *rawpv = getPvAddr((int)pvnr);
   uint32_t stat = rawpv->int_status;
   uint32_t ack = 0;
   uint32_t stat1 = hvs_channels[hvs_channel].dispstat;
   if (stat & PV_INTEN_HSYNC_START) {
     ack |= PV_INTEN_HSYNC_START;
+#ifdef TIMESTAMP_TIMINGS
     hsync = t;
+#endif
     if ((SCALER_STAT_LINE(stat1) % 5) == 0) {
       //hvs_set_background_color(1, 0x0000ff);
     } else {
@@ -363,31 +372,43 @@ static enum handler_return pv_irq(void *arg) {
   }
   if (stat & PV_INTEN_HBP_START) {
     ack |= PV_INTEN_HBP_START;
+#ifdef TIMESTAMP_TIMINGS
     hbp = t;
+#endif
   }
   if (stat & PV_INTEN_HACT_START) {
     ack |= PV_INTEN_HACT_START;
+#ifdef TIMESTAMP_TIMINGS
     hact = t;
+#endif
   };
   if (stat & PV_INTEN_HFP_START) {
     ack |= PV_INTEN_HFP_START;
+#ifdef TIMESTAMP_TIMINGS
     hfp = t;
+#endif
   }
   if (stat & PV_INTEN_VSYNC_START) {
     ack |= PV_INTEN_VSYNC_START;
+#ifdef TIMESTAMP_TIMINGS
     vsync = t;
+#endif
   }
   if (stat & PV_INTEN_VBP_START) {
     ack |= PV_INTEN_VBP_START;
+#ifdef TIMESTAMP_TIMINGS
     vbp = t;
+#endif
   }
   if (stat & PV_INTEN_VACT_START) {
     ack |= PV_INTEN_VACT_START;
   }
   if (stat & PV_INTEN_VFP_START) {
     ack |= PV_INTEN_VFP_START;
+#ifdef TIMESTAMP_TIMINGS
     last_vfps = vfps;
     vfps = t;
+#endif
 
     // actually do the page-flip
     if (hvs_channel == 0) {
@@ -448,7 +469,7 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
     setup_pv_interrupt(pvnr, pv_irq, (void*)pvnr);
     rawpv->int_enable = PV_INTEN_VFP_START; // | 0x3f;
     //hvs_setup_irq();
-    puts("done");
+    //puts("done");
   }
 
   if (channel == 0) {
@@ -601,10 +622,15 @@ hvs_layer *console_layer[3];
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
-  const int w = 640;
-  const int h = 480;
+#if PRIMARY_HVS_CHANNEL == 1
+  const int w = 720 - 120;
+  const int h = 480 - 80;
+#elif PRIMARY_HVS_CHANNEL == 0
+  const int w = 1280-2;
+  const int h = 1024-2;
+#endif
   if (!gfx_console) {
-    puts("creating framebuffer for text console\n");
+    //puts("creating framebuffer for text console\n");
     gfx_console = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
 
     bzero(gfx_console->ptr, gfx_console->len);
@@ -613,7 +639,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     int channel = 1;
     console_layer[channel] = malloc(sizeof(hvs_layer));
     mk_unity_layer(console_layer[channel], gfx_console, 50, 50, 30);
-    console_layer[channel]->name = "console";
+    console_layer[channel]->name = strdup("console");
 
     mutex_acquire(&channels[channel].lock);
     hvs_dlist_add(channel, console_layer[channel]);
@@ -623,8 +649,8 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     // make visible on HVS0
     channel = 0;
     console_layer[channel] = malloc(sizeof(hvs_layer));
-    mk_unity_layer(console_layer[channel], gfx_console, 50, 0, 0);
-    console_layer[channel]->name = "console0";
+    mk_unity_layer(console_layer[channel], gfx_console, 50, 1, 1);
+    console_layer[channel]->name = strdup("console0");
 
     mutex_acquire(&channels[channel].lock);
     hvs_dlist_add(channel, console_layer[channel]);
@@ -748,7 +774,7 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer) {
       return;
     }
   }
-  puts("no match insert");
+  //puts("no match insert");
   list_add_tail(&channels[channel].layers, &new_layer->node);
 }
 

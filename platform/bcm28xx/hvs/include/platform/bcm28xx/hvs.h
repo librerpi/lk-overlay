@@ -78,7 +78,7 @@ typedef struct {
   int layer;
   unsigned int w;
   unsigned int h;
-  const char *name;
+  char *name;
   enum hvs_pixel_format pixfmt;
 } hvs_layer;
 
