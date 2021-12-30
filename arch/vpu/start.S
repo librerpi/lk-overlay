@@ -39,37 +39,6 @@ core2_start:
 loop2:
   b loop2
 
-.global testit
-testit:
-  st r1, (r0)
-  mov.m r2, p16
-  mov.m r3, p16
-  mov r4, 0
-  mov.m p16, r4
-  mov.m r4, p16
-  st r2, (r0+4)
-  st r3, (r0+8)
-  st r4, (r0+12)
-  rts
-
-.global toggle18
-toggle18:
-  mov r0, 0x7e20001c      // set
-  mov r1, 0x7e200028      // clear
-  mov r2, 1<<18
-  mov r3, 100000000
-loop18:
-  st r2, (r0)             // high
-  mov r4, 1
-  addcmpbne r4, -1, 0, 0  // delay
-
-  st r2, (r1)             // low
-  mov r4, 1
-  addcmpbne r4, -1, 0, 0  // delay
-
-  addcmpbne r3,-1,0x0,loop18  // repeat
-  rts
-
 #ifdef MANUAL_UART
 manual_uart_cfg:
   mov r0, GPIO_GPFSEL1
@@ -107,3 +76,42 @@ manual_uart_cfg:
   st r1, (r0)
   rts
 #endif
+
+.section .text.toggle18
+.global toggle18
+toggle18:
+  mov r0, 0x7e20001c      // set
+  mov r1, 0x7e200028      // clear
+  mov r2, 1<<18
+  mov r3, 100000000
+loop18:
+  st r2, (r0)             // high
+  mov r4, 1
+  addcmpbne r4, -1, 0, 0  // delay
+
+  st r2, (r1)             // low
+  mov r4, 1
+  addcmpbne r4, -1, 0, 0  // delay
+
+  addcmpbne r3,-1,0x0,loop18  // repeat
+  rts
+
+.section .text.testit
+.global testit
+testit:
+  st r1, (r0)
+  mov.m r2, p16
+  mov.m r3, p16
+  mov r4, 0
+  mov.m p16, r4
+  mov.m r4, p16
+  st r2, (r0+4)
+  st r3, (r0+8)
+  st r4, (r0+12)
+  rts
+
+#.section .text.asmtest
+asmtest:
+  .rept 65
+    b.s asmtest
+  .endr
