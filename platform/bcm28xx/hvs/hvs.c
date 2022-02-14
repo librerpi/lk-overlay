@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2015 Broadcom
+ */
+
 #ifdef ENABLE_TEXT
 # include <lib/font.h>
 #endif
@@ -126,7 +131,7 @@ static void write_ppf(unsigned int source, unsigned int dest) {
     (scale << 8) | (0 << 0);
 }
 
-void hvs_add_plane_scaled(hvs_layer *layer) {
+static void hvs_add_plane_scaled(hvs_layer *layer) {
   assert(layer->fb);
   int x = layer->x;
   int y = layer->y;
@@ -196,6 +201,7 @@ void hvs_add_plane_scaled(hvs_layer *layer) {
   dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                 // pointer word 0
   dlist_memory[display_slot++] = 0xDEADBEEF;                                            // pointer context word 0 dummy for HVS state
   dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;              // pitch word 0
+  // optional pointer to palette table, displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
   dlist_memory[display_slot++] = (scaled_layer_count * 1280);         // LBM base addr
   scaled_layer_count++;
 
@@ -277,7 +283,7 @@ static void upload_scaling_kernel(void) {
   int kernel_start = scaling_kernel;
 #define PACK(a,b,c) ( (((a) & 0x1ff) << 0) | (((b) & 0x1ff) << 9) | (((c) & 0x1ff) << 18) )
   // the Mitchell/Netravali filter copied from the linux source
-  const uint32_t half_kernel[] = { PACK(0, -2, -6), PACK(-8, -10, -8), PACK(-3, 2, 18), PACK(50, 82, 119), PACK(115, 187, 213), PACK(227, 227, 0) };
+  const uint32_t half_kernel[] = { PACK(0, -2, -6), PACK(-8, -10, -8), PACK(-3, 2, 18), PACK(50, 82, 119), PACK(155, 187, 213), PACK(227, 227, 0) };
   for (int i=0; i<11; i++) {
     if (i < 6) {
       dlist_memory[kernel_start + i] = half_kernel[i];
