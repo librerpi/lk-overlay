@@ -15,7 +15,7 @@ void safe_putchar(unsigned char c) {
 // reads from realaddr, but claims to be from reportaddr, to allow mmap usage
 // count must be a multiple of 16 bytes
 void hexdump_ram(volatile void *realaddr, uint32_t reportaddr, uint32_t count) {
-  volatile uint32_t *buffer_start = (volatile uint32_t*)(ROUNDDOWN((uint32_t)realaddr, 16));
+  volatile uint32_t *buffer_start = (volatile uint32_t*)(ROUNDDOWN((paddr_t)realaddr, 16));
   reportaddr = ROUNDDOWN(reportaddr, 16);
   count = ROUNDUP(count, 16);
   for (uint32_t i = 0, fakeaddr = reportaddr; i < count; i += 16, fakeaddr += 16) {

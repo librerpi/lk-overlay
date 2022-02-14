@@ -48,7 +48,7 @@ status_t display_get_framebuffer(struct display_framebuffer *fb) {
 }
 
 #define checkerr if (ret < 0) { printf("%s():%d error %d %s\n", __FUNCTION__, __LINE__, ret, fdt_strerror(ret)); return NULL; }
-static void parse_dtb_from_vpu(void) {
+static bool parse_dtb_from_vpu(void) {
   printf("hdr: %p\n", &hdr);
   printf("DTB should be at 0x%x\n", hdr.dtb_base);
   void *v_fdt = NULL;
@@ -85,7 +85,7 @@ static void parse_dtb_from_vpu(void) {
       if (!fdt_getprop_u32(v_fdt, offset, "reg", &fb_addr)) puts("err3");
 
       ret2 = vmm_alloc_physical(vmm_get_kernel_aspace(),
-          "framebuffer", ROUNDUP(w * h * 4, PAGE_SIZE), &fb_addr_virt, 0,
+          "framebuffer", ROUNDUP(w * h * 4, PAGE_SIZE), (void **)&fb_addr_virt, 0,
           fb_addr, 0, 0);
       assert(ret2 == NO_ERROR);
       printf("%d x %d @ 0x%x / 0x%lx\n", w, h, fb_addr, fb_addr_virt);
@@ -94,6 +94,7 @@ static void parse_dtb_from_vpu(void) {
       if (!fdt_getprop_u32(v_fdt, offset, "4stage2_arm_start", &stage2_arm_start)) puts("err5");
     }
   }
+  return true;
 }
 
 

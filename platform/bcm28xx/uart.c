@@ -69,7 +69,7 @@ static uint32_t calculate_baud_divisor(uint32_t baud) {
 
 static enum handler_return uart_irq(void *arg) {
     bool resched = false;
-    uint port = (uint)arg;
+    uint port = (vaddr_t)arg;
     uintptr_t base = uart_to_ptr(port);
 
     /* read interrupt status and mask */
@@ -112,7 +112,7 @@ void uart_init(void) {
     gpio_config(15, 4);
     for (size_t i = 0; i < NUM_UART; i++) {
         uintptr_t base = uart_to_ptr(i);
-        printf("uart %d base 0x%lx\n", i, base);
+        printf("uart %d base 0x%lx\n", (uint32_t)i, base);
 
         // create circular buffer to hold received data
         cbuf_initialize(&uart_rx_buf[i], RXBUF_SIZE);

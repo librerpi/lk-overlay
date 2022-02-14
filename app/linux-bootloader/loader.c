@@ -49,6 +49,7 @@ void find_and_mount(void) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   int ret;
   bdev_t *sd = rpi_sdhost_init();
+  printf("sd == %p\n", sd);
   partition_publish("sdhost", 0);
   ret = fs_mount("/root", "ext2", "sdhostp1");
   if (ret) {
@@ -77,7 +78,7 @@ void *read_file(void *buffer, size_t maxSize, const char *filepath) {
   }
 
   if (maxSize && (stat.size > maxSize)) {
-    printf("file %s is too big (%lld > %d) aborting\n", filepath, stat.size, maxSize);
+    printf("file %s is too big (%lld > %d) aborting\n", filepath, stat.size, (uint32_t)maxSize);
     fs_close_file(fh);
     return NULL;
   }
@@ -179,10 +180,11 @@ static bool patch_dtb(void) {
   int soc = fdt_path_offset(v_fdt, "/soc");
   if (soc < 0) panic("no /soc node in fdt");
   else {
-    struct ranges ranges[] = {
-      { .child = htonl(0x7e000000), .parent = htonl(MMIO_BASE_PHYS), .size = htonl(16 * 1024 * 1024) },
-      { .child = htonl(0x40000000), .parent = htonl(0x40000000), .size = htonl(0x1000) }
-    };
+    // FIXME
+    //struct ranges ranges[] = {
+    //  { .child = htonl(0x7e000000), .parent = htonl(MMIO_BASE_PHYS), .size = htonl(16 * 1024 * 1024) },
+    //  { .child = htonl(0x40000000), .parent = htonl(0x40000000), .size = htonl(0x1000) }
+    //};
     //fdt_setprop(v_fdt, soc, "ranges", (void*)ranges, sizeof(ranges));
   }
   int simplefb = fdt_path_offset(v_fdt, "/system/framebuffer@8000000");

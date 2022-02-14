@@ -15,10 +15,13 @@ static int cmd_pm_dump(int argc, const console_cmd_args *argv);
 static int cmd_pm_usb_on(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
+#ifdef ARCH_VPU
 STATIC_COMMAND("pm_dump_all", "dump power domain states", &cmd_pm_dump)
 STATIC_COMMAND("pm_usb_on", "enable usb power domain", &cmd_pm_usb_on)
+#endif
 STATIC_COMMAND_END(pm);
 
+#ifdef ARCH_VPU
 void power_up_image(void) {
   puts("image domain starting...");
   //dumpreg(PM_IMAGE);
@@ -125,7 +128,9 @@ static int cmd_pm_dump(int argc, const console_cmd_args *argv) {
   dump_power_domain("PM_PROC",  PM_PROC);
   return 0;
 }
+
 static int cmd_pm_usb_on(int argc, const console_cmd_args *argv) {
   power_up_usb();
   return 0;
 }
+#endif

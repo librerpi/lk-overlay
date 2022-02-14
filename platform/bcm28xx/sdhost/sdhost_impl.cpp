@@ -595,7 +595,7 @@ static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block
   //printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
   for (uint i=0; i<count; i++) {
     // TODO, wont add right if buf is a 64bit pointer
-    uint32_t *dest = reinterpret_cast<uint32_t*>((uint32_t)buf + (sdhost->get_block_size() * i));
+    uint32_t *dest = reinterpret_cast<uint32_t*>((vaddr_t)buf + (sdhost->get_block_size() * i));
     bool ret = dev->real_read_block(block + i, dest);
     if (!ret) return -1;
   }

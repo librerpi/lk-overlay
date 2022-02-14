@@ -48,7 +48,9 @@
     #include <platform/mailbox.h>
   #endif
 
+#ifndef MB
   #define MB (1024*1024)
+#endif
 
 /* initial memory mappings. parsed by start.S */
 struct mmu_initial_mapping mmu_initial_mappings[] = {
@@ -126,7 +128,7 @@ static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
   printf("i am VPU with cpuid 0x%08x\n", cpuid);
 #elif defined(ARCH_ARM64)
   unsigned int current_el = ARM64_READ_SYSREG(CURRENTEL) >> 2;
-  printf("i am aarch64 with MIDR_EL1 0x%lx in EL %d\n", ARM64_READ_SYSREG(midr_el1), current_el);
+  printf("i am aarch64 with MIDR_EL1 0x%llx in EL %d\n", ARM64_READ_SYSREG(midr_el1), current_el);
 #else
   printf("i am arm with MIDR 0x%x\n", arm_read_midr());
 #endif
@@ -146,6 +148,7 @@ static int cmd_platform_reboot(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+#ifdef ARCH_VPU
 static int cmd_arm_hd(int argc, const console_cmd_args *argv) {
   uint32_t addr = 0;
   uint32_t len = 32;
@@ -155,9 +158,10 @@ static int cmd_arm_hd(int argc, const console_cmd_args *argv) {
   hexdump_ram((void*)(0xc0000000 | addr), addr, len);
   return 0;
 }
+#endif
 
 static int cmd_hexdump(int argc, const console_cmd_args *argv) {
-  uint32_t addr = 0;
+  paddr_t addr = 0;
   uint32_t len = 32;
   if (argc >= 2) addr = argv[1].u;
   if (argc >= 3) len = argv[2].u;
@@ -170,7 +174,9 @@ STATIC_COMMAND_START
 STATIC_COMMAND("whatareyou", "print the cpu arch", &cmd_what_are_you)
 STATIC_COMMAND("shorthang", "hang for a bit", &cmd_short_hang)
 STATIC_COMMAND("r", "reboot", &cmd_platform_reboot)
+#ifdef ARCH_VPU
 STATIC_COMMAND("arm_hd", "do a hexdump, via the arm mmu mappings", &cmd_arm_hd)
+#endif
 STATIC_COMMAND("hexdump", "hexdump ram", &cmd_hexdump)
 STATIC_COMMAND_END(platform);
 
@@ -518,6 +524,7 @@ void platform_early_init(void) {
 
 int32_t do_fir(uint32_t rep, int16_t *coef, uint32_t stride, int16_t *input);
 
+#ifdef ARCH_VPU
 static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
   volatile uint32_t temp[16];
   //register uint32_t x __asm__("r5");
@@ -552,6 +559,7 @@ static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
     puts("delta zero");
   }
 }
+#endif
 
 void platform_init(void) {
   logf("\n");
@@ -591,7 +599,7 @@ int platform_dgetc(char *c, bool wait) {
 
 void platform_halt(platform_halt_action suggested_action,
                    platform_halt_reason reason) {
-  printf("PM_WDOG: 0x%x\n", PM_WDOG);
+  printf("PM_WDOG: 0x%x\n", (uint32_t)PM_WDOG);
   if (suggested_action == HALT_ACTION_REBOOT) {
     dprintf(ALWAYS, "waiting for watchdog\n");
     uart_flush_tx(0);
