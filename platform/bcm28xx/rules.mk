@@ -29,7 +29,6 @@ else # it must be arm32 or arm64
   endif
   MEMBASE := 0x00000000
   MODULE_SRCS += \
-    $(LOCAL_DIR)/mailbox.c \
     $(LOCAL_DIR)/intc.c \
 
   LINKER_SCRIPT += $(BUILDDIR)/system-onesegment.ld
@@ -54,6 +53,7 @@ MODULE_SRCS += \
 ifeq ($(TARGET),rpi1)
   KERNEL_BASE = 0x80000000
   MMIO_BASE_VIRT = 0x20000000U
+  MMIO_BASE_PHYS = 0x20000000U
   KERNEL_LOAD_OFFSET := 0x00000000
   MEMSIZE ?= 0x10000000 # 256MB
   WITH_SMP = 0
