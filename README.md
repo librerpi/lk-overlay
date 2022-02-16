@@ -11,19 +11,25 @@ Everything is licensed under the GPLv2 or later unless stated otherwise
 ```
 
 # what features work
-- [x] composite NTSC video
-- [ ] DSI video
-- [ ] HDMI video
-- [x] DPI video, partially tested
-- [x] v3d partially working
-- [x] full 2d composition under firmware control
-- [ ] CSI, untested
-- [x] i2c host
-- [ ] SPI, untested
-- [ ] ISP, lacking code
-- [ ] video decode accel, lacking code
-- [ ] PWM audio, lacking code
-- [x] booting linux on pi2
+
+| Feature                                                  | rpi1 | rpi2 | rpi3 | rpi4 |
+| -------------------------------------------------------- | ---- | ---- | ---- | ---- |
+| composite NTSC video                                     | ?    | [x]  | ?    | ?    |
+| DSI video                                                | [ ]  | [ ]  | [ ]  | [ ]  |
+| HDMI video                                               | [ ]  | [ ]  | [ ]  | [ ]  |
+| DPI video, partially tested                              | ?    | [x]  | ?    | ?    |
+| v3d partially working                                    | ?    | [x]  | ?    | ?    |
+| full 2d composition under firmware control               | ?    | [x]  | ?    | ?    |
+| CSI, untested                                            | [ ]  | [ ]  | [ ]  | [ ]  |
+| i2c host                                                 | ?    | [x]  | ?    | ?    |
+| SPI, untested                                            | [ ]  | [ ]  | [ ]  | [ ]  |
+| ISP, lacking code                                        | [ ]  | [ ]  | [ ]  | [ ]  |
+| video decode accel, lacking code                         | [ ]  | [ ]  | [ ]  | [ ]  |
+| PWM audio, lacking code                                  | [ ]  | [ ]  | [ ]  | [ ]  |
+| booting Linux                                            | ?    | [x]  | ?    | ?    |
+| Ethernet (including mac address from rpi serial number)  | ?    | [x]  | ?    | ?    |
+| USB host                                                 | ?    | [x]  | ?    | ?    |
+| SD/MicroSD: works 95% of the time, some bricked microSD  | ?    | [x]  | ?    | ?    |
 
 # projects:
 ## rpi1-test
