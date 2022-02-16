@@ -14,22 +14,22 @@ Everything is licensed under the GPLv2 or later unless stated otherwise
 
 | Feature                                                  | rpi1 | rpi2 | rpi3 | rpi4 |
 | -------------------------------------------------------- | ---- | ---- | ---- | ---- |
-| composite NTSC video                                     | ?    | [x]  | ?    | ?    |
+| composite NTSC video                                     | [x]  | [x]  | [x]  | ?    |
 | DSI video                                                | [ ]  | [ ]  | [ ]  | [ ]  |
 | HDMI video                                               | [ ]  | [ ]  | [ ]  | [ ]  |
-| DPI video, partially tested                              | ?    | [x]  | ?    | ?    |
-| v3d partially working                                    | ?    | [x]  | ?    | ?    |
-| full 2d composition under firmware control               | ?    | [x]  | ?    | ?    |
+| DPI video, partially tested                              | [x]  | [x]  | [x]  | ?    |
+| v3d partially working                                    | [x]  | [x]  | [x]  | ?    |
+| full 2d composition under firmware control               | [x]  | [x]  | [x]  | ?    |
 | CSI, untested                                            | [ ]  | [ ]  | [ ]  | [ ]  |
-| i2c host                                                 | ?    | [x]  | ?    | ?    |
+| i2c host (under linux)                                   | ?    | [x]  | [x]  | ?    |
 | SPI, untested                                            | [ ]  | [ ]  | [ ]  | [ ]  |
 | ISP, lacking code                                        | [ ]  | [ ]  | [ ]  | [ ]  |
 | video decode accel, lacking code                         | [ ]  | [ ]  | [ ]  | [ ]  |
 | PWM audio, lacking code                                  | [ ]  | [ ]  | [ ]  | [ ]  |
 | booting Linux                                            | ?    | [x]  | ?    | ?    |
 | Ethernet (including mac address from rpi serial number)  | ?    | [x]  | ?    | ?    |
-| USB host                                                 | ?    | [x]  | ?    | ?    |
-| SD/MicroSD: works 95% of the time, some bricked microSD  | ?    | [x]  | ?    | ?    |
+| USB host (under linux)                                   | ?    | [x]  | ?    | ?    |
+| SD/MicroSD: works 95% of the time                        | ?    | [x]  | ?    | ?    |
 
 # projects:
 ## rpi1-test
