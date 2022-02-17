@@ -24,6 +24,8 @@
 #include <arch/arm64/mmu.h>
 #endif
 
+#define MB (1024*1024)
+
 struct mem_entry {
   uint32_t address;
   uint32_t size;

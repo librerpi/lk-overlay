@@ -14,6 +14,7 @@
 #define VEC_CONFIG0     (VEC_BASE + 0x104)
 #define VEC_CONFIG0_NTSC_STD              0
 #define VEC_CONFIG0_PAL_BDGHI_STD         1
+#define VEC_CONFIG0_PAL_M_STD             2
 #define VEC_CONFIG0_PDEN          BV(6)
 #define VEC_SCHPH       (VEC_BASE + 0x108)
 #define VEC_SOFT_RESET (VEC_BASE + 0x10c)

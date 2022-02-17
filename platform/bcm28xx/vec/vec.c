@@ -27,6 +27,7 @@ enum vec_mode {
   ntsc,
   ntscj,
   pal,
+  pal60,
   palm,
 };
 
@@ -77,7 +78,7 @@ static void vec_init(uint level) {
   *REG32(VEC_DAC_CONFIG) = VEC_DAC_CONFIG_DAC_CTRL(0xc) | VEC_DAC_CONFIG_DRIVER_CTRL(0xc) | VEC_DAC_CONFIG_LDO_BIAS_CTRL(0x46);
 #endif
   *REG32(VEC_MASK0) = 0;
-  enum vec_mode mode = ntsc;
+  enum vec_mode mode = pal60;
   switch (mode) {
     case ntsc:
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_NTSC_STD | VEC_CONFIG0_PDEN;
@@ -91,7 +92,13 @@ static void vec_init(uint level) {
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_BDGHI_STD;
       *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS;
       break;
-    case palm:
+	case pal60:
+	  *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_M_STD;
+	  *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS | VEC_CONFIG1_CUSTOM_FREQ;
+	  *REG32(VEC_FREQ3_2) = 0x2a09;
+	  *REG32(VEC_FREQ1_0) = 0x8acb;
+	  break;
+	case palm:
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_BDGHI_STD;
       *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS | VEC_CONFIG1_CUSTOM_FREQ;
       *REG32(VEC_FREQ3_2) = 0x223b;
