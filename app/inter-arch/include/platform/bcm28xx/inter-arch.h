@@ -11,5 +11,6 @@ typedef struct {
 #define INTER_ARCH_MAGIC 0xa8ca6706
 
 extern uint32_t fb_addr;
+// width/height of framebuffer
 extern uint32_t w, h;
 extern uint32_t stage2_arch_init, stage2_arm_start;

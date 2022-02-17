@@ -158,7 +158,7 @@ void uart_init(void) {
 
 void uart_init_early(void) {
 #if !defined(ARCH_VPU)
-  puts("uart init abort");
+  puts("uart_init_early abort");
   return;
 #endif
     if (*REG32(CM_UARTDIV) == 0) {

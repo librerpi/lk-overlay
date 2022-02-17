@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <dev/display.h>
+#if ARCH_HAS_MMU == 1
 #include <kernel/vm.h>
+#endif
 #include <libfdt.h>
 #include <lk/err.h>
 #include <lk/init.h>
@@ -52,15 +54,20 @@ static bool parse_dtb_from_vpu(void) {
   printf("hdr: %p\n", &hdr);
   printf("DTB should be at 0x%x\n", hdr.dtb_base);
   void *v_fdt = NULL;
+#if ARCH_HAS_MMU == 1
   status_t ret2 = vmm_alloc_physical(vmm_get_kernel_aspace(),
       "dtb", PAGE_SIZE, &v_fdt, 0,
       hdr.dtb_base, 0, 0);
   assert(ret2 == NO_ERROR);
+#else
+  v_fdt = (void*)hdr.dtb_base;
+#endif
   printf("mapped 0x%x to %p\n", hdr.dtb_base, v_fdt);
 
   int ret = fdt_check_header(v_fdt);
   checkerr;
   uint32_t size = fdt_totalsize(v_fdt);
+#if ARCH_HAS_MMU == 1
   if (size > PAGE_SIZE) { // need to remap with a larger size
     vmm_free_region(vmm_get_kernel_aspace(), (vaddr_t)v_fdt);
     ret2 = vmm_alloc_physical(vmm_get_kernel_aspace(),
@@ -69,6 +76,7 @@ static bool parse_dtb_from_vpu(void) {
     assert(ret2 == NO_ERROR);
     printf("remapped 0x%x to %p\n", hdr.dtb_base, v_fdt);
   }
+#endif
   printf("DTB size is %d\n", size);
 
   int depth = 0;
@@ -84,10 +92,14 @@ static bool parse_dtb_from_vpu(void) {
       if (!fdt_getprop_u32(v_fdt, offset, "height", &h)) puts("err2");
       if (!fdt_getprop_u32(v_fdt, offset, "reg", &fb_addr)) puts("err3");
 
+#if ARCH_HAS_MMU == 1
       ret2 = vmm_alloc_physical(vmm_get_kernel_aspace(),
           "framebuffer", ROUNDUP(w * h * 4, PAGE_SIZE), (void **)&fb_addr_virt, 0,
           fb_addr, 0, 0);
       assert(ret2 == NO_ERROR);
+#else
+      fb_addr_virt = fb_addr;
+#endif
       printf("%d x %d @ 0x%x / 0x%lx\n", w, h, fb_addr, fb_addr_virt);
     } else if (strcmp(name, "timestamps") == 0) {
       if (!fdt_getprop_u32(v_fdt, offset, "3stage2_arch_init", &stage2_arch_init)) puts("err4");

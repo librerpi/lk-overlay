@@ -9,4 +9,7 @@ endif
 
 MODULES +=
 
+MODULE_DEPS += \
+    lib/fdt
+
 GLOBAL_INCLUDES += $(LOCAL_DIR)/include

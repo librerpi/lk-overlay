@@ -66,6 +66,7 @@ static void load_stage2(void) {
   int ret;
 
   bdev_t *sd = rpi_sdhost_init();
+  printf("%p\n", sd);
   partition_publish("sdhost", 0);
   //fs_mount("/boot", "fat32", "sdhostp0");
   ret = fs_mount("/root", "ext2", "sdhostp1");
