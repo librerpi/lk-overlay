@@ -118,7 +118,6 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
 uint32_t vpu_clock;
 // 19.2mhz for most models
 // 54mhz for rpi4
-uint32_t xtal_freq = CRYSTAL;
 uint32_t platform_init_timestamp;
 
 static int cmd_what_are_you(int argc, const console_cmd_args *argv) {
@@ -577,9 +576,11 @@ void platform_init(void) {
 #if 0
     init_framebuffer();
 #endif
+//#if DEBUG > 0
   printf("crystal is %lf MHz\n", (double)xtal_freq/1000/1000);
   printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", (int)BCM_PERIPH_BASE_VIRT);
   printf("BCM_PERIPH_BASE_PHYS: 0x%x\n", BCM_PERIPH_BASE_PHYS);
+//#endif
   //hdmi_init();
 }
 

@@ -65,7 +65,7 @@ unsigned int getPvIrq(int pvnr) {
   }
 }
 
-void setup_pixelvalve(struct pv_timings *t, int pvnr) {
+void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
   struct pixel_valve *rawpv = getPvAddr(pvnr);
   printf("setup_pixelvalve, pvnr=%d, %dx%d\n", pvnr, t->hactive, t->vactive);
 

@@ -30,7 +30,7 @@ struct pixel_valve {
   volatile uint32_t h_active;
 };
 
-void setup_pixelvalve(struct pv_timings *timings, int pvnr);
+void setup_pixelvalve(const struct pv_timings *timings, int pvnr);
 void setup_pv_interrupt(int pvnr, int_handler handler, void *arg);
 struct pixel_valve *getPvAddr(int pvnr);
 

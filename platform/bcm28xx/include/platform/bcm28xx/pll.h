@@ -67,7 +67,7 @@ struct pll_chan_def {
   enum pll pll;
 };
 
-extern uint32_t xtal_freq;
+static const uint32_t xtal_freq = CRYSTAL;
 extern unsigned int freq_pllc_core0;
 extern uint64_t freq_pllc_per;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];

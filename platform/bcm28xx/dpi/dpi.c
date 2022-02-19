@@ -23,6 +23,10 @@ STATIC_COMMAND_END(dpi);
 #define GERTVGA
 #define AVOID_MASH true
 
+#ifndef BACKGROUND
+#define BACKGROUND 0x0
+#endif
+
 static void timings_vga(struct pv_timings *t, int *fps) {
   t->vfp = 3;
   t->vsync = 4;
@@ -36,29 +40,33 @@ static void timings_vga(struct pv_timings *t, int *fps) {
   *fps = 60;
 }
 
-static void timings_1280_1024(struct pv_timings *t, int *fps) {
-  t->vfp = 3;
-  t->vsync = 7;
-  t->vbp = 29;
-  t->vactive = 1024;
+static const struct pv_timings timing_1280_1024 = {
+  .vfp = 3,
+  .vsync = 7,
+  .vbp = 29,
+  .vactive = 1024,
 
-  t->hfp = 80;
-  t->hsync = 136;
-  t->hbp = 216;
-  t->hactive = 1280;
+  .hfp = 80,
+  .hsync = 136,
+  .hbp = 216,
+  .hactive = 1280,
+
+  .clock_mux = clk_dpi_smi_hdmi,
+  .interlaced = false
+};
+
+static const struct pv_timings * timings_1280_1024(int *fps) {
+  return &timing_1280_1024;
   *fps = 60;
 }
 
 int cmd_dpi_start(int argc, const console_cmd_args *argv) {
-  // temp goal, 1280x1024@60Hz
   power_up_image();
   hvs_initialize();
 
-  struct pv_timings t;
-  int fps;
+  const struct pv_timings *t;
+  int fps = 60;
 
-  t.clock_mux = clk_dpi_smi_hdmi;
-  t.interlaced = false;
 #ifdef HYPERPIXEL
   t.vfp = 15;
   t.vsync = 113;
@@ -71,7 +79,7 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   t.hactive = 480;
 #elif defined(GERTVGA)
   //timings_vga(&t, &fps);
-  timings_1280_1024(&t, &fps);
+  t = timings_1280_1024(&fps);
 #else
   t.vfp = 0;
   t.vsync = 1;
@@ -84,19 +92,21 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   t.hactive = 10;
 #endif
 
-  hvs_configure_channel(0, t.hactive, t.vactive, false);
+  hvs_configure_channel(0, t->hactive, t->vactive, false);
 
-  int htotal = t.hfp + t.hsync + t.hbp + t.hactive;
-  int vtotal = t.vfp + t.vsync + t.vbp + t.vactive;
+  int htotal = t->hfp + t->hsync + t->hbp + t->hactive;
+  int vtotal = t->vfp + t->vsync + t->vbp + t->vactive;
   int total_pixels = htotal * vtotal;
 
-  double desired_divider = (double)freq_pllc_per / total_pixels / fps;
+  float desired_divider = (float)freq_pllc_per / total_pixels / fps;
 
+#if 0
   int lower_fps = freq_pllc_per / (int)desired_divider / total_pixels;
   int higher_fps = freq_pllc_per / ((int)desired_divider+1) / total_pixels;
   printf("divisor %f, fps bounds %d-%d, ", desired_divider, lower_fps, higher_fps);
+#endif
   if (AVOID_MASH) {
-    desired_divider = (int)(desired_divider + 0.5);
+    desired_divider = (int)(desired_divider + 0.5f);
   }
 
 #ifdef HYPERPIXEL
@@ -126,7 +136,7 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
   printf("vsync rate: %d Hz, ", rate / total_pixels);
   printf("htotal: %d, vtotal: %d\n", htotal, vtotal);
 
-  setup_pixelvalve(&t, 0);
+  setup_pixelvalve(t, 0);
 
   int dpi_output_format;
 #ifdef HYPERPIXEL
@@ -230,14 +240,14 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
     gpio_config(i, kBCM2708Pinmux_ALT2);
   }
   for (int i=10; i<=15; i++) {
-    if (i == 14) continue;
-    if (i == 15) continue;
+    //if (i == 14) continue;
+    //if (i == 15) continue;
     gpio_config(i, kBCM2708Pinmux_ALT2);
   }
   for (int i=16; i<=21; i++) {
     gpio_config(i, kBCM2708Pinmux_ALT2);
   }
-  hvs_set_background_color(0, 0xff0000);
+  hvs_set_background_color(0, BACKGROUND);
 #endif
   return 0;
 }
