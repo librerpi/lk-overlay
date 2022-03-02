@@ -16,7 +16,7 @@
 
 #ifdef WITH_TGA
 #include <lib/tga.h>
-#include "librepi-logo.h"
+#include "librerpi-logo.h"
 //#include "ResD1_720X480.h"
 //#include <dance.h>
 #endif
