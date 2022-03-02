@@ -1,6 +1,9 @@
+
+![](./librerpi-without-text.png)
+
 Everything is licensed under the GPLv2 or later unless stated otherwise
 
-# developing with this fork:
+# developing with this lk overlay:
 ```
 [clever@system76:~/apps/rpi]$ git clone --recurse-submodules git@github.com:librerpi/lk-overlay.git
 [clever@system76:~/apps/rpi]$ cd lk-overlay/

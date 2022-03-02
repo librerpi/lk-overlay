@@ -16,8 +16,8 @@
 
 #ifdef WITH_TGA
 #include <lib/tga.h>
-#include "pi-logo.h"
-#include "ResD1_720X480.h"
+#include "librepi-logo.h"
+//#include "ResD1_720X480.h"
 //#include <dance.h>
 #endif
 
@@ -78,7 +78,7 @@ static void vec_init(uint level) {
   *REG32(VEC_DAC_CONFIG) = VEC_DAC_CONFIG_DAC_CTRL(0xc) | VEC_DAC_CONFIG_DRIVER_CTRL(0xc) | VEC_DAC_CONFIG_LDO_BIAS_CTRL(0x46);
 #endif
   *REG32(VEC_MASK0) = 0;
-  enum vec_mode mode = pal60;
+  enum vec_mode mode = ntsc;
   switch (mode) {
     case ntsc:
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_NTSC_STD | VEC_CONFIG0_PDEN;
