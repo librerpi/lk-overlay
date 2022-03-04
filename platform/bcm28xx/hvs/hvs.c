@@ -98,9 +98,9 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
 }
 #else
 void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
+  assert(fb);
   int alpha_mode = 1;
   if (fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
-  assert(fb);
   //printf("rendering FB of size %dx%d at %dx%d\n", fb->width, fb->height, x, y);
   dlist_memory[display_slot++] = CONTROL_VALID
     | CONTROL_WORDS(7)
@@ -134,9 +134,9 @@ static void write_ppf(unsigned int source, unsigned int dest) {
 }
 
 static void hvs_add_plane_scaled(hvs_layer *layer) {
-  int alpha_mode = 1;
-  if (fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   assert(layer->fb);
+  int alpha_mode = 1;
+  if (layer->fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   int x = layer->x;
   int y = layer->y;
   unsigned int width = layer->w;
