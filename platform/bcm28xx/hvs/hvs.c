@@ -98,6 +98,8 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
 }
 #else
 void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
+  int alpha_mode = 1;
+  if (fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   assert(fb);
   //printf("rendering FB of size %dx%d at %dx%d\n", fb->width, fb->height, x, y);
   dlist_memory[display_slot++] = CONTROL_VALID
@@ -108,7 +110,7 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
     | CONTROL_UNITY
     | CONTROL_FORMAT(gfx_to_hvs_pixel_format(fb->format));
   dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);
-  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width) | (1 << 30); // TODO SCALER_POS2_ALPHA_MODE_FIXED
+  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width) | (alpha_mode << 30); // TODO SCALER_POS2_ALPHA_MODE_FIXED
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
   dlist_memory[display_slot++] = (uint32_t)fb->ptr | 0xc0000000;
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
@@ -132,6 +134,8 @@ static void write_ppf(unsigned int source, unsigned int dest) {
 }
 
 static void hvs_add_plane_scaled(hvs_layer *layer) {
+  int alpha_mode = 1;
+  if (fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   assert(layer->fb);
   int x = layer->x;
   int y = layer->y;
@@ -194,13 +198,13 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
     | CONTROL_FORMAT(layer->pixfmt)
     | (scl0 << 5)
     | (scl0 << 8); // SCL1
-  dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);              // position word 0
-  dlist_memory[display_slot++] = width | (height << 16);                                // position word 1
-  dlist_memory[display_slot++] = POS2_H(layer->fb->height) | POS2_W(layer->fb->width);  // position word 2
-  dlist_memory[display_slot++] = 0xDEADBEEF;                                            // position word 3, dummy for HVS state
-  dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                 // pointer word 0
-  dlist_memory[display_slot++] = 0xDEADBEEF;                                            // pointer context word 0 dummy for HVS state
-  dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;              // pitch word 0
+  dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);                                   // position word 0
+  dlist_memory[display_slot++] = width | (height << 16);                                                     // position word 1
+  dlist_memory[display_slot++] = POS2_H(layer->fb->height) | POS2_W(layer->fb->width) | (alpha_mode << 30);  // position word 2
+  dlist_memory[display_slot++] = 0xDEADBEEF;                                                                 // position word 3, dummy for HVS state
+  dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                                      // pointer word 0
+  dlist_memory[display_slot++] = 0xDEADBEEF;                                                                 // pointer context word 0 dummy for HVS state
+  dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;                                   // pitch word 0
   // optional pointer to palette table, displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
   dlist_memory[display_slot++] = (scaled_layer_count * 1280);         // LBM base addr
   scaled_layer_count++;

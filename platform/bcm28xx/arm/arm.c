@@ -75,7 +75,7 @@ static void setup_framebuffer(void) {
 
   void *fb_addr_uncached = (void*)(0xc0000000 | fb_phys_addr);
 
-  gfx_surface *simple_fb = gfx_create_surface(fb_addr_uncached, w, h, w, GFX_FORMAT_ARGB_8888);
+  gfx_surface *simple_fb = gfx_create_surface(fb_addr_uncached, w, h, w, GFX_FORMAT_RGB_x888);
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
   mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
