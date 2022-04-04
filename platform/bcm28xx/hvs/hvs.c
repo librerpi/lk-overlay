@@ -632,16 +632,21 @@ hvs_layer *console_layer[3];
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
-#if PRIMARY_HVS_CHANNEL == 1
+#ifdef TINY_FRAMEBUFFER
+  const int w = 475;
+  const int h = 120;
+  const gfx_format fmt = GFX_FORMAT_RGB_332;
+#elif PRIMARY_HVS_CHANNEL == 1
   const int w = 720 - 120;
   const int h = 480 - 80;
 #elif PRIMARY_HVS_CHANNEL == 0
   const int w = 1280-2;
   const int h = 1024-2;
+  const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #endif
   if (!gfx_console) {
-    //puts("creating framebuffer for text console\n");
-    gfx_console = gfx_create_surface(NULL, w, h, w, GFX_FORMAT_ARGB_8888);
+    puts("creating framebuffer for text console\n");
+    gfx_console = gfx_create_surface(NULL, w, h, w, fmt);
 
     bzero(gfx_console->ptr, gfx_console->len);
 

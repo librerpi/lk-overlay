@@ -98,21 +98,21 @@ static void *setupInterArchDtb(void) {
 
   ret = fdt_create(v_fdt, buffer_size);
   checkerr;
-  puts("a");
+  //puts("a");
 
   ret = fdt_finish_reservemap(v_fdt);
   checkerr;
-  printf("b %d\n", fdt_size_dt_struct(v_fdt));
+  //printf("b %d\n", fdt_size_dt_struct(v_fdt));
 
   ret = fdt_begin_node(v_fdt, "root");
   checkerr;
-  printf("c %d\n", fdt_size_dt_struct(v_fdt));
+  //printf("c %d\n", fdt_size_dt_struct(v_fdt));
 
 
   {
     ret = fdt_begin_node(v_fdt, "framebuffer");
     checkerr;
-    printf("c2 %d\n", fdt_size_dt_struct(v_fdt));
+    //printf("c2 %d\n", fdt_size_dt_struct(v_fdt));
 
     fdt_property_u32(v_fdt, "width", w);
     fdt_property_u32(v_fdt, "height", h);
@@ -135,11 +135,11 @@ static void *setupInterArchDtb(void) {
 
   ret = fdt_end_node(v_fdt);
   checkerr;
-  puts("d");
+  //puts("d");
 
   ret = fdt_finish(v_fdt);
   checkerr;
-  puts("e");
+  //puts("e");
 
   return v_fdt;
 }
@@ -410,7 +410,7 @@ void setupClock(void) {
   *REG32(A2W_PLLB_DIG0) = A2W_PASSWORD | dig0;
 
 
-  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 2;
+  *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 4;
 
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET | CM_PLLB_LOADARM_SET;
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;
