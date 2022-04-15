@@ -21,7 +21,7 @@ STATIC_COMMAND_END(dpi);
 
 //#define HYPERPIXEL
 #define GERTVGA
-#define AVOID_MASH true
+#define AVOID_MASH false
 
 #ifndef BACKGROUND
 #define BACKGROUND 0x0

@@ -115,6 +115,11 @@ struct mmu_initial_mapping mmu_initial_mappings[] = {
 
 #define logf(fmt, ...) do { print_timestamp(); printf("[" arch ":PLATFORM:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); } while(0)
 
+static void switch_vpu_to_pllc_core0(int divisor);
+extern void intc_init(void);
+extern void arm_reset(void);
+static void old_switch_vpu_to_pllc(void);
+
 uint32_t vpu_clock;
 // 19.2mhz for most models
 // 54mhz for rpi4
@@ -178,10 +183,6 @@ STATIC_COMMAND("arm_hd", "do a hexdump, via the arm mmu mappings", &cmd_arm_hd)
 #endif
 STATIC_COMMAND("hexdump", "hexdump ram", &cmd_hexdump)
 STATIC_COMMAND_END(platform);
-
-extern void intc_init(void);
-extern void arm_reset(void);
-static void old_switch_vpu_to_pllc(void);
 
 #ifdef WITH_KERNEL_VM
 static pmm_arena_t arena = {
@@ -334,12 +335,7 @@ static void old_switch_vpu_to_pllc() {
   int vpu_divisor = 1;
   vpu_clock = pllc_mhz / core0_div / vpu_divisor;
 
-  const uint32_t vpu_source = CM_SRC_PLLC_CORE0;
-
-  *REG32(CM_VPUCTL) = CM_PASSWORD | CM_VPUCTL_FRAC_SET | CM_SRC_OSC | CM_VPUCTL_GATE_SET;
-  *REG32(CM_VPUDIV) = CM_PASSWORD | (vpu_divisor << 12);
-  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET;
-  *REG32(CM_VPUCTL) = CM_PASSWORD | vpu_source | CM_VPUCTL_GATE_SET | 0x10; /* ENAB */
+  switch_vpu_to_pllc_core0(vpu_divisor);
 
   //*REG32(CM_TIMERDIV) = CM_PASSWORD | (19 << 12) | 819; // TODO, look into this timer
   //*REG32(CM_TIMERCTL) = CM_PASSWORD | CM_SRC_OSC | 0x10;
@@ -393,6 +389,7 @@ void platform_early_init(void) {
     uint32_t rsts = *REG32(PM_RSTS);
     uint8_t partition = decode_rsts(rsts);
     printf("PM_RSTS: 0x%x 0x%x\n", rsts, partition);
+#if DEBUG > 0
     if (rsts & PM_RSTS_HADPOR_SET) puts("  had power on reset");
 
     if (rsts & PM_RSTS_HADSRH_SET) puts("  had software hard reset");
@@ -406,6 +403,8 @@ void platform_early_init(void) {
     if (rsts & PM_RSTS_HADDRH_SET) puts("  had debugger hard reset");
     if (rsts & PM_RSTS_HADDRF_SET) puts("  had debugger full reset");
     if (rsts & PM_RSTS_HADDRQ_SET) puts("  had debugger quick reset");
+#endif
+
 #ifdef BOOTCODE
     // if you `reboot 42` in linux, then partition will be 42
     // the NOOBS protocol uses this to load start.elf from a different fat32 partition on boot

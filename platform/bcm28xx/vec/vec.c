@@ -61,7 +61,7 @@ static void vec_init(uint level) {
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   int rate = measure_clock(29);
-  printf("vec rate: %f\n", ((double)rate)/1000/1000);
+  printf("vec rate: %f, divider: %d, pllc: %lld\n", ((double)rate)/1000/1000, desired_divider, freq_pllc_per);
 
   *REG32(VEC_WSE_RESET) = 1;
   *REG32(VEC_SOFT_RESET) = 1;
