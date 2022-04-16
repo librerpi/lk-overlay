@@ -487,12 +487,12 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
     // 1 rgb666
     // 2 rgb565
     // 3 rgb555
-    int dither_depth = 2;
+    int dither_depth = 0;
     // 0 none
     // 1 Accumulate rounding error horizontally
     // 2 As 1, but also apply pseudo-random noise. The noise generator is reset at the start of each frame
     // 3 As 2, but the noise generator is free-running. This setting will produce a shimmering effect on static images that may be distracting.
-    int dither_mode = 2;
+    int dither_mode = 0;
 
     uint32_t dither = *REG32(SCALER_DISPDITHER);
     uint32_t new = (dither_depth << 2) | dither_mode;

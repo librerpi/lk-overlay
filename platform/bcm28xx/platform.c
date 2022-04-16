@@ -322,11 +322,11 @@ static void old_switch_vpu_to_pllc() {
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
   int core0_div = 2;
-  int per_div = 3;
+  int per_div = 4;
 
   uint64_t pllc_mhz = 108 * per_div * 4;
 
-  pllc_mhz = 108 * 9;
+  pllc_mhz = 100 * 10;
 
   printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 
@@ -517,7 +517,7 @@ void platform_early_init(void) {
 #endif
 #endif
 #endif
-    logf("done platform early init");
+    //logf("done platform early init\n");
 }
 
 int32_t do_fir(uint32_t rep, int16_t *coef, uint32_t stride, int16_t *input);
@@ -534,9 +534,11 @@ static void __attribute__(( optimize("-O1"))) benchmark_self(void) {
 
   uint32_t start = *REG32(ST_CLO);
   uint32_t limit = 100000;
-  asm volatile ("nop");
   for (uint32_t i=0; i<limit; i++) {
-    asm volatile ("ld r5, (%0)" : : "r"(0xc0000000): "r5");
+    asm volatile ("nop");
+    asm volatile ("v32min HY(0,0), HY(0,0), HY(0,0)");
+    asm volatile ("v32min HY(0,0), HY(0,0), HY(0,0)");
+    //asm volatile ("ld r5, (%0)" : : "r"(0xc0000000): "r5");
     /*asm volatile(
         //"v8ld H(0++,0), (%0+=%1) REP64"
         "v32ld HY(0++,0), (%0+=%1)"

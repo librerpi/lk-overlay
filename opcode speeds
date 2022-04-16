@@ -1,0 +1,103 @@
+i-cache appears to always be on?
+
+nop takes 1 cycle
+
+v32ld HY(0++,0),(r1+=r2) REPx, 11 cycle startup (for L1 hit), plus 2*x, given that (r2%64)==0
+
+vector loads of uint32_t[16][64]
+  VPU at 216mhz:
+    from 0-alias and 4-alias, 139(128+11) clocks
+    from 8-alias, 307 clocks
+    from c-alias, 300 clocks
+  VPU at 432mhz:
+    from 0-alias and 4-alias, 139 clocks
+    from 8-alias, 600 clocks
+    from c-alias, 593 clocks
+
+from the 0 alias, repeating to garantee a hit
+v16ld HX(0++,0),(r1+=r2) REP64 == 165-170 clocks?
+v16ld HX(0++,0),(r1+=r2) REP32 == 85-90 clocks?
+v16ld HX(0++,0),(r1+=r2) REP16 == 45-50 clocks?
+v16ld HX(0++,0),(r1+=r2) REP8 == 25-30 clocks?
+v16ld HX(0++,0),(r1+=r2) REP4 == 15-20 clocks?
+v16ld HX(0++,0),(r1+=r2) REP2 == 10-15 clocks?
+v16ld HX(0++,0),(r1+=r2) == 7-12 clocks?
+
+nop wrap removed, still 0 alias, counts for whole loop
+v16ld HX(0++,0),(r1+=r2) == 12
+v16ld HX(0++,0),(r1+=r2) REP64 == 170
+v16ld HY(0++,0),(r1+=r2) REP64 == 170
+v32ld HY(0++,0),(r1+=r2) REP64 == 171
+
+adjusting overlap of each slice of v32ld HY(0++,0),(r1+=r2) REP64
+stride 0 == 139 clocks
+1-6 = 195
+32 = 202
+36 = 210
+64 = 139
+68 = 243
+
+proper 64 byte stride, v32ld HY(0++,0),(r1+=r2) REP64, but adjusting the alignment of the whole set
+0-1 = 139
+
+
+sub r0, bne r0 == 3 cycles
+sub r5, sub r0, bne r0 == 3 cycles, pipeline gave a free cycle
+sub r5, sub r5, sub r0, bne r0 == 5 cycles, pipeline stalled out due to read after write
+sub r5, sub r6, sub r0, bne r0 == 4 cycles, pipeline stalled less
+sub r5, sub r6, sub r7, sub r5, sub r0, bne r0, 6 opcodes in 5 clocks
+2021-04-02 03:22:05 < doug16k> pair, pair, single, 2 cycle branch would explain it
+sub r5, sub r6, sub r7, sub r5, sub r6, sub r0, bne r0, 7 opcodes in 5 clocks
+2021-04-02 03:23:25 < clever> i think your right, i added another sub, and it stayed the same
+2021-04-02 03:24:20 < doug16k> it's similar to Pentium pairing
+sub r0, bne r0 == 3 cycles
+nop, sub r0, bne r0 == 4
+nop, nop, sub r0, bne r0 == 5 cycles
+nop, v16ld HX(0++,0),(r1+=r2) REP64, nop, sub r0, bne r0 == 170 cycles
+nop, v16ld HX(0++,0),(r1+=r2) REP32, nop, sub r0, bne r0 == 90 cycles
+
+
+
+stm r0-lr,(--sp)
+stm r0-pc,lr,(--sp)
+stm r0-sp,lr,(--sp)
+stm gp,lr,(--sp)
+stm gp-r28,lr,(--sp)
+stm gp-r5,lr,(--sp)
+
+
+
+1 clock cycle:
+  shl r0, r1, 0x3
+  lsr r0, 0x3
+  add r0, r1
+  add r0, r1, 42
+  subscale r0,r0,r1<<1
+  nop
+  v32mov HY(0,0),0x0
+  v32add HY(0,0),HY(1,0),r3
+  v32add HY(0,0),HY(0,0),42
+  v32dist HY(0,0),HY(0,0),HY(0,0)
+  v32shl HY(0,0),HY(0,0),r3
+  v32shl HY(0,0),HY(0,0),42
+  v32min HY(0,0),HY(0,0),HY(0,0)
+
+2 clock cycles:
+  mulhd.uu
+  vmul32.uu HY(0,0),HY(0,0),HY(0,0)
+
+3 clock cycles:
+  repeated loads from the 0 alias
+
+4 clock cycles:
+  v32mov HY(0++,0),0 REP4
+
+10 clock cycles:
+  repeated loads from the 4 and 8 alias
+
+13 clock cycles:
+  a load from GPIO_GPLEV0
+
+21 clock cycles:
+  div.uu
+  div.ss

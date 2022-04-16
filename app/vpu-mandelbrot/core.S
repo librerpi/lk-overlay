@@ -57,17 +57,9 @@ mandel_asm:
 
   mov r5, r0
 
-  v32mov H32(0, 0), #0
-  v32mov H32(1, 0), #0
-  v32mov H32(2, 0), #0
-  v32mov H32(3, 0), #0
-  v32mov H32(4, 0), #0
-  v32mov H32(5, 0), #0
-  v32mov H32(6, 0), #0
-  v32mov H32(7, 0), #0
-  v32mov H32(8, 0), #0
-  v32mov H32(9, 0), #0
-  v32mov H32(10, 0), #0
+  mov r0, 11
+
+  v32mov H32(0++, 0), #0 REP r0
 
 
   ; i have NOT tested this enough
@@ -151,7 +143,7 @@ mandel_asm:
 
       shl r8, r3, 4
       v32add v_u, v_u, r8
-      mov r8, #40
+      mov r8, 640/16
       addcmpblt r4, #1, r8, do_line
 
    v32add v_v, v_v, r3

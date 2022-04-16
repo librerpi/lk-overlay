@@ -15,6 +15,7 @@ MODULES += platform/bcm28xx/rpi-ddr2/autoram
 #MODULES += lib/gfxconsole
 MODULES += app/vpu-mandelbrot
 MODULES += external/lib/libm
+MODULES += platform/bcm28xx/temp
 
 GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=0
 #GLOBAL_DEFINES += UART_NO_MUX
@@ -26,5 +27,5 @@ GLOBAL_DEFINES += BOOTCODE=1
 GLOBAL_DEFINES += BACKGROUND=0x0
 #GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=1024
 BOOTCODE := 1
-DEBUG := 2
+DEBUG := 1
 

@@ -114,17 +114,17 @@ void uart_init(void) {
 #endif
     for (size_t i = 0; i < NUM_UART; i++) {
         uintptr_t base = uart_to_ptr(i);
-        printf("uart %d base 0x%lx\n", (uint32_t)i, base);
+        //printf("uart %d base 0x%lx\n", (uint32_t)i, base);
 
         // create circular buffer to hold received data
         cbuf_initialize(&uart_rx_buf[i], RXBUF_SIZE);
         DEBUG_ASSERT(uart_rx_buf[i].event.magic == EVENT_MAGIC);
 
 #if !defined(PL011_TX_ONLY)
-        puts("registering irq");
+        //puts("registering irq");
         // assumes interrupts are contiguous
         register_int_handler(INTERRUPT_VC_UART + i, &uart_irq, (void *)i);
-        puts("registered");
+        //puts("registered");
 #endif
 #ifdef ARCH_VPU
         uint32_t divisor = calculate_baud_divisor(115200);
@@ -154,10 +154,10 @@ void uart_init(void) {
 #endif
 
 #if !defined(PL011_TX_ONLY)
-        puts("unmasking");
+        //puts("unmasking");
         // enable interrupt
         unmask_interrupt(INTERRUPT_VC_UART + i);
-        puts("unmasked");
+        //puts("unmasked");
 #endif
     }
 }
@@ -192,7 +192,7 @@ void uart_init_early(void) {
 #ifndef UART_NO_MUX
     gpio_config(14, 4);
 #endif
-    printf("uart early init done\n");
+    //printf("uart early init done\n");
 }
 
 int uart_putc(int port, char c) {
