@@ -49,16 +49,27 @@ mandel_asm:
   ; r0 = addr of an uint32_t[16]
   ; r1 = ustart
   ; r2 = vstart
+  ; r3 = delta
+  ; r4 = width
+  ; r5 = height
 
-  ; r8, r10, r12, clobbered
+  ; local vars
+  ; r5 = output addr, increments by 16*4 bytes after each batch
+  ; r6 = width/16
+  ; r7 = height
+
   stm lr,(--sp)
   stm r6-r15, (--sp)
 
 
+  ; div width and move h to a safe place
+  div.uu r6, r4, 16
+  mov r7, r5
+
+  ; move dest buffer to a safe place
   mov r5, r0
 
   mov r0, 11
-
   v32mov H32(0++, 0), #0 REP r0
 
 
@@ -143,12 +154,14 @@ mandel_asm:
 
       shl r8, r3, 4
       v32add v_u, v_u, r8
-      mov r8, 640/16
-      addcmpblt r4, #1, r8, do_line
+
+      ; has $width pixels been calculated yet?
+      addcmpblt r4, #1, r6, do_line
 
    v32add v_v, v_v, r3
-   mov r8, #480
-   addcmpblt r10, #1, r8, do_screen
+
+   ; has $height scanlines been calculated yet?
+   addcmpblt r10, #1, r7, do_screen
 
 
   mov r2, #ST_CLO

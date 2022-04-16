@@ -322,11 +322,11 @@ static void old_switch_vpu_to_pllc() {
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
   int core0_div = 2;
-  int per_div = 4;
+  int per_div = 3;
 
   uint64_t pllc_mhz = 108 * per_div * 4;
 
-  pllc_mhz = 100 * 10;
+  pllc_mhz = 109 * 9;
 
   printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 

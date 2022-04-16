@@ -21,7 +21,7 @@ STATIC_COMMAND_END(dpi);
 
 //#define HYPERPIXEL
 #define GERTVGA
-#define AVOID_MASH false
+#define AVOID_MASH true
 
 #ifndef BACKGROUND
 #define BACKGROUND 0x0
@@ -100,13 +100,14 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
 
   float desired_divider = (float)freq_pllc_per / total_pixels / fps;
 
-#if 0
+#if 1
   int lower_fps = freq_pllc_per / (int)desired_divider / total_pixels;
   int higher_fps = freq_pllc_per / ((int)desired_divider+1) / total_pixels;
-  printf("divisor %f, fps bounds %d-%d, ", desired_divider, lower_fps, higher_fps);
+  printf("divisor %f, fps bounds %d-%d, ", (double)desired_divider, lower_fps, higher_fps);
 #endif
   if (AVOID_MASH) {
     desired_divider = (int)(desired_divider + 0.5f);
+    printf("AVOID_MASH set, divider forced to %d, ", (int)desired_divider);
   }
 
 #ifdef HYPERPIXEL
