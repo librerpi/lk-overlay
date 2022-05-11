@@ -97,24 +97,29 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
   dlist_memory[display_slot++] = 0x00001400; // stride
 }
 #else
-void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
-  assert(fb);
+void hvs_add_plane(hvs_layer *l, int x, int y, bool hflip) {
+  assert(l->fb);
   int alpha_mode = 1;
-  if (fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
+  if (l->fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   //printf("rendering FB of size %dx%d at %dx%d\n", fb->width, fb->height, x, y);
+
+  const uint w = l->viewport_w;
+  const uint h = l->viewport_h;
+  const void* imageaddr = l->fb->ptr + (l->fb->stride * l->fb->pixelsize * l->viewport_y);
+
   dlist_memory[display_slot++] = CONTROL_VALID
     | CONTROL_WORDS(7)
     | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
 //    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
     | (hflip ? CONTROL0_HFLIP : 0)
     | CONTROL_UNITY
-    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(fb->format));
+    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(l->fb->format));
   dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);
-  dlist_memory[display_slot++] = POS2_H(fb->height) | POS2_W(fb->width) | (alpha_mode << 30); // TODO SCALER_POS2_ALPHA_MODE_FIXED
+  dlist_memory[display_slot++] = POS2_H(h) | POS2_W(w) | (alpha_mode << 30); // TODO SCALER_POS2_ALPHA_MODE_FIXED
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
-  dlist_memory[display_slot++] = (uint32_t)fb->ptr | 0xc0000000;
+  dlist_memory[display_slot++] = (uint32_t)imageaddr | 0xc0000000;
   dlist_memory[display_slot++] = 0xDEADBEEF; // dummy for HVS state
-  dlist_memory[display_slot++] = fb->stride * fb->pixelsize;
+  dlist_memory[display_slot++] = l->fb->stride * l->fb->pixelsize;
 }
 #endif
 
@@ -143,7 +148,11 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
   unsigned int height = layer->h;
   const bool hflip = false;
 
-  if (hvs_debug) printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+  if (hvs_debug) {
+    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+    printf("alpha mode %d\n", alpha_mode);
+    printf("format %d\n", layer->fb->format);
+  }
 
   enum scaling_mode xmode, ymode;
 
@@ -195,7 +204,7 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
     | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
 //    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
     | (hflip ? CONTROL0_HFLIP : 0)
-    | CONTROL_FORMAT(layer->pixfmt)
+    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(layer->fb->format))
     | (scl0 << 5)
     | (scl0 << 8); // SCL1
   dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);                                   // position word 0
@@ -206,7 +215,7 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
   dlist_memory[display_slot++] = 0xDEADBEEF;                                                                 // pointer context word 0 dummy for HVS state
   dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;                                   // pitch word 0
   // optional pointer to palette table, displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
-  dlist_memory[display_slot++] = (scaled_layer_count * 1280);         // LBM base addr
+  dlist_memory[display_slot++] = (scaled_layer_count * 2400);         // LBM base addr
   scaled_layer_count++;
 
 #if 0
@@ -630,6 +639,15 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
 struct gfx_surface *gfx_console;
 hvs_layer *console_layer[3];
 
+void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos) {
+  pos->x = 50;
+  pos->y = 50;
+  pos->width = 720 - pos->x - 50;
+  pos->height = 480 - pos->y - 50;
+
+  pos->width /= 2;
+}
+
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
 #ifdef TINY_FRAMEBUFFER
@@ -707,10 +725,12 @@ void hvs_update_dlist(int channel) {
   int list_start = display_slot;
 
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
-    if ((layer->w == layer->fb->width) && (layer->h == layer->fb->height)) { // unity scale
-      hvs_add_plane(layer->fb, layer->x, layer->y, false);
-    } else {
-      hvs_add_plane_scaled(layer);
+    if (layer->visible) {
+      if ((layer->w == layer->viewport_w) && (layer->h == layer->viewport_h)) { // unity scale
+        hvs_add_plane(layer, layer->x, layer->y, false);
+      } else {
+        hvs_add_plane_scaled(layer);
+      }
     }
   }
 
@@ -766,9 +786,10 @@ int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv) {
     printf("hvs channel %d, dlist start %d\n", channel, channels[channel].dlist_target);
     hvs_layer *layer;
     list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
-      printf("%p %p %3d,%3d + %3dx%3d, layer:%4d %s\n", layer, layer->fb->ptr
-          , layer->x, layer->y
-          , layer->w, layer->h
+      printf("%p %p screen %3d,%3d+%3dx%3d, viewport %3d,%3d+%3dx%3d, source: %3dx%3d layer: %d %s\n", layer, layer->fb->ptr
+          , layer->x, layer->y, layer->w, layer->h
+          , layer->viewport_x, layer->viewport_y, layer->viewport_w, layer->viewport_h
+          , layer->fb->width, layer->fb->height
           , layer->layer, layer->name ? layer->name : "NULL");
     }
   }

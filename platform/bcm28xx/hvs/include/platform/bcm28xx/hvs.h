@@ -73,14 +73,30 @@ enum hvs_pixel_format {
 typedef struct {
   struct list_node node;
   gfx_surface *fb;
+
+  // screen XY to render at
   int x;
   int y;
-  int layer;
+  // the final WH on the screen
   unsigned int w;
   unsigned int h;
+
+  // the priority, when multiple layers overlap
+  int layer;
+
+  // a crop applied to the input image
+  unsigned int viewport_x, viewport_y, viewport_w, viewport_h;
+
   char *name;
-  enum hvs_pixel_format pixfmt;
+  bool visible;
 } hvs_layer;
+
+typedef struct {
+  int x;
+  int y;
+  int width;
+  int height;
+} framebuffer_pos;
 
 //#define MK_UNITY_LAYER(l, FB, LAYER, X, Y) { (l)->fb = FB; (l)->x = X; (l)->y = Y; (l)->layer = LAYER; (l)->w = FB->width; (l)->h = FB->height; }
 
@@ -166,6 +182,8 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer);
 // returns the value of the SCALER_DISPSTATn register, which holds the current frame and scanline#
 uint32_t hvs_wait_vsync(int channel);
 int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
+// returns the recommended xywh of the framebuffer
+void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos);
 
 // 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
@@ -195,5 +213,11 @@ static inline void mk_unity_layer(hvs_layer *l, gfx_surface *fb, int layer, unsi
   l->y = y;
   l->w = fb->width;
   l->h = fb->height;
-  l->pixfmt = gfx_to_hvs_pixel_format(fb->format);
+
+  l->viewport_w = fb->width;
+  l->viewport_h = fb->height;
+  l->viewport_x = 0;
+  l->viewport_y = 0;
+
+  l->visible = true;
 }
