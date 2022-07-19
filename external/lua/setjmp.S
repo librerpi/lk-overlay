@@ -29,7 +29,7 @@ setjmp:
   st r23, (r0+76)
   mov sr, r1    ; restore interrupt state
   stm lr, (--sp)
-  bl setjmp_post
+  ;bl setjmp_post
   mov r0, 0
   ldm pc, (sp++)
 

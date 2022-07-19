@@ -16,6 +16,9 @@
 #include <platform/bcm28xx/sdram.h>
 #include <string.h>
 
+#include <lua.h>
+#include <lib/lua/lua-utils.h>
+
 #define UNCACHED_RAM 0xc0000000
 #define MB (1024*1024)
 
@@ -34,7 +37,8 @@ static ssize_t fs_read_wrapper(struct elf_handle *handle, void *buf, uint64_t of
 
 static wait_queue_t waiter;
 
-static int waker_entry(wait_queue_t *waiter) {
+static int waker_entry(void *arg) {
+  wait_queue_t *waiter_ = (wait_queue_t*) arg;
   char c;
   int ret = platform_dgetc(&c, true);
   if (ret) {
@@ -44,7 +48,7 @@ static int waker_entry(wait_queue_t *waiter) {
   if (c == 'X') {
     printf("got char 0x%x\n", c);
     THREAD_LOCK(state);
-    wait_queue_wake_all(waiter, false, c);
+    wait_queue_wake_all(waiter_, false, c);
     THREAD_UNLOCK(state);
   }
   return 0;
@@ -54,17 +58,16 @@ static void *load_and_run_elf(elf_handle_t *stage2_elf) {
   int ret = elf_load(stage2_elf);
   if (ret) {
     printf("failed to load elf: %d\n", ret);
-    return;
+    return NULL;
   }
   elf_close_handle(stage2_elf);
-  void *entry = stage2_elf->entry;
+  void *entry = (void*)stage2_elf->entry;
   free(stage2_elf);
   return entry;
 }
 
-static void load_stage2(void) {
+static void mount_rootfs(void) {
   int ret;
-
   bdev_t *sd = rpi_sdhost_init();
   printf("%p\n", sd);
   partition_publish("sdhost", 0);
@@ -74,6 +77,13 @@ static void load_stage2(void) {
     printf("mount failure: %d\n", ret);
     return;
   }
+}
+
+static void load_stage2(void) {
+  int ret;
+
+  mount_rootfs();
+
   filehandle *stage2;
   ret = fs_open_file("/root/boot/lk.elf", &stage2);
   if (ret) {
@@ -117,14 +127,13 @@ static ssize_t read_repeat(io_handle_t *in, void *buf, ssize_t len) {
 static void xmodem_receive(void) {
   size_t capacity = 2 * MB;
   void *buffer = malloc(capacity);
-  size_t used = 0;
   struct xmodem_packet *packet = malloc(sizeof(struct xmodem_packet));
   ssize_t ret;
   int blockNr = 1;
   bool success = false;
 
   io_write(&console_io, "\x15", 1);
-  while ((ret = io_read(&console_io, packet, 1)) == 1) {
+  while ((ret = io_read(&console_io, (char*)packet, 1)) == 1) {
     if (packet->magic == 4) {
       puts("R: EOF!");
       success = true;
@@ -166,7 +175,7 @@ static void xmodem_receive(void) {
     elf_handle_t *stage2_elf = malloc(sizeof(elf_handle_t));
     ret = elf_open_handle_memory(stage2_elf, buffer, blockNr*128);
     if (ret) {
-      printf("failed to elf open: %d\n", ret);
+      printf("failed to elf open: %ld\n", ret);
       return;
     }
     void *entry = load_and_run_elf(stage2_elf);
@@ -177,14 +186,38 @@ static void xmodem_receive(void) {
   free(buffer);
 }
 
-
 static void stage2_init(const struct app_descriptor *app) {
   puts("stage2_init");
 }
 
 static void stage2_entry(const struct app_descriptor *app, void *args) {
+  int ret;
   puts("stage2 entry\n");
+  mount_rootfs();
 
+  lua_State *L = lua_newstate(&lua_allocator, NULL);
+  register_globals(L);
+
+  luaL_loadstring(L, "print(5+5)");
+  ret = lua_pcall(L, 0, LUA_MULTRET, 0);
+  printf("lua_pcall == %d\n", ret);
+  if (ret == LUA_ERRRUN) {
+    lua_prettyprint(L, -1);
+  }
+
+  luaL_loadfile(L, "/root/init.lua");
+
+  ret = lua_pcall(L, 0, LUA_MULTRET, 0);
+  printf("lua_pcall == %d\n", ret);
+  if (ret == LUA_ERRRUN) {
+    lua_prettyprint(L, -1);
+  }
+
+  lua_close(L); L=NULL;
+
+  return;
+
+#if 0
   puts("press X to stop autoboot and go into xmodem mode...");
   wait_queue_init(&waiter);
 
@@ -192,16 +225,21 @@ static void stage2_entry(const struct app_descriptor *app, void *args) {
   thread_resume(waker);
 
   THREAD_LOCK(state);
-  int ret = wait_queue_block(&waiter, 10000);
+  ret = wait_queue_block(&waiter, 10000);
   THREAD_UNLOCK(state);
 
   printf("wait result: %d\n", ret);
+#else
+  ret = 0;
+#endif
 
   if (ret == 'X') {
+#if 0
     puts("going into xmodem mode");
     uint32_t rsts = *REG32(PM_RSTS);
     printf("%x\n", rsts);
     xmodem_receive();
+#endif
   } else {
     load_stage2();
   }

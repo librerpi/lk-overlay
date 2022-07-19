@@ -35,6 +35,7 @@ in lib.fix (self: {
       python3
       qemu
       imagemagick
+      pkgsi686Linux.lua
     ] ++ lib.optionals risc [
       pkgsCross.riscv32-embedded.stdenv.cc
       pkgsCross.riscv64-embedded.stdenv.cc
