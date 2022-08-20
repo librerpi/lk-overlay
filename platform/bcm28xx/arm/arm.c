@@ -170,8 +170,10 @@ static void enable_usb_host(void) {
     *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
     while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
 
+    uint32_t divisor = freq_pllc_core0 / (25000000/0x1000);
+
     *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
-    *REG32(CM_GP1DIV) = CM_PASSWORD | 0x1147a; // divisor * 0x1000
+    *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
     *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
 
     gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
@@ -286,9 +288,9 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   power_arm_start();
   printregs();
   printf("arm starting...\n");
-  printf("CAM1_ICTL: 0x%x\n", *REG32(0x7e801100));
+  //printf("CAM1_ICTL: 0x%x\n", *REG32(0x7e801100));
 
-  cam1_enable();
+  //cam1_enable();
 
 
   copy_arm_payload();
