@@ -21,7 +21,7 @@
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
-#include <platform/bcm28xx/hexdump.h>
+#include <lib/hexdump.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/print_timestamp.h>

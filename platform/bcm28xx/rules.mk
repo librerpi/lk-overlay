@@ -5,7 +5,7 @@ MODULE := $(LOCAL_DIR)
 WITH_SMP := 1
 #SMP_MAX_CPUS ?= 1
 #LK_HEAP_IMPLEMENTATION ?= dlmalloc
-MODULE_DEPS += platform/bcm28xx/power
+MODULE_DEPS += platform/bcm28xx/power lib/hexdump
 
 ifeq ($(ARCH),vpu)
   MODULE_DEPS += platform/bcm28xx/pll
@@ -46,7 +46,6 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/platform.c \
 	$(LOCAL_DIR)/udelay.c \
 	$(LOCAL_DIR)/print_timestamp.c \
-	$(LOCAL_DIR)/hexdump.c \
 	#$(LOCAL_DIR)/i2c.c \
 
 

@@ -1,4 +1,4 @@
-#include <platform/bcm28xx/hexdump.h>
+#include <lib/hexdump.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
