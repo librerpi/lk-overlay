@@ -1,0 +1,35 @@
+digraph {
+  uberblock -> mos_dnode
+  mos_dnode -> mos_obj1
+  mos_obj1 -> mos_obj32 [label="root_dataset"]
+  mos_obj32 -> mos_obj54 [label="head_dataset_obj"]
+  mos_obj34 -> mos_obj257 [label="a"]
+  mos_obj32 -> mos_obj34 [label="child_dir_zapobj"]
+  mos_obj54 -> dataset_test [label="bp"]
+  mos_obj257 -> mos_obj260 [label="head_dataset_obj"]
+  mos_obj257 -> mos_obj259 [label="child_dir_zapobj"]
+  mos_obj259 -> mos_obj68 [label="b"]
+  mos_obj260 -> mos_obj257 [label="dir_obj"]
+  test_a [label="test/a",fillcolor=green, style=filled]
+  mos_obj260 -> test_a [label="bp"]
+  dataset_test -> test_1
+  dataset_test [label="test/", fillcolor=green, style=filled]
+  test_1 -> test_34 [label="ROOT"]
+  test_34 -> test_2 [label="a"]
+  test_34 -> test_128 [label="test.txt"]
+  mos_obj68 -> mos_obj71 [label="head_dataset_obj"]
+  mos_obj71 -> test_a_b [label="bp"]
+  test_a_b [label="test/a/b",fillcolor=green, style=filled]
+  mos_obj71 -> mos_obj68 [label="dir_obj"]
+  mos_obj54 -> mos_obj32 [label="dir_obj"]
+  mos_obj32 [fillcolor=yellow, style=filled]
+  mos_obj257 [fillcolor=yellow, style=filled]
+  mos_obj68 [fillcolor=yellow, style=filled]
+  /*
+   * the yellow nodes are all of type DSL directory with a bonus of DSL directory
+   * they all have a head_dataset_obj pointing to a DSL dataset
+   * the DSL dataset's all have a block pointer, pointing to a naked dnode for a dataset object set(green)
+   * the yellow nodes also have a child_dir_zapobj pointing to a DSL directory child map
+   * the `DSL directory child map` is a name=object map, pointing back to more yellow nodes
+   * */
+}

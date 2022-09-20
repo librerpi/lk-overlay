@@ -1,13 +1,16 @@
 #include <app.h>
+#include <cksum-helper/cksum-helper.h>
 #include <endian.h>
 #include <lib/bio.h>
 #include <lib/fs.h>
 #include <lib/hexdump.h>
 #include <lk/err.h>
+#include <lz4.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <lz4.h>
+#include <zfs/blkptr.h>
 
 typedef struct {
   uint32_t total_length;
@@ -27,20 +30,6 @@ typedef struct {
     } str;
   } value;
 } packed_nvpair_middle;
-
-typedef struct {
-  uint64_t part1;
-  uint64_t offset;
-} dva_t;
-
-typedef struct {
-  dva_t dva[3];
-  uint64_t flags;
-  uint64_t padding[3];
-  uint64_t birth_txg;
-  uint64_t fill_count;
-  uint64_t checksum[4];
-} blkptr_t;
 
 typedef struct {
   uint8_t dn_type;        // the type of the object this dnode points to
@@ -96,7 +85,6 @@ typedef struct {
 } value_t;
 
 void vdev_nvlist_callback(void *cookie, const char *name, value_t *val);
-void print_block_pointer(const blkptr_t *ptr);
 
 uint64_t nvpair_get_uint64(packed_nvpair_middle *val) {
   assert(BE32(val->type) == 8);
@@ -217,6 +205,12 @@ void print_dva(int dvanr, uint64_t part1, uint64_t offset) {
 }
 
 const char *lookup_object_type(uint8_t type) {
+  if (type & 0x80) {
+    bool metadata = type & 0x40;
+    bool encrypted = type & 0x20;
+    uint8_t flag = type & 0x1f;
+    if ((metadata) && (!encrypted) && (flag == 4)) return "zap";
+  }
   switch (type) {
   case 1:
     return "object directory";
@@ -224,18 +218,24 @@ const char *lookup_object_type(uint8_t type) {
     return "DMU dnode";
   case 11:
     return "DMU objset";
+  case 12:
+    return "DSL directory";
+  case 13:
+    return "DSL directory child map";
+  case 16:
+    return "DSL dataset";
   }
   return "UNK";
 }
 
 void print_dnode(const dnode_phys_t *dn) {
-  printf("dnode\n");
+  printf("PRINT_DNODE\n");
   printf("type: %s(%d)\n", lookup_object_type(dn->dn_type), dn->dn_type);
   printf("indirect shift: 2^%d == %d\n", dn->dn_indblkshift, 1 << dn->dn_indblkshift);
   printf("levels: %d\n", dn->dn_nlevels);
   printf("block ptr#: %d\n", dn->dn_nblkptr);
 
-  printf("bonus type: %d, length: %d\n", dn->dn_bonustype, dn->dn_bonuslen);
+  printf("bonus type: %s(%d), length: %d\n", lookup_object_type(dn->dn_bonustype), dn->dn_bonustype, dn->dn_bonuslen);
   printf("checksum: %d\n", dn->dn_checksum);
 
   printf("block size: 512*%d == %d\n", dn->dn_datablkszsec, dnode_get_data_block_size(dn));
@@ -252,15 +252,36 @@ const char *lookup_checksum(uint32_t algo) {
   switch (algo) {
   case 7:
     return "fletcher4";
+  case 8:
+    return "sha256";
   }
   return "UNK";
 }
 
+const hash_algo_implementation *get_checksum_algo(uint8_t algo) {
+  switch (algo) {
+  case 8:
+    return &sha256_implementation;
+  default:
+    return NULL;
+  }
+}
+
+const char *lookup_compression(uint8_t algo) {
+  switch (algo) {
+  case 15:
+    return "lz4";
+  default:
+    return "UNK";
+  }
+}
+
 //int LZ4_decompress_safe(const char* source, char* dest, int compressedSize, int maxDecompressedSize)
-void zfs_lz4_decompress_record(void *input, int insize, void *output, int outsize) {
+int zfs_lz4_decompress_record(void *input, int insize, void *output, int outsize) {
   uint32_t payload = BE32(*((uint32_t*)input));
   int ret = LZ4_decompress_safe(input+4, output, payload, outsize);
-  printf("decompressed to 0x%x bytes\n", ret);
+  //printf("decompressed to 0x%x bytes\n", ret);
+  return ret;
 }
 
 void decompress_record(void *input, int insize, void *output, int outsize, int algo) {
@@ -270,42 +291,82 @@ void decompress_record(void *input, int insize, void *output, int outsize, int a
   }
 }
 
-void read_record(pool_t *pool, const blkptr_t *ptr, void *buffer, uint32_t size) {
-  uint32_t psize = (((ptr->flags >> 16) & 0xffff) + 1) << 9;
-  uint64_t offset = (ptr->dva[0].offset & ~(((uint64_t)1) << 63)) << 9;
-  void *input = malloc(psize);
-  printf("psize: 0x%x\n", psize);
-  printf("offset: 0x%llx\n", offset);
-  bio_read(pool->dev, input, (4 * 1024 * 1024) + offset, psize);
-  uint8_t compression = (ptr->flags >> 32) & 0xff;
-  decompress_record(input, psize, buffer, size, compression);
-  free(input);
+void verify_checksum(void *data, int size, const hash_algo_implementation *algo, const blkptr_t *ptr) {
+  if (algo == NULL) {
+    puts("unable to verify unknown checksum");
+    return;
+  }
+  uint8_t *hash = malloc(algo->hash_size);
+  hash_blob(algo, data, size, hash);
+  print_hash(hash, algo->hash_size);
+  uint64_t *hash2 = (uint64_t*)hash;
+  for (int i=0; i<4; i++) {
+    assert(BE64(ptr->checksum[i]) == hash2[i]);
+  }
+  free(hash);
 }
 
-static inline int blkptr_get_level(const blkptr_t *ptr) {
-  return (ptr->flags >> 56) & 0x7f;
+void read_record(pool_t *pool, const blkptr_t *ptr, void *buffer, uint32_t size) {
+  if (blkptr_is_embedded(ptr)) {
+    unsigned int psize = blkptr_get_embedded_psize(ptr);
+    //unsigned int lsize = blkptr_get_embedded_lsize(ptr);
+    uint8_t compression = blkptr_get_compression(ptr);
+    //printf("reading embedded blk ptr lsize: 0x%x, psize: 0x%x, comp=%d\n", lsize, psize, compression);
+
+    void *input_buf = malloc(112);
+    void *input = input_buf;
+    memcpy(input, ptr, 48);
+    input += 48;
+
+    memcpy(input, ((void*)ptr) + 56, 24);
+    input += 24;
+
+    memcpy(input, ((void*)ptr) + 88, 40);
+    decompress_record(input_buf, psize, buffer, size, compression);
+    free(input_buf);
+  } else {
+    uint32_t psize = blkptr_get_psize(ptr);
+    // the offset in the dva on-disk, is in multiples of 512 bytes
+    uint64_t offset = (ptr->dva[0].offset & ~(((uint64_t)1) << 63)) << 9;
+    void *input = malloc(psize);
+    printf("psize: 0x%x\n", psize);
+    printf("offset: 0x%llx\n", offset);
+    // the DVA offset is relative to 4mb into the disk
+    bio_read(pool->dev, input, (4 * 1024 * 1024) + offset, psize);
+    const hash_algo_implementation *checksum_algo = get_checksum_algo(blkptr_get_checksum_type(ptr));
+    verify_checksum(input, psize, checksum_algo, ptr);
+    uint8_t compression = blkptr_get_compression(ptr);
+    decompress_record(input, psize, buffer, size, compression);
+    free(input);
+  }
 }
 
 void print_block_pointer(const blkptr_t *ptr) {
-  //printf("flags: %llx\n", ptr->flags);
-  assert(ptr->flags & ((uint64_t)1<<63)); // the LE flag
-  for (int i=0; i<3; i++) {
-    print_dva(i, ptr->dva[i].part1, ptr->dva[i].offset);
-    printf(" ");
+  if (blkptr_is_embedded(ptr)) {
+    int lsize = blkptr_get_embedded_lsize(ptr);
+    int psize = blkptr_get_embedded_psize(ptr);
+    printf("embedded blk ptr size=%dL/%dP\n", lsize, psize);
+  } else {
+    //printf("flags: %llx\n", ptr->flags);
+    assert(ptr->flags & ((uint64_t)1<<63)); // the LE flag
+    for (int i=0; i<3; i++) {
+      print_dva(i, ptr->dva[i].part1, ptr->dva[i].offset);
+      printf(" ");
+    }
+    uint8_t type = (ptr->flags >> 48) & 0xff;
+    uint8_t level = blkptr_get_level(ptr);
+    printf("[L%d %s(%d)] ", level, lookup_object_type(type), type);
+    uint32_t checksum_algo = blkptr_get_checksum_type(ptr);
+    printf("%s(%d) ", lookup_checksum(checksum_algo), checksum_algo);
+    uint8_t compression = blkptr_get_compression(ptr);
+    printf("comp=%s(%d) ", lookup_compression(compression), compression);
+    uint32_t lsize = blkptr_get_lsize(ptr);
+    uint32_t psize = blkptr_get_psize(ptr);
+    printf("size=0x%xL/0x%xP ", lsize, psize);
+    printf("birth=%lld ", ptr->birth_txg);
+    printf("cksum=%llx:%llx:%llx:%llx", ptr->checksum[0], ptr->checksum[1], ptr->checksum[2], ptr->checksum[3]);
+    puts("");
   }
-  uint8_t type = (ptr->flags >> 48) & 0xff;
-  uint8_t level = blkptr_get_level(ptr);
-  printf("[L%d %s(%d)] ", level, lookup_object_type(type), type);
-  uint32_t checksum_algo = (ptr->flags >> 40) & 0xff;
-  printf("%s(%d) ", lookup_checksum(checksum_algo), checksum_algo);
-  uint8_t compression = (ptr->flags >> 32) & 0xff;
-  printf("comp=%d ", compression);
-  uint32_t lsize = ptr->flags & 0xffff;
-  uint32_t psize = (ptr->flags >> 16) & 0xffff;
-  printf("size=0x%xL/0x%xP ", (lsize + 1) << 9, (psize + 1) << 9);
-  printf("birth=%lld ", ptr->birth_txg);
-  printf("cksum=%llx:%llx:%llx:%llx", ptr->checksum[0], ptr->checksum[1], ptr->checksum[2], ptr->checksum[3]);
-  puts("");
 }
 
 void uber_print(uberblock_t *uber) {
@@ -328,24 +389,35 @@ void load_uberblock(pool_t *pool, int ubnum, uberblock_t *uber) {
   assert(ret == sizeof(uberblock_t));
 }
 
+int compute_indirection_index(int blocks_per_indirect, int level, int blocknr) {
+  int blocks_under_level = pow(blocks_per_indirect, level);
+  int raw_index = blocknr / blocks_under_level;
+  return raw_index % blocks_per_indirect;
+}
+
+// reads blocknr from a given dnode
 void dnode_load_block(pool_t *pool, const dnode_phys_t *dn, unsigned int blocknr, void *buffer, int size) {
   unsigned int indirect_block_size = 1 << dn->dn_indblkshift;
   unsigned int indirect_pointers_per_block = indirect_block_size / 128;
-  printf("levels: %d\n", dn->dn_nlevels);
-  printf("each indirection block holds %d pointers\n", indirect_pointers_per_block);
+  puts("");
+  //print_dnode(dn);
   blkptr_t ptr = dn->dn_blkptr[0];
-  for (int i=dn->dn_nlevels-1; i > 0; i--) {
-    int div_factor = indirect_pointers_per_block << (i-1);
-    unsigned int Ln_index = blocknr / div_factor;
-    printf("L%d index %d\n", i, Ln_index);
+  for (int idx = dn->dn_nlevels-1; idx > 0; idx--) {
+    unsigned int Ln_index = compute_indirection_index(indirect_pointers_per_block, idx - 1, blocknr);
+    printf("L%d index %d\n", idx, Ln_index);
     void *iblk = malloc(indirect_block_size);
     read_record(pool, &ptr, iblk, indirect_block_size);
-    //hexdump_ram(iblk, 0, 128 * 3);
+
+    puts("indirect block:");
+    hexdump_ram(iblk, 0, 128 * 3);
     ptr = *(blkptr_t*)(iblk + (Ln_index * 128));
+
+    printf("L%d is ", idx-1);
+    print_block_pointer(&ptr);
     free(iblk);
-    assert(i <= 1); // L2 blocks untested
+    assert(idx <= 1); // L2 blocks untested
   }
-  print_block_pointer(&ptr);
+  //print_block_pointer(&ptr);
   assert(blkptr_get_level(&ptr) == 0);
   read_record(pool, &ptr, buffer, size);
 }
@@ -357,11 +429,169 @@ void load_dnode_by_object_id(pool_t *pool, const dnode_phys_t *dnode_index, uint
   assert(blocknr <= dnode_index->dn_maxblkid);
   int index = objectid % dnodes_per_block;
   printf("object %lld is in block %d, index %d * %d\n", objectid, blocknr, dnode_size, index);
-  void *block = malloc(dnode_get_data_block_size(dnode_index));
-  dnode_load_block(pool, dnode_index, blocknr, block, dnode_get_data_block_size(dnode_index));
+
+  int size = dnode_get_data_block_size(dnode_index);
+  // an array of dnode_phys_t[dnodes_per_block]
+  void *block = malloc(size);
+  dnode_load_block(pool, dnode_index, blocknr, block, size);
+  if (0) {
+    puts("chunk of dnodes");
+    hexdump_ram(block, 0, size);
+  }
   *dnode_out = *(dnode_phys_t*)(block + (dnode_size * index));
   free(block);
 }
+
+void hexdump_uberblock_dnode(pool_t *pool, uberblock_t *uber) {
+  int lsize = blkptr_get_lsize(&uber->ub_rootbp);
+  void *buffer = malloc(lsize);
+  read_record(pool, &uber->ub_rootbp, buffer, lsize);
+  puts("raw dnode at root block ptr");
+  hexdump_ram(buffer, 0, lsize);
+  free(buffer);
+}
+
+void hexdump_object_block(pool_t *pool, const dnode_phys_t *dnode_index, uint64_t objectid, int blocknr) {
+  dnode_phys_t obj;
+  printf("\nloading object %lld to hexdump\n", objectid);
+  load_dnode_by_object_id(pool, dnode_index, objectid, &obj);
+  printf("dumping dnode for object %lld\n", objectid);
+  print_dnode(&obj);
+  hexdump_ram(&obj, 0, 512);
+
+  //int lsize = blkptr_get_lsize(&obj.dn_blkptr[0]);
+  //void *buffer = malloc(lsize);
+  //read_record(pool, &obj.dn_blkptr[0], buffer, lsize);
+  //hexdump_ram(buffer, 0, lsize);
+  //free(buffer);
+  printf("dumping block %d of object %lld\n", blocknr, objectid);
+  int data_block_size = dnode_get_data_block_size(&obj);
+  void *buffer = malloc(data_block_size);
+  dnode_load_block(pool, &obj, blocknr, buffer, data_block_size);
+  hexdump_ram(buffer, data_block_size * blocknr, data_block_size);
+  free(buffer);
+}
+
+typedef struct {
+  uint64_t dir_obj;
+  uint64_t prev_snap_obj;
+
+  uint64_t prev_snap_txg;
+  uint64_t next_snap_obj;
+
+  uint64_t snapnames_zapobj;
+  uint64_t num_children;
+
+  uint64_t creation_time;
+  uint64_t creation_txg;
+
+  uint64_t deadlist_obj;
+  uint64_t used_bytes;
+
+  uint64_t compressed_bytes;
+  uint64_t uncompressed_bytes;
+
+  uint64_t unique;
+  uint64_t fsid_guid;
+
+  uint64_t guid;
+  uint64_t flags;
+
+  blkptr_t bp;
+  uint64_t next_clones_obj;
+  uint64_t props_obj;
+  uint64_t userrefs_obj;
+} dsl_dataset_phys_t;
+
+void dump_bonus_dsl_dataset(dsl_dataset_phys_t *d) {
+  printf("dir_obj:          %lld\n", d->dir_obj);
+  printf("prev_snap_obj:    %lld\n", d->prev_snap_obj);
+
+  printf("prev_snap_txg:    %lld\n", d->prev_snap_txg);
+  printf("next_snap_obj:    %lld\n", d->next_snap_obj);
+
+  printf("snapnames_zapobj: %lld\n", d->snapnames_zapobj);
+  printf("num_children:     %lld\n", d->num_children);
+
+  printf("userrefs_obj:     %lld\n", d->userrefs_obj);
+  printf("creation_time:    %lld\n", d->creation_time);
+  printf("creation_txg:     %lld\n", d->creation_txg);
+
+  printf("deadlist_obj:     %lld\n", d->deadlist_obj);
+  printf("used_bytes:       %lld\n", d->used_bytes);
+
+  printf("compressed_bytes: %lld\n", d->compressed_bytes);
+  printf("uncompressed_bytes: %lld\n", d->uncompressed_bytes);
+
+  printf("unique:           %lld\n", d->unique);
+  printf("fsid_guid:        0x%llx\n", d->fsid_guid);
+
+  printf("guid:             0x%llx\n", d->guid);
+  printf("flags:            %lld\n", d->flags);
+
+  print_block_pointer(&d->bp);
+
+  printf("next_clones_obj:  %lld\n", d->next_clones_obj);
+  printf("props_obj:        %lld\n", d->props_obj);
+}
+
+void object_get_bonus(pool_t *pool, const dnode_phys_t *dnode_index, uint64_t objectid, void *out, int *size, int *type) {
+  dnode_phys_t obj;
+  //printf("\nloading object %lld to hexdump bonus\n", objectid);
+  load_dnode_by_object_id(pool, dnode_index, objectid, &obj);
+  //printf("dumping dnode for object %lld\n", objectid);
+  //print_dnode(&obj);
+  //hexdump_ram(&obj, 0, 512);
+
+  void *bonus = &obj.dn_blkptr[obj.dn_nblkptr];
+  memcpy(out, bonus, MIN(obj.dn_bonuslen, *size));
+  *size = obj.dn_bonuslen;
+  *type = obj.dn_bonustype;
+}
+
+void hexdump_object_bonus(pool_t *pool, const dnode_phys_t *dnode_index, uint64_t objectid) {
+  int size, type;
+  void *bonus = malloc(512);
+  size = 512;
+  object_get_bonus(pool, dnode_index, objectid, bonus, &size, &type);
+  printf("bonus(%d):\n", type);
+  hexdump_ram(bonus, 0, size);
+  switch (type) {
+  case 16:
+    dump_bonus_dsl_dataset(bonus);
+    break;
+  }
+  free(bonus);
+}
+
+/*
+ * to import a pool:
+ * import1: find the most recent uberblock
+ * import2: load the dnode within the uberblocks root block pointer, that dnode is the MOS/root object set
+ *
+ * to access a child dataset, say test/a/b
+ * object 1 in the MOS is a zap with root_dataset=32, matching step 4
+ * object 32 in the MOS has a bonus with child_dir_zapobj=34
+ * object 34 in the MOS is a zap with a = 257
+ * object 257 in the MOS has a bonus with child_dir_zapobj=259
+ * object 259 in the MOS is a zap with b=68
+ * object 68 in the MOS has a bonus with head_dataset_obj, matching step 5
+ * object 71 in the MOS has a bonus matching step 6, dir_obj also points backwards to obj 68
+ * within dataset test/a/b, object 1 is a microzap, matching step 7
+ *
+ * to mount the root dataset:
+ * root1: load object 1 from the MOS, it is a fat zap
+ * root2: root_dataset on object 1 points to an object with a DSL directory in its bonus buffer, load that
+ * root3: head_dataset_obj is a field in the bonus, it points to an object of type zap+bonus DSL dataset, load that
+ * root4: in the bonus for that object is a block pointer, to the dataset object set dnode
+ *
+ * to mount a child dataset:
+ * child1: load object 1 from the MOS, it is a fat zap
+ * child2: root_dataset on object 1 points to an object with a DSL directory in its bonus buffer, load that
+ * child3: child_dir_zapobj is a field in the bonus, it points to an object of type DSL directory child map
+ * child4: the `DSL directory child map` is a ZAP containing childname=object#, pointing to a DSL directory
+ * child5: goto step root3 or child3
+ * */
 
 status_t zfs_mount(bdev_t *dev, fscookie **cookie) {
   int ret;
@@ -392,6 +622,7 @@ status_t zfs_mount(bdev_t *dev, fscookie **cookie) {
   puts("all parsing done");
   printf("version: %lld\nname: %s\npool_guid: %llx\nguid: %llx\nashift: 2^%lld == %d\n", pool->version, pool->name, pool->pool_guid, pool->guid, pool->ashift, 1 << pool->ashift);
 
+  // step import1, find the most recent uberblock
   uint64_t latest_txg = 0;
   int latest_ub = 0;
   for (int i=0; i<128; i++) {
@@ -400,25 +631,51 @@ status_t zfs_mount(bdev_t *dev, fscookie **cookie) {
     if (uber.ub_magic == 0xbab10c) {
       printf("Uberblock[%d]\n", i);
       uber_print(&uber);
+      //hexdump_uberblock_dnode(pool, &uber);
       if (uber.ub_txg > latest_txg) {
         latest_txg = uber.ub_txg;
         latest_ub = i;
       }
     }
   }
+  // step import2, load the dnode for the MOS
   printf("using txg %lld and uberblock %d\n", latest_txg, latest_ub);
   printf("dnode size: %ld\n", sizeof(dnode_phys_t));
   uberblock_t uber;
   load_uberblock(pool, latest_ub, &uber);
   read_record(pool, &uber.ub_rootbp, &pool->mos_dnode, sizeof(pool->mos_dnode));
+  puts("mos dnode");
   hexdump_ram(&pool->mos_dnode, 0, 0xc0);
   print_dnode(&pool->mos_dnode);
 
-  dnode_phys_t object1;
-  load_dnode_by_object_id(pool, &pool->mos_dnode, 1, &object1);
-  print_dnode(&object1);
-  print_block_pointer(&object1.dn_blkptr[1]);
+  //dnode_phys_t object1;
+  //load_dnode_by_object_id(pool, &pool->mos_dnode, 1, &object1);
+  //print_dnode(&object1);
+  //print_block_pointer(&object1.dn_blkptr[1]);
 
+  //hexdump_object_block(pool, &pool->mos_dnode, 34, 0);
+  //hexdump_object_bonus(pool, &pool->mos_dnode, 54);
+
+  {
+    // TODO, read head_dataset_obj from step root2, to get the 54 below
+    // step root3, load the bonus for the root dataset
+    puts("dumping blkptr for object 54 bonus");
+    int size, type;
+    dsl_dataset_phys_t *bonus = malloc(512);
+    size = 512;
+    object_get_bonus(pool, &pool->mos_dnode, 54, bonus, &size, &type);
+    print_block_pointer(&bonus->bp);
+    int lsize = blkptr_get_lsize(&bonus->bp);
+    void *dnode = malloc(lsize);
+    // step root4, load the dnode for the root dataset
+    read_record(pool, &bonus->bp, dnode, lsize);
+    print_dnode(dnode);
+    hexdump_ram(dnode, 0, lsize);
+    free(dnode);
+    free(bonus);
+  }
+
+  printf("sizeof(dnode_phys_t) == %ld\n", sizeof(dnode_phys_t));
   return -1;
 err:
   free(buffer);

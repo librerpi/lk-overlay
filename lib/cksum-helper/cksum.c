@@ -1,5 +1,6 @@
 #include <app.h>
 #include <assert.h>
+#include <cksum-helper/cksum-helper.h>
 #include <lib/cbuf.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,14 +18,6 @@
 #ifdef WITH_APP_SHELL
 #include <lk/console_cmd.h>
 #endif
-
-typedef struct {
-  int context_size;
-  int hash_size;
-  void (*init)(void *context);
-  void (*update)(void *context, const void *data, int length);
-  const uint8_t *(*finalize)(void *context);
-} hash_algo_implementation;
 
 typedef struct {
   filehandle *fh;
@@ -78,6 +71,12 @@ void print_hash_to_string(const uint8_t *hash, int hash_size, char *outbuf) {
   outbuf[2*i] = 0;
 }
 
+void hash_blob(const hash_algo_implementation *algo, void *data, int size, uint8_t *hash) {
+  void *context = malloc(algo->context_size);
+  algo->init(context);
+  algo->update(context, data, size);
+  memcpy(hash, algo->finalize(context), algo->hash_size);
+}
 void test_hash_algo(const char *name, const void *data, int size, const char *expected) {
   const hash_algo_implementation *algo = get_implementation(name);
   if (!algo) {
