@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <cksum-helper/cksum-helper.h>
 #include <lib/cbuf.h>
+#include <platform.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -263,20 +264,25 @@ static void helper_entry(const struct app_descriptor *app, void *args) {
     printf("mount failure: %d\n", ret);
     return;
   }
-  if (0) {
+  if (1) {
     const hash_algo_implementation *algo = get_implementation("sha256");
     int matches=0, mismatches=0, failure=0;
     verify_hashes(algo, "/test/", "everything.sums", &matches, &mismatches, &failure);
     printf("%d matches, %d mismatches, %d failure\n", matches, mismatches, failure);
   }
-  const hash_algo_implementation *algo = get_implementation("sha256");
-  void *hash = malloc(algo->hash_size);
-  ret = hash_file("/test/./lk/external/platform/nrfx/mdk/nrf5340_xxaa_network.ld", algo, hash);
-  //assert(ret == 0);
+  if (0) {
+    const hash_algo_implementation *algo = get_implementation("sha256");
+    void *hash = malloc(algo->hash_size);
+    ret = hash_file("/test/./lk/external/platform/nrfx/mdk/nrf5340_xxaa_network.ld", algo, hash);
+    //assert(ret == 0);
+  }
   dump_thread(get_current_thread());
+  platform_halt(HALT_ACTION_SHUTDOWN, HALT_REASON_UNKNOWN);
 }
 
 APP_START(helper_test)
-  .entry = helper_entry
+  .entry = helper_entry,
+  .flags = APP_FLAG_CUSTOM_STACK_SIZE,
+  .stack_size = 64 * 1024
 APP_END
 

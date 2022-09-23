@@ -13,7 +13,7 @@
 #include "ext2_priv.h"
 #include <lib/hexdump.h>
 
-#define LOCAL_TRACE 1
+#define LOCAL_TRACE 0
 
 int ext2_read_block(ext2_t *ext2, void *buf, blocknum_t bnum) {
     return bcache_read_block(ext2->cache, buf, bnum);
@@ -126,55 +126,81 @@ error:
 /* translate a file block to a physical block */
 static blocknum_t file_block_to_fs_block(ext2_t *ext2, struct ext2_inode *inode, uint fileblock) {
     int err;
-    blocknum_t block;
+    blocknum_t block = 0;
+    // minor potential for a bug, 0 is treated as not loaded
+    blocknum_t indirect_block = 0;
+    //void *indirect_block_ptr;
+    int iterations = 0;
 
     LTRACEF("inode %p, fileblock %u\n", inode, fileblock);
     if (inode->i_flags & 0x80000) { // inode is stored using extents
         ext4_extent_header *eh = (ext4_extent_header*)&inode->i_block;
-        if (LOCAL_TRACE) {
-          printf("its an extent based object\n");
-          printf("eh_magic:      0x%x\n", LE16(eh->eh_magic));
-          printf("eh_entries:    %d\n", LE16(eh->eh_entries));
-          printf("eh_max:        %d\n", LE16(eh->eh_max));
-          printf("eh_depth:      %d\n", LE16(eh->eh_depth));
-          printf("eh_generation: %d\n", LE32(eh->eh_generation));
-        }
-        if (LE16(eh->eh_magic) != 0xf30a) {
-          puts("extent header magic invalid");
-          return 0;
-        }
-        block = 0; // TODO
-        if (LE16(eh->eh_depth) == 0) {
-          ext4_extent *extents = (ext4_extent*)( ((ext4_extent*)&inode->i_block) + 1);
-          for (int i=0; i < LE16(eh->eh_entries); i++) {
+        while (true) {
 #if 0
-            printf("extent %d\n", i);
-            printf("  ee_block:    %d\n", LE32(extents[i].ee_block));
-            printf("  ee_len:      %d\n", LE16(extents[i].ee_len));
-            printf("  ee_start_hi: %d\n", LE16(extents[i].ee_start_hi));
-            printf("  ee_start_lo: %d\n", LE32(extents[i].ee_start_lo));
+          if (LOCAL_TRACE) {
+            printf("its an extent based object\n");
+            printf("eh_magic:      0x%x\n", LE16(eh->eh_magic));
+            printf("eh_entries:    %d\n", LE16(eh->eh_entries));
+            printf("eh_max:        %d\n", LE16(eh->eh_max));
+            printf("eh_depth:      %d\n", LE16(eh->eh_depth));
+            printf("eh_generation: %d\n", LE32(eh->eh_generation));
+          }
 #endif
-            if ((fileblock >= LE32(extents[i].ee_block)) && (fileblock < (LE32(extents[i].ee_block) + LE16(extents[i].ee_len)))) {
-              if (LE16(extents[i].ee_start_hi) != 0) {
+
+          if (LE16(eh->eh_magic) != 0xf30a) {
+            puts("extent header magic invalid");
+            return 0;
+          }
+
+          // if this is the last layer of extents and is pointing to data blocks
+          if (LE16(eh->eh_depth) == 0) {
+            ext4_extent *extents = (ext4_extent*)( ((ext4_extent*)eh) + 1);
+            for (int i=0; i < LE16(eh->eh_entries); i++) {
+#if 0
+              printf("extent %d\n", i);
+              printf("  ee_block:    %d\n", LE32(extents[i].ee_block));
+              printf("  ee_len:      %d\n", LE16(extents[i].ee_len));
+              printf("  ee_start_hi: %d\n", LE16(extents[i].ee_start_hi));
+              printf("  ee_start_lo: %d\n", LE32(extents[i].ee_start_lo));
+#endif
+              if ((fileblock >= LE32(extents[i].ee_block)) && (fileblock < (LE32(extents[i].ee_block) + LE16(extents[i].ee_len)))) {
+                if (LE16(extents[i].ee_start_hi) != 0) {
+                  puts("unsupported >32bit blocknr");
+                  //return 0;
+                }
+                block = LE32(extents[i].ee_start_lo) + (fileblock - LE32(extents[i].ee_block));
+              }
+            }
+            break;
+          } else {
+            ext4_extent_idx *extents = (ext4_extent_idx*)( ((ext4_extent_idx*)&inode->i_block) + 1);
+            for (int i=0; i < LE16(eh->eh_entries); i++) {
+#if 0
+              printf("extent %d.%d\n", LE16(eh->eh_depth), i);
+              printf("  ei_block:    %d\n", LE32(extents[i].ei_block));
+              printf("  ei_leaf_lo   %d\n", LE32(extents[i].ei_leaf_lo));
+              printf("  ei_leaf_hi:  %d\n", LE16(extents[i].ei_leaf_hi));
+#endif
+              if (LE16(extents[i].ei_leaf_hi) != 0) {
                 puts("unsupported >32bit blocknr");
                 return 0;
               }
-              block = LE32(extents[i].ee_start_lo) + (fileblock - LE32(extents[i].ee_block));
+              assert(i == 0);
+
+              if (indirect_block) ext2_put_block(ext2, indirect_block);
+
+              void *buffer;
+              indirect_block = LE32(extents[i].ei_leaf_lo);
+              ext2_get_block(ext2, &buffer, indirect_block);
+              //indirect_block_ptr = buffer;
+              eh = buffer;
+              break;
             }
+            assert(iterations++ < 10);
           }
-        } else {
-          puts("TODO!");
-          ext4_extent_idx *extents = (ext4_extent_idx*)( ((ext4_extent_idx*)&inode->i_block) + 1);
-          for (int i=0; i < LE16(eh->eh_entries); i++) {
-#if 1
-            printf("extent %d\n", i);
-            printf("  ei_block:    %d\n", LE32(extents[i].ei_block));
-            printf("  ei_leaf_lo   %d\n", LE16(extents[i].ei_leaf_lo));
-            printf("  ei_leaf_hi:  %d\n", LE16(extents[i].ei_leaf_hi));
-#endif
-          }
-          puts("TODO!");
         }
+        if (indirect_block) ext2_put_block(ext2, indirect_block);
+        //block = 0; // TODO
     } else {
         uint32_t pos[4];
         uint32_t level = 0;
@@ -215,7 +241,8 @@ ssize_t ext2_read_inode(ext2_t *ext2, struct ext2_inode *inode, void *_buf, off_
 
     /* calculate the file size */
     off_t file_size = ext2_file_len(ext2, inode);
-    if (inode->i_flags & ~(0x80000)) { // the extent flag
+    // 0x1000 EXT4_INDEX_FL, the directory has a btree hidden in records for faster lookup, but is read-only compatible with the old linear format
+    if (inode->i_flags & ~(0x81000)) { // the extent flag
       printf("unsupported flags on inode: 0x%x\n", inode->i_flags);
       return -1;
     }

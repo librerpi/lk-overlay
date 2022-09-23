@@ -10,7 +10,7 @@ MODULE_DEPS += \
 	lib/fs \
 	lib/mincrypt \
 
-MODULE_SRCS += \
+MODULE_FLOAT_SRCS += \
 	$(LOCAL_DIR)/zfs.c
 
 include make/module.mk

@@ -7,6 +7,7 @@
 #include <lk/err.h>
 #include <lz4.h>
 #include <math.h>
+#include <platform.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +56,41 @@ typedef struct {
 } dnode_phys_t;
 
 typedef struct {
+  uint64_t zh_claim_txg;  /* txg in which log blocks were claimed */
+  uint64_t zh_replay_seq; /* highest replayed sequence number */
+  blkptr_t zh_log;        /* log chain */
+  uint64_t zh_claim_blk_seq; /* highest claimed block sequence number */
+  uint64_t zh_flags;      /* header flags */
+  uint64_t zh_claim_lr_seq; /* highest claimed lr sequence number */
+  uint64_t zh_pad[3];
+} zil_header_t;
+
+typedef struct {
+  uint64_t lrc_txtype;
+  uint64_t lrc_reclen;
+  uint64_t lrc_txg;
+  uint64_t lrc_seq;
+} lr_t;
+
+typedef struct {
+  uint64_t zec_magic;
+  uint64_t checksum[4];
+} zio_eck_t;
+
+// zilog2 blocks have a zil_chain_t at the head
+typedef struct {
+  uint64_t zc_pad;
+  blkptr_t zc_next_blk;
+  uint64_t zc_nused;
+  zio_eck_t zc_eck;
+} zil_chain_t;
+
+typedef struct {
+  dnode_phys_t os_meta_dnode;
+  zil_header_t os_zil_header;
+} objset_phys_t;
+
+typedef struct {
   bdev_t *dev;
   uint64_t version;
   char *name;
@@ -85,6 +121,8 @@ typedef struct {
 } value_t;
 
 void vdev_nvlist_callback(void *cookie, const char *name, value_t *val);
+void hexdump_record(pool_t *pool, const blkptr_t *ptr);
+void read_record(pool_t *pool, const blkptr_t *ptr, void *buffer, uint32_t size);
 
 uint64_t nvpair_get_uint64(packed_nvpair_middle *val) {
   assert(BE32(val->type) == 8);
@@ -242,22 +280,62 @@ void print_dnode(const dnode_phys_t *dn) {
 
   printf("max block#: %lld\n", dn->dn_maxblkid);
   printf("sum(asize): %lld\n", dn->dn_secphys);
-  for (int i=0; i<1; i++) {
-    printf("dnode block ptr ");
+  for (int i=0; i<dn->dn_nblkptr; i++) {
+    if ((dn->dn_nlevels > 1) && (i > 0)) break;
+    printf("dnode->dn_blkptr[%d] ", i);
     print_block_pointer(&dn->dn_blkptr[i]);
   }
 }
 
+void print_zil_record(const lr_t *lr) {
+  printf("lrc_txtype: %llx\n", lr->lrc_txtype);
+  printf("lrc_reclen: %llx\n", lr->lrc_reclen);
+  printf("lrc_txg:    %llx\n", lr->lrc_txg);
+  printf("lrc_seq:    %llx\n", lr->lrc_seq);
+}
+
+void print_zil_chain(const zil_chain_t *c) {
+  printf("zc_pad:   %lld\n", c->zc_pad);
+  print_block_pointer(&c->zc_next_blk);
+  printf("zc_nused: %lld\n", c->zc_nused);
+}
+
+void print_zil_header(pool_t *pool, const zil_header_t *zh) {
+  puts("ZIL Header");
+  printf("zh_claim_txg:     %lld\n", zh->zh_claim_txg);
+  printf("zh_replay_seq:    %lld\n", zh->zh_replay_seq);
+  print_block_pointer(&zh->zh_log);
+  printf("zh_claim_blk_seq: %lld\n", zh->zh_claim_blk_seq);
+  printf("zh_flags:         %lld\n", zh->zh_flags);
+  printf("zh_claim_lr_seq:  %lld\n", zh->zh_claim_lr_seq);
+  int size = blkptr_get_lsize(&zh->zh_log);
+  void *buffer = malloc(size);
+  read_record(pool, &zh->zh_log, buffer, size);
+  hexdump_ram(buffer, 0, size);
+  print_zil_chain(buffer);
+  free(buffer);
+}
+
+void print_objset(pool_t *pool, const objset_phys_t *objset) {
+  puts("\nOBJ SET");
+  print_dnode(&objset->os_meta_dnode);
+  print_zil_header(pool, &objset->os_zil_header);
+}
+
+// zio_checksum in zfs
 const char *lookup_checksum(uint32_t algo) {
   switch (algo) {
   case 7:
     return "fletcher4";
   case 8:
     return "sha256";
+  case 9:
+    return "zilog2";
   }
   return "UNK";
 }
 
+// zio_checksum in zfs
 const hash_algo_implementation *get_checksum_algo(uint8_t algo) {
   switch (algo) {
   case 8:
@@ -267,8 +345,11 @@ const hash_algo_implementation *get_checksum_algo(uint8_t algo) {
   }
 }
 
+// zio_compress in zfs
 const char *lookup_compression(uint8_t algo) {
   switch (algo) {
+  case 2:
+    return "uncompressed";
   case 15:
     return "lz4";
   default:
@@ -286,8 +367,14 @@ int zfs_lz4_decompress_record(void *input, int insize, void *output, int outsize
 
 void decompress_record(void *input, int insize, void *output, int outsize, int algo) {
   switch (algo) {
+  case 2:
+    memcpy(output, input, MIN(outsize, insize));
+    break;
   case 15:
     zfs_lz4_decompress_record(input, insize, output, outsize);
+    break;
+  default:
+    assert(0);
   }
 }
 
@@ -341,7 +428,19 @@ void read_record(pool_t *pool, const blkptr_t *ptr, void *buffer, uint32_t size)
   }
 }
 
+void hexdump_record(pool_t *pool, const blkptr_t *ptr) {
+  int size = blkptr_get_lsize(ptr);
+  void *buffer = malloc(size);
+  read_record(pool, ptr, buffer, size);
+  hexdump_ram(buffer, 0, size);
+  free(buffer);
+}
+
 void print_block_pointer(const blkptr_t *ptr) {
+  if (ptr->dva[0].offset == 0) {
+    puts("EMPTY");
+    return;
+  }
   if (blkptr_is_embedded(ptr)) {
     int lsize = blkptr_get_embedded_lsize(ptr);
     int psize = blkptr_get_embedded_psize(ptr);
@@ -644,7 +743,7 @@ status_t zfs_mount(bdev_t *dev, fscookie **cookie) {
   uberblock_t uber;
   load_uberblock(pool, latest_ub, &uber);
   read_record(pool, &uber.ub_rootbp, &pool->mos_dnode, sizeof(pool->mos_dnode));
-  puts("mos dnode");
+  puts("\nmos dnode");
   hexdump_ram(&pool->mos_dnode, 0, 0xc0);
   print_dnode(&pool->mos_dnode);
 
@@ -669,8 +768,8 @@ status_t zfs_mount(bdev_t *dev, fscookie **cookie) {
     void *dnode = malloc(lsize);
     // step root4, load the dnode for the root dataset
     read_record(pool, &bonus->bp, dnode, lsize);
-    print_dnode(dnode);
-    hexdump_ram(dnode, 0, lsize);
+    print_objset(pool, dnode);
+    //hexdump_ram(dnode, 0, lsize);
     free(dnode);
     free(bonus);
   }
@@ -694,6 +793,7 @@ static void zfs_entry(const struct app_descriptor *app, void *args) {
   if (ret) {
     printf("mount failure: %d\n", ret);
   }
+  platform_halt(HALT_ACTION_SHUTDOWN, HALT_REASON_UNKNOWN);
 }
 
 APP_START(zfs_test)
