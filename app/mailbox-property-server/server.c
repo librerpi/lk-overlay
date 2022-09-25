@@ -27,6 +27,11 @@ bool handle_property_tag(struct tagged_packet *packet) {
       value32[4] = 0x11223344;
       packet->req_resp = 0x80000000 | 20;
       return false;
+    case 0x00010005: // get arm mem
+      value[0] = 0;
+      value[1] = 64 * 1024 * 1024;
+      packet->req_resp = 0x80000000 | 8;
+      return false;
   }
   return true;
 }
