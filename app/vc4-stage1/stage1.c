@@ -22,14 +22,14 @@
 #define UNCACHED_RAM 0xc0000000
 #define MB (1024*1024)
 
-static void stage2_dram_init(uint level) {
+static void stage1_dram_init(uint level) {
   sdram_init();
   uint32_t start = UNCACHED_RAM | (1 * MB);
   uint32_t length = 10 * MB;
   novm_add_arena("dram", start, length);
 }
 
-LK_INIT_HOOK(stage1, &stage2_dram_init, LK_INIT_LEVEL_PLATFORM_EARLY + 1);
+LK_INIT_HOOK(stage1, &stage1_dram_init, LK_INIT_LEVEL_PLATFORM_EARLY + 1);
 
 static ssize_t fs_read_wrapper(struct elf_handle *handle, void *buf, uint64_t offset, size_t len) {
   return fs_read_file(handle->read_hook_arg, buf, offset, len);
@@ -186,16 +186,16 @@ static void xmodem_receive(void) {
   free(buffer);
 }
 
-static void stage2_init(const struct app_descriptor *app) {
-  puts("stage2_init");
+static void stage1_init(const struct app_descriptor *app) {
+  puts("stage1_init");
 }
 
-static void stage2_entry(const struct app_descriptor *app, void *args) {
+static void stage1_entry(const struct app_descriptor *app, void *args) {
   int ret;
-  puts("stage2 entry\n");
+  puts("stage1 entry\n");
   mount_rootfs();
 
-  lua_State *L = lua_newstate(&lua_allocator, NULL);
+  /*lua_State *L = lua_newstate(&lua_allocator, NULL);
   register_globals(L);
 
   luaL_loadstring(L, "print(5+5)");
@@ -215,7 +215,7 @@ static void stage2_entry(const struct app_descriptor *app, void *args) {
 
   lua_close(L); L=NULL;
 
-  return;
+  return;*/
 
 #if 0
   puts("press X to stop autoboot and go into xmodem mode...");
@@ -245,7 +245,7 @@ static void stage2_entry(const struct app_descriptor *app, void *args) {
   }
 }
 
-APP_START(stage2)
-  .init = stage2_init,
-  .entry = stage2_entry,
+APP_START(stage1)
+  .init = stage1_init,
+  .entry = stage1_entry,
 APP_END
