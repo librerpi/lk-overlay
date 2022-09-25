@@ -170,7 +170,7 @@ static void enable_usb_host(void) {
     *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
     while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
 
-    uint32_t divisor = freq_pllc_core0 / (25000000/0x1000);
+    uint32_t divisor = freq_pllc_per / (25000000/0x1000);
 
     *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
     *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
