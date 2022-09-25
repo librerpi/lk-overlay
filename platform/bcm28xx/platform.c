@@ -326,7 +326,7 @@ static void old_switch_vpu_to_pllc() {
 
   uint64_t pllc_mhz = 108 * per_div * 4;
 
-  pllc_mhz = 109 * 9;
+  pllc_mhz = 108 * 9;
 
   printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 
