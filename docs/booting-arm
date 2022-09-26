@@ -1,0 +1,11 @@
+the various ways to boot linux on the arm core
+
+1: armstub + linux, the VPU pre-loads the DT, same as the official firmware
+2: lk-overlay(linux-bootloader) + linux, DT is handled on the arm side, but linux only gets a single core currently
+3: armstub + lk-overlay(linux-bootloader) + linux, DT still handled on the arm side, but the stub parks 3 cores for later use by linux
+4: armstub + u-boot + linux, u-boot handles DT on the arm side, armstub parks the 3 cores for later use
+5: modify LK to have a stub within it that can park or halt the cores
+6: modify u-boot so it can run stub-less, park the cores, and allow waking either via spintables or PSCI
+7: modify LK to include PSCI
+8: rpi-open-firmware/arm_chainloader, can be modified to park the cores and either spintable or PSCI
+9: tianocore

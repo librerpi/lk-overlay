@@ -1,0 +1,13 @@
+CONFIG_SYS_TEXT_BASE is the base addr the u-boot.bin expects to be loaded at
+CONFIG_POSITION_INDEPENDENT=y
+
+2022-09-25 14:34:44 < marex> CONFIG_SYS_TEXT_BASE=0x0 CONFIG_POSITION_INDEPENDENT=y
+2022-09-25 14:34:51 < marex> that's how you make u-boot fully PIE
+2022-09-25 14:34:58 < marex> works at least on aarch64
+
+2022-09-25 14:51:41 < marex> clever: enable ARM PSCI support like iMX7D or STM32MP15xx does in U-Boot and then let Linux un-park those extra cores via PSCI ?
+2022-09-25 14:52:27 < marex> it's U-Boot providing PSCI
+2022-09-25 14:53:10 < marex> i.e. no external binaries or other crud
+2022-09-25 14:54:15 < marex> arch/arm/mach-stm32mp/psci.c
+2022-09-25 14:54:25 < marex> arch/arm/mach-imx/mx7/psci-mx7.c
+
