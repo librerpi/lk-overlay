@@ -39,7 +39,7 @@ const int scaling_kernel = 4080;
 #define SCALER_PPF_AGC (1<<30)
 
 enum scaling_mode {
-  none,
+  scaling_none,
   PPF, // upscaling?
   TPZ // downscaling?
 };
@@ -138,31 +138,56 @@ static void write_ppf(unsigned int source, unsigned int dest) {
     (scale << 8) | (0 << 0);
 }
 
+uint32_t gen_ppf(unsigned int source, unsigned int dest) {
+  uint32_t scale = (1<<16) * source / dest;
+  if (hvs_debug) printf("PPF 0x%x\n", scale);
+  return SCALER_PPF_AGC | (scale << 8) | (0 << 0);
+}
+
 static void hvs_add_plane_scaled(hvs_layer *layer) {
-  assert(layer->fb);
   int alpha_mode = 1;
-  if (layer->fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
   int x = layer->x;
   int y = layer->y;
-  unsigned int width = layer->w;
-  unsigned int height = layer->h;
+  uint input_width = layer->viewport_w;
+  uint input_height = layer->viewport_h;
+  unsigned int screen_width = layer->w;
+  unsigned int screen_height = layer->h;
   const bool hflip = false;
+  enum hvs_pixel_format fmt;
+  bool any_scaling = true;
 
-  if (hvs_debug) {
-    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+  if (layer->fb) {
+    assert(layer->fb);
+    fmt = gfx_to_hvs_pixel_format(layer->fb->format);
+    if (layer->fb->format == GFX_FORMAT_ARGB_8888) alpha_mode = 0;
+  } else if (layer->palette_mode != palette_none) {
+    fmt = HVS_PIXEL_FORMAT_PALETTE;
+  } else {
+    puts("unsupported sprite");
+    return;
+  }
+
+  if (hvs_debug && layer->fb) {
+    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", input_width, input_height, x, y, screen_width, screen_height);
     printf("alpha mode %d\n", alpha_mode);
     printf("format %d\n", layer->fb->format);
   }
 
+
   enum scaling_mode xmode, ymode;
 
-  if (layer->fb->width > width) xmode = TPZ;
-  else if (layer->fb->width < width) xmode = PPF;
-  else xmode = TPZ;
+  if (layer->fb) {
+    if (input_width > screen_width) xmode = TPZ;
+    else if (input_width < screen_width) xmode = PPF;
+    else xmode = TPZ;
 
-  if (layer->fb->height > height) ymode = TPZ;
-  else if (layer->fb->height < height) ymode = PPF;
-  else ymode = TPZ;
+    if (input_height > screen_height) ymode = TPZ;
+    else if (input_height < screen_height) ymode = PPF;
+    else ymode = TPZ;
+  } else {
+    xmode = scaling_none;
+    ymode = scaling_none;
+  }
 
   int scl0;
   switch ((xmode << 2) | ymode) {
@@ -178,43 +203,51 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
   case (TPZ << 2) | TPZ:
     scl0 = SCALER_CTL0_SCL_H_TPZ_V_TPZ;     // 3
     break;
-  case (PPF << 2) | none:
+  case (PPF << 2) | scaling_none:
     scl0 = SCALER_CTL0_SCL_H_PPF_V_NONE;    // 4
     break;
-  case (none << 2) | PPF:
+  case (scaling_none << 2) | PPF:
     scl0 = SCALER_CTL0_SCL_H_NONE_V_PPF;    // 5
     break;
-  case (none << 2) | TPZ:
+  case (scaling_none << 2) | TPZ:
     scl0 = SCALER_CTL0_SCL_H_NONE_V_TPZ;    // 6
     break;
-  case (TPZ << 2) | none:
+  case (TPZ << 2) | scaling_none:
     // randomly doesnt work right
     scl0 = SCALER_CTL0_SCL_H_TPZ_V_NONE;    // 7
     break;
   default:
     puts("unsupported scale combination");
-    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", layer->fb->width, layer->fb->height, x, y, width, height);
+    printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", input_width, input_height, x, y, screen_width, screen_height);
     return;
   }
 
   if (hvs_debug) printf("scl0: %d\n", scl0);
 
   int start = display_slot;
+  // control word 0
   dlist_memory[display_slot++] = 0 // CONTROL_VALID
     | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
 //    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
     | (hflip ? CONTROL0_HFLIP : 0)
-    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(layer->fb->format))
+    | CONTROL_FORMAT(fmt)
     | (scl0 << 5)
     | (scl0 << 8); // SCL1
+
   dlist_memory[display_slot++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);                                   // position word 0
-  dlist_memory[display_slot++] = width | (height << 16);                                                     // position word 1
-  dlist_memory[display_slot++] = POS2_H(layer->fb->height) | POS2_W(layer->fb->width) | (alpha_mode << 30);  // position word 2
+  if (any_scaling) {
+    dlist_memory[display_slot++] = screen_width | (screen_height << 16);                                     // position word 1
+  }
+  dlist_memory[display_slot++] = POS2_H(input_width) | POS2_W(input_height) | (alpha_mode << 30);            // position word 2
   dlist_memory[display_slot++] = 0xDEADBEEF;                                                                 // position word 3, dummy for HVS state
+
   dlist_memory[display_slot++] = (uint32_t)layer->fb->ptr | 0x80000000;                                      // pointer word 0
   dlist_memory[display_slot++] = 0xDEADBEEF;                                                                 // pointer context word 0 dummy for HVS state
   dlist_memory[display_slot++] = layer->fb->stride * layer->fb->pixelsize;                                   // pitch word 0
-  // optional pointer to palette table, displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
+  if (layer->palette_mode != palette_none) {
+    // optional pointer to palette table
+    dlist_memory[display_slot++] = 0xc0000000 | (0x300 << 2);
+  }
   dlist_memory[display_slot++] = (scaled_layer_count * 2400);         // LBM base addr
   scaled_layer_count++;
 
@@ -231,20 +264,20 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
 #endif
 
   if (xmode == PPF) {
-    write_ppf(layer->fb->width, width);
+    write_ppf(input_width, screen_width);
   }
 
   if (ymode == PPF) {
-    write_ppf(layer->fb->height, height);
+    write_ppf(input_height, screen_height);
     dlist_memory[display_slot++] = 0xDEADBEEF; // context for scaling
   }
 
   if (xmode == TPZ) {
-    write_tpz(layer->fb->width, width);
+    write_tpz(input_width, screen_width);
   }
 
   if (ymode == TPZ) {
-    write_tpz(layer->fb->height, height);
+    write_tpz(input_height, screen_height);
     dlist_memory[display_slot++] = 0xDEADBEEF; // context for scaling
   }
 
@@ -579,12 +612,12 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
     printf("SCALER_DISPBASE%d: base 0x%x top 0x%x\n\n", i, base & 0xffff, base >> 16);
   }
   for (uint32_t i=list1; i<(list1+64); i++) {
-    printf("dlist[%x]: 0x%x\n", i, dlist_memory[i]);
+    printf("dlist[0x%x]: 0x%x\n", i, dlist_memory[i]);
     if (dlist_memory[i] & BV(31)) {
       puts("(31)END");
       break;
     }
-    if (dlist_memory[i] & BV(30)) {
+    if (dlist_memory[i] & CONTROL_VALID) {
       int x = i;
       int words = (dlist_memory[i] >> 24) & 0x3f;
       for (unsigned int index=i; index < (i+words); index++) {
@@ -642,10 +675,8 @@ hvs_layer *console_layer[3];
 void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos) {
   pos->x = 50;
   pos->y = 50;
-  pos->width = 720 - pos->x - 50;
+  pos->width = 720 - pos->x - 60;
   pos->height = 480 - pos->y - 50;
-
-  pos->width /= 2;
 }
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
@@ -726,9 +757,17 @@ void hvs_update_dlist(int channel) {
 
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
     if (layer->visible) {
+      if (layer->premade_dlist && (layer->dlist_length > 0)) {
+        for (unsigned int i=0; i < layer->dlist_length; i++) {
+          dlist_memory[display_slot++] = layer->premade_dlist[i];
+        }
+      } else
+#if 0
       if ((layer->w == layer->viewport_w) && (layer->h == layer->viewport_h)) { // unity scale
         hvs_add_plane(layer, layer->x, layer->y, false);
-      } else {
+      } else
+#endif
+      {
         hvs_add_plane_scaled(layer);
       }
     }

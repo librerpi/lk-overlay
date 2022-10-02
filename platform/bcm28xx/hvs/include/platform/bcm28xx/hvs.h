@@ -5,6 +5,7 @@
 #include <lk/console_cmd.h>
 #include <lk/list.h>
 #include <platform/bcm28xx.h>
+#include <stdlib.h>
 
 #define SCALER_BASE (BCM_PERIPH_BASE_VIRT + 0x400000)
 
@@ -70,6 +71,33 @@ enum hvs_pixel_format {
 	HVS_PIXEL_FORMAT_YCBCR_10BIT = 17,
 };
 
+enum palette_type {
+  palette_none = 0,
+  palette_1bpp = 1,
+  palette_2bpp = 2,
+  palette_4bpp = 3,
+  palette_8bpp = 4,
+};
+
+enum alpha_mode {
+  alpha_mode_pipeline = 0,
+  alpha_mode_fixed = 1,
+  alpha_mode_fixed_nonzero = 2,
+  alpha_mode_fixed_over_7 = 3,
+};
+
+typedef struct {
+  uint32_t table[256];
+  enum palette_type type;
+} palette_table;
+
+typedef struct {
+  uint8_t *luma;
+  uint8_t *chroma;
+  unsigned int luma_stride;
+  unsigned int chroma_stride;
+} yuv_image_2plane;
+
 typedef struct {
   struct list_node node;
   gfx_surface *fb;
@@ -77,6 +105,10 @@ typedef struct {
   // screen XY to render at
   int x;
   int y;
+
+  unsigned int orig_w;
+  unsigned int orig_h;
+
   // the final WH on the screen
   unsigned int w;
   unsigned int h;
@@ -89,6 +121,15 @@ typedef struct {
 
   char *name;
   bool visible;
+  void *rawImage;
+  enum palette_type palette_mode;
+  uint strides[2];
+  const palette_table *colors;
+
+  uint32_t *premade_dlist;
+  uint32_t dlist_length;
+  enum alpha_mode alpha_mode;
+  uint8_t alpha;
 } hvs_layer;
 
 typedef struct {
@@ -128,6 +169,8 @@ typedef struct {
 #define CONTROL0_HFLIP          (1<<16)
 #define CONTROL0_VFLIP          (1<<15)
 #define CONTROL_PIXEL_ORDER(n)  ((n & 3) << 13)
+#define CONTROL_SCL1(scl)       (scl << 8)
+#define CONTROL_SCL0(scl)       (scl << 5)
 #define CONTROL_UNITY           (1<<4)
 
 #define HVS_PIXEL_ORDER_RGBA			0
@@ -139,6 +182,11 @@ typedef struct {
 #define HVS_PIXEL_ORDER_XRBG			1
 #define HVS_PIXEL_ORDER_XRGB			2
 #define HVS_PIXEL_ORDER_XBGR			3
+
+#define HVS_PIXEL_ORDER_XYCBCR			0
+#define HVS_PIXEL_ORDER_XYCRCB			1
+#define HVS_PIXEL_ORDER_YXCBCR			2
+#define HVS_PIXEL_ORDER_YXCRCB			3
 
 #define SCALER_CTL0_SCL_H_PPF_V_PPF		0
 #define SCALER_CTL0_SCL_H_TPZ_V_PPF		1
@@ -158,6 +206,7 @@ typedef struct {
 
 extern int display_slot;
 extern volatile uint32_t* dlist_memory;
+extern const int scaling_kernel;
 
 //void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip);
 //void hvs_add_plane_scaled(gfx_surface *fb, int x, int y, unsigned int width, unsigned int height, bool hflip);
@@ -184,6 +233,7 @@ uint32_t hvs_wait_vsync(int channel);
 int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
 // returns the recommended xywh of the framebuffer
 void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos);
+uint32_t gen_ppf(unsigned int source, unsigned int dest);
 
 // 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
@@ -191,7 +241,7 @@ inline __attribute__((always_inline)) void hvs_set_background_color(int channel,
     | (channels[channel].interlaced ? SCALER_DISPBKGND_INTERLACE : 0);
 }
 
-static inline uint32_t gfx_to_hvs_pixel_format(gfx_format fmt) {
+static inline enum hvs_pixel_format gfx_to_hvs_pixel_format(gfx_format fmt) {
   switch (fmt) {
   case GFX_FORMAT_RGB_332:
     return HVS_PIXEL_FORMAT_RGB332; // 0
@@ -220,4 +270,46 @@ static inline void mk_unity_layer(hvs_layer *l, gfx_surface *fb, int layer, unsi
   l->viewport_y = 0;
 
   l->visible = true;
+
+  l->palette_mode = palette_none;
+
+  l->premade_dlist = NULL;
+  l->dlist_length = 0;
+}
+
+static inline uint palette_get_bpp(enum palette_type type) {
+  switch (type) {
+  case palette_none:
+    return 0;
+  case palette_1bpp:
+    return 1;
+  case palette_2bpp:
+    return 2;
+  case palette_4bpp:
+    return 4;
+  case palette_8bpp:
+    return 8;
+  }
+  return 0;
+}
+
+static inline void mk_palette_layer(hvs_layer *l, int layer, unsigned int x, unsigned int y, uint width, uint height, enum palette_type type, const palette_table *colors) {
+  l->fb = NULL;
+  l->layer = layer;
+  l->x = x;
+  l->y = y;
+  l->w = width;
+  l->h = height;
+
+  l->viewport_w = width;
+  l->viewport_h = height;
+  l->viewport_x = 0;
+  l->viewport_y = 0;
+
+  l->visible = true;
+
+  l->palette_mode = type;
+  l->strides[0] = ((width * palette_get_bpp(type)) + 7) / 8;
+  l->rawImage = malloc(l->strides[0] * height);
+  l->colors = colors;
 }
