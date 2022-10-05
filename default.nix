@@ -44,6 +44,9 @@ in lib.fix (self: {
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
     ARCH_arm64_TOOLCHAIN_PREFIX = "aarch64-none-elf-";
   };
+  roots = pkgs.writeText "gc-roots" ''
+    ${pkgs.pkgsCross.vc4.stdenv.cc}"
+  '';
   arm7 = {
     inherit (arm7) littlekernel;
   };
