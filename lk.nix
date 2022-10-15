@@ -1,6 +1,6 @@
-{ stdenv, project, which, imagemagick, python, preBuild ? "" }:
+{ stdenv, project, which, imagemagick, python, preBuild ? "", extraAttrs ? {} }:
 
-stdenv.mkDerivation {
+stdenv.mkDerivation ({
   name = "littlekernel-${project}";
   src = builtins.path {
     filter = stdenv.lib.cleanSourceFilter;
@@ -26,4 +26,4 @@ stdenv.mkDerivation {
     echo "file binary-dist $out/lk.elf" >> $out/nix-support/hydra-build-products
   '';
   ARCH_arm64_TOOLCHAIN_PREFIX = "aarch64-none-elf-";
-}
+} // extraAttrs)

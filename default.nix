@@ -107,6 +107,9 @@ in lib.fix (self: {
         ln -sv ${self.arm.rpi2-test}/lk.bin build-rpi2-test/lk.bin
         ln -sv ${self.arm.rpi3-test}/lk.bin build-rpi3-test/lk.bin
       '';
+      extraAttrs = {
+        ARMSTUBS = self.armstubs;
+      };
     };
     vc4.start = vc4.callPackage ./lk.nix {
       project = "vc4-start";
