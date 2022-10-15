@@ -3,20 +3,21 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := rpi3-vpu
 
 MODULES += \
-	app/shell \
 	platform/bcm28xx/otp \
 	platform/bcm28xx/temp \
-	lib/debugcommands \
 	platform/bcm28xx/vec \
-	lib/gfxconsole \
-	platform/bcm28xx/arm \
 	platform/bcm28xx/usb-phy \
 	#platform/bcm28xx/v3d \
 	#app/vc4-stage2 \
 	#lib/fs/ext2 \
 	lib/cksum \
 	app/stringtests \
-	app/tests \
+	app/tests
+
+MODULES += lib/gfxconsole
+#MODULES += app/shell
+#MODULES += lib/debugcommands
+MODULES += platform/bcm28xx/arm
 
 #ARCH_COMPILEFLAGS += -fPIE
 #ARCH_LDFLAGS += --emit-relocs --discard-none
@@ -31,4 +32,7 @@ MODULES += \
 # 512mb + 16mb mmio window 1
 # 1008mb + 16mb mmio window 2
 
-GLOBAL_DEFINES += PL011_TX_ONLY
+#GLOBAL_DEFINES += PL011_TX_ONLY
+
+GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
+

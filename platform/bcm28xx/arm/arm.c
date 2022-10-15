@@ -27,8 +27,19 @@ typedef struct {
   uint32_t payload_size;
 } arm_payload;
 
-extern arm_payload arm_payload_array[3];
-static arm_payload *chosenPayload;
+typedef struct {
+  uint8_t *stub_addr;
+  uint32_t stub_size;
+  uint32_t stub_processor;
+  uint32_t stub_bits;
+} armstub_t;
+
+extern const arm_payload arm_payload_array[3];
+static const arm_payload *chosenPayload;
+
+extern const armstub_t armstub_array[4];
+static const armstub_t *chosenArmstub;
+
 bool aarch64 = false;
 
 timer_t arm_check;
@@ -198,13 +209,26 @@ static void choose_arm_payload(void) {
   if (processor == 2) aarch64 = true;
 }
 
+static void choose_armstub(uint32_t bits) {
+  uint32_t revision = otp_read(30);
+  uint32_t processor = (revision >> 12) & 0xf;
+  assert(processor <= 2);
+  if (processor < 2) assert(bits == 32);
+  for (int i=0; i<4; i++) {
+    if ((armstub_array[i].stub_processor == processor) && (armstub_array[i].stub_bits == bits)) {
+      chosenArmstub = &armstub_array[i];
+      break;
+    }
+  }
+}
+
 uint32_t orig_checksum;
 
-static void copy_arm_payload(void) {
+static void copy_arm_payload_to(uint32_t offset) {
   void *original_start = chosenPayload->payload_addr;
   uint32_t size = chosenPayload->payload_size;
 
-  void *dest = (void*)0xc0000000;
+  void *dest = (void*)(0xc0000000 + offset);
 
   memcpy(dest, original_start, size);
   uint32_t crc = crc32(0, original_start, size);
@@ -273,6 +297,10 @@ static void cam1_enable(void) {
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   bool jtag = true;
 
+#if ARMSTUB == 1
+  choose_armstub(32);
+  aarch64 = false;
+#endif
   choose_arm_payload();
 
   if (jtag) {
@@ -292,9 +320,13 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
 
   //cam1_enable();
 
-
-  copy_arm_payload();
+#if ARMSTUB == 1
+  copy_arm_payload_to(0x8000);
   patch_arm_payload();
+#else
+  copy_arm_payload_to(0);
+  patch_arm_payload();
+#endif
 
   // first pass, map everything to the framebuffer, to act as a default
   for (int i=0; i<1024 ; i += 16) {

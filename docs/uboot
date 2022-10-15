@@ -1,5 +1,10 @@
 CONFIG_SYS_TEXT_BASE is the base addr the u-boot.bin expects to be loaded at
-CONFIG_POSITION_INDEPENDENT=y
+CONFIG_POSITION_INDEPENDENT, Generate position-independent pre-relocation code
+LOGLEVEL in common/Kconfig
+OF_BOARD, Provided by the board (e.g a previous loader) at runtime
+SYS_MALLOC_F_LEN, an increment based malloc pool used by SPL before relocation occurs
+
+debug() needs both a `#define DEBUG` at the top of the file, and `CONFIG_LOGLEVEL=10`?
 
 2022-09-25 14:34:44 < marex> CONFIG_SYS_TEXT_BASE=0x0 CONFIG_POSITION_INDEPENDENT=y
 2022-09-25 14:34:51 < marex> that's how you make u-boot fully PIE
@@ -11,3 +16,22 @@ CONFIG_POSITION_INDEPENDENT=y
 2022-09-25 14:54:15 < marex> arch/arm/mach-stm32mp/psci.c
 2022-09-25 14:54:25 < marex> arch/arm/mach-imx/mx7/psci-mx7.c
 
+
+arch/arm/mach-stm32mp/psci.c psci_cpu_on() overrides a weak symbol in some base code
+arch/arm/cpu/armv8/psci.S provides the aarch64 PSCI core, and has a _psci_32_table and _psci_64_table for dealing with calls from 32bit and 64bit guests
+arch/arm/cpu/armv8/cpu.c copies all psci code (which is tagged with __secure) to CONFIG_ARMV8_SECURE_BASE and sets up the VBAR_EL3
+board/raspberrypi/rpi/rpi.c:
+  fw_dtb_pointer, holds the value of x0/r2 from when the SPL was started, which is the addr of the firmware supplied dtb
+  board_fdt_blob_setup(), overrides the internal dtb with the firmware supplied one
+  board_init_f:
+    dram_init() queries the mailbox to find the top of ram, so u-boot can be relocated to the top of ram
+  board_init_r:
+    board_init:
+      get_board_revision() queries the mailbox to find the model
+      gd->bd->bi_boot_params = 0x100;
+    misc_init_r:
+      set_fdt_addr() copies fw_dtb_pointer into an env var called fdt_addr
+      set_fdtfile() sets the fdtfile env var, based on the current model
+      set_usbethaddr()
+      set_serial_number()
+    run_main_loop

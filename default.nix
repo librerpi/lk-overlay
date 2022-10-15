@@ -7,6 +7,12 @@ let
     sha256 = "1ldlg2nm8fcxszc29rngw2893z8ci4bpa3m0i6kfwjadfrcrfa42";
   }) { system = "x86_64-linux"; };
   lib = pkgs.lib;
+  rpi-tools = pkgs.fetchFromGitHub {
+    owner = "raspberrypi";
+    repo = "tools";
+    rev = "439b6198a9b340de5998dd14a26a0d9d38a6bcac";
+    hash = "sha256-rcrVDSi5wArStnCm5kUtOzlw64WVDl7fV94/aQu77Qg=";
+  };
   overlay = self: super: {
     littlekernel = self.stdenv.mkDerivation {
       name = "littlekernel";
@@ -24,6 +30,35 @@ let
   x86_64 = pkgs.extend overlay;
   arm7 = pkgs.pkgsCross.arm-embedded.extend overlay;
 in lib.fix (self: {
+  # https://leiradel.github.io/2019/01/20/Raspberry-Pi-Stubs.html
+  # armstub.bin, for the bcm2835, armv6 mode
+  # armstub7.bin for the bcm2836, armv7 mode, parks secondary cores waiting for mail from primary core
+  # armstub8-32.bin for the bcm2837, 32bit armv7 mode, parks secondary cores
+  # armstub8.bin for the bcm2837, 64bit armv8 mode
+  #   0xf0 the magic 0x5afe570b
+  #   0xf4 the stub version
+  #   0xf8 atags/FDT addr
+  #   0xfc kernel entry-point
+  armstubs = pkgs.runCommand "armstubs" {
+    src = "${rpi-tools}/armstubs";
+    buildInputs = with pkgs; [
+      pkgsCross.arm-embedded.stdenv.cc
+      pkgsCross.aarch64-embedded.stdenv.cc
+    ];
+    CC7 = "arm-none-eabi-gcc -march=armv7-a";
+    LD7 = "arm-none-eabi-ld";
+    OBJCOPY7 = "arm-none-eabi-objcopy";
+    CC8 = "aarch64-none-elf-gcc";
+    LD8 = "aarch64-none-elf-ld";
+    OBJCOPY8 = "aarch64-none-elf-objcopy";
+  } ''
+    echo $buildInputs
+    unpackPhase
+    cd $sourceRoot
+    make
+    mkdir $out
+    cp *.bin $out/
+  '';
   shell = pkgs.stdenv.mkDerivation {
     name = "shell";
     buildInputs = with pkgs; [
@@ -43,6 +78,7 @@ in lib.fix (self: {
     ARCH_x86_TOOLCHAIN_PREFIX = "i686-elf-";
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
     ARCH_arm64_TOOLCHAIN_PREFIX = "aarch64-none-elf-";
+    ARMSTUBS = self.armstubs;
   };
   roots = pkgs.writeText "gc-roots" ''
     ${pkgs.pkgsCross.vc4.stdenv.cc}"
