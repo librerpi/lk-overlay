@@ -6,36 +6,19 @@
 #include <stdio.h>
 #include <string.h>
 
-int channel = PRIMARY_HVS_CHANNEL;
+typedef struct {
+  void (*update)(uint32_t stat);
+  int duration;
+} animation_t;
+
+const int channel = PRIMARY_HVS_CHANNEL;
+extern int state;
+extern const int state_count;
+extern int substate;
+extern const animation_t animations[];
 
 hvs_layer sprite;
 yuv_image_2plane *img;
-timer_t mode_switch;
-
-static int cmd_fill(int argc, const console_cmd_args *argv);
-static int cmd_fill2(int argc, const console_cmd_args *argv);
-static int cmd_filly(int argc, const console_cmd_args *argv);
-
-static int cmd_yuv_peek(int argc, const console_cmd_args *argv) {
-  if (argc < 3) {
-    puts("usage: yuv_peek <x> <y>\n");
-    return 0;
-  }
-  int x = argv[1].u;
-  int y = argv[2].u;
-  uint8_t luma = img->luma[(y * img->luma_stride)+x];
-  uint8_t u = img->chroma[((y / 2) * img->chroma_stride) + (x/2)];
-  uint8_t v = img->chroma[((y / 2) * img->chroma_stride) + (x/2) + 1];
-  printf("%d,%d == %d %d %d\n", x, y, luma, u, v);
-  return 0;
-}
-
-STATIC_COMMAND_START
-STATIC_COMMAND("yuv_fill", "", &cmd_fill)
-STATIC_COMMAND("yuv_fill2", "", &cmd_fill2)
-STATIC_COMMAND("yuv_filly", "", &cmd_filly)
-STATIC_COMMAND("yuv_peek", "", &cmd_yuv_peek)
-STATIC_COMMAND_END(yuv);
 
 void yuv_putuv(yuv_image_2plane *i, int posx, int posy, uint8_t u, uint8_t v) {
   int xoff = posx * 2;
@@ -96,32 +79,76 @@ static int cmd_filly(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
-int mode = 0;
+static int cmd_yuv_peek(int argc, const console_cmd_args *argv) {
+  if (argc < 3) {
+    puts("usage: yuv_peek <x> <y>\n");
+    return 0;
+  }
+  int x = argv[1].u;
+  int y = argv[2].u;
+  uint8_t luma = img->luma[(y * img->luma_stride)+x];
+  uint8_t u = img->chroma[((y / 2) * img->chroma_stride) + (x/2)];
+  uint8_t v = img->chroma[((y / 2) * img->chroma_stride) + (x/2) + 1];
+  printf("%d,%d == %d %d %d\n", x, y, luma, u, v);
+  return 0;
+}
+
+STATIC_COMMAND_START
+STATIC_COMMAND("yuv_fill", "", &cmd_fill)
+STATIC_COMMAND("yuv_fill2", "", &cmd_fill2)
+STATIC_COMMAND("yuv_filly", "", &cmd_filly)
+STATIC_COMMAND("yuv_peek", "", &cmd_yuv_peek)
+STATIC_COMMAND_END(yuv);
+
+bool state_advance(void) {
+  substate++;
+  if (substate > animations[state].duration) {
+    substate = 0;
+    state++;
+    state = state % state_count;
+    return true;
+  }
+  return false;
+}
 
 void animate_x(uint32_t stat) {
-  uint32_t frame = (stat >> 12) & 0x3f;
-  sprite.x = 40 + frame;
+  sprite.x = (substate * 2) & 0x1ff;
+  if (state_advance()) sprite.x = 116;
 }
 
 void animate_y(uint32_t stat) {
-  uint32_t frame = (stat >> 12) & 0x3f;
-  sprite.y = 40 + frame;
+  sprite.y = (substate * 2) & 0x1ff;
+  if (state_advance()) sprite.y = 116;
 }
 
 void animate_alpha(uint32_t stat) {
-  uint32_t frame = (stat >> 12) & 0x3f;
   sprite.alpha_mode = alpha_mode_fixed_nonzero;
-  sprite.alpha = frame * 4;
+  sprite.alpha = 255 - (substate & 0xff);
+  if (state_advance()) {
+    sprite.alpha_mode = alpha_mode_fixed;
+    sprite.alpha = 0xff;
+  }
 }
 
-void (*animations[])(uint32_t) = { animate_x, animate_y, animate_alpha };
-const int animation_count = sizeof(animations) / sizeof(animations[0]);
-
-static enum handler_return do_mode_switch(struct timer *t, lk_time_t now, void *arg) {
-  mode++;
-  mode = mode % animation_count;
-  return INT_NO_RESCHEDULE;
+#if 0
+void animate_chroma_hscale(uint32_t stat) {
+  img->chroma_hscale = (substate/10)+1;
+  if (state_advance()) {
+    img->chroma_hscale = 200;
+  }
 }
+#endif
+
+int state = 0;
+int substate = 0;
+
+const animation_t animations[] = {
+  { animate_x, 256 },
+  { animate_y, 256 },
+  { animate_alpha, 256 },
+  //{ animate_chroma_hscale, 2000 },
+};
+const int state_count = sizeof(animations) / sizeof(animations[0]);
 
 #define RED   0xffff0000
 #define GREEN 0xff00ff00
@@ -150,6 +177,8 @@ static void draw_grid(void) {
     }
   }
   mk_unity_layer(grid_layer, gfx_grid, 60, 100, 100);
+  hvs_allocate_premade(grid_layer, 7);
+  hvs_regen_noscale_noviewport_noalpha(grid_layer);
   grid_layer->name = strdup("grid");
   mutex_acquire(&channels[channel].lock);
   hvs_dlist_add(channel, grid_layer);
@@ -158,6 +187,11 @@ static void draw_grid(void) {
 }
 
 void hvs_dlist_update_yuv(hvs_layer *s, yuv_image_2plane *i) {
+  // HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE:
+  // the hardware is aware that the luma plane is the size specified in POS2, and the chroma plane is half of POS2
+  // but the scale parameters for luma and chroma are user supplied, and can violate those assumptions
+  // when doing a chroma lookup, it will follow the user-specified chroma scale, but then clamp to half of POS2
+  // if the scale parameters lead to a lookup beyond the assumed chroma size, it will repeat whatever is at the edge of the chroma image
   int fmt = HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE;
 
   // UV scale
@@ -202,8 +236,8 @@ void hvs_dlist_update_yuv(hvs_layer *s, yuv_image_2plane *i) {
   d[14] = 600;
   // scaling parameters UV
   //d[14] = gen_ppf(100, 100); // ???
-  d[15] = gen_ppf(1, 2); // chroma H scale
-  d[16] = gen_ppf(1, 2); // chroma V scale
+  d[15] = gen_ppf(100, 200); // chroma H scale
+  d[16] = gen_ppf(100, 200); // chroma V scale
   d[17] = 0xDEADBEEF;
   // scaling parameters Y
   d[18] = gen_ppf(256, 256);
@@ -223,6 +257,8 @@ yuv_image_2plane *yuv_allocate(unsigned int width, unsigned int height, int chro
   i->chroma_stride = (width / chroma_hscale) * 2;
   i->luma = malloc(height * i->luma_stride);
   i->chroma = malloc((height / chroma_vscale) * i->chroma_stride);
+  i->chroma_hscale = chroma_hscale * 100;
+  i->chroma_vscale = chroma_vscale * 100;
   return i;
 }
 
@@ -330,9 +366,10 @@ void create_yuv_colorbars(void) {
 }
 
 static void yuv_entry(const struct app_descriptor *app, void *args) {
-  //draw_grid();
+  draw_grid();
 
-  create_yuv_colorbars();
+  //create_yuv_colorbars();
+  create_yuv_sweep();
 
   hvs_dlist_update_yuv(&sprite, img);
 
@@ -341,20 +378,10 @@ static void yuv_entry(const struct app_descriptor *app, void *args) {
   hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 
-  timer_initialize(&mode_switch);
-  //timer_set_periodic(&mode_switch, 10000, do_mode_switch, NULL);
 
-  int last_mode = 0;
   while (true) {
     uint32_t stat = hvs_wait_vsync(channel);
-    if (last_mode != mode) {
-      last_mode = mode;
-      sprite.x = 116;
-      sprite.y = 116;
-      sprite.alpha = 0xff;
-    }
-    stat += 0;
-    //animations[mode](stat);
+    animations[state].update(stat);
 
     hvs_dlist_update_yuv(&sprite, img);
 

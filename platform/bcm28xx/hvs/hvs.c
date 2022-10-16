@@ -36,7 +36,6 @@ timer_t ddr2_monitor;
 const int scaling_kernel = 4080;
 
 #define DSP3_MUX(n) ((n & 0x3) << 18)
-#define SCALER_PPF_AGC (1<<30)
 
 enum scaling_mode {
   scaling_none,
@@ -123,6 +122,33 @@ void hvs_add_plane(hvs_layer *l, int x, int y, bool hflip) {
 }
 #endif
 
+#ifndef RPI4
+// VC4 only
+void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l) {
+  assert(l->dlist_length == 7);
+  assert(l->premade_dlist);
+  uint32_t *d = l->premade_dlist;
+  // CTL0
+  d[0] = CONTROL_VALID
+    | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
+    | CONTROL_UNITY
+    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(l->fb->format))
+    | CONTROL_WORDS(7);
+  // POS0
+  d[1] = POS0_X(l->x) | POS0_Y(l->y) | POS0_ALPHA(0xff);
+  // POS2, input size
+  d[2] = POS2_H(l->fb->height) | POS2_W(l->fb->width) | (l->alpha_mode << 30); // fixed alpha
+  // POS3, context
+  d[3] = 0xDEADBEEF;
+  // PTR0
+  d[4] = (uint32_t)l->fb->ptr | 0xc0000000;
+  // context 0
+  d[5] = 0xDEADBEEF;
+  // pitch 0
+  d[6] = l->fb->stride * l->fb->pixelsize;
+}
+#endif
+
 static void write_tpz(unsigned int source, unsigned int dest) {
   uint32_t scale = (1<<16) * source / dest;
   uint32_t recip = ~0 / scale;
@@ -136,12 +162,6 @@ static void write_ppf(unsigned int source, unsigned int dest) {
   if (hvs_debug) printf("PPF 0x%x\n", scale);
   dlist_memory[display_slot++] = SCALER_PPF_AGC |
     (scale << 8) | (0 << 0);
-}
-
-uint32_t gen_ppf(unsigned int source, unsigned int dest) {
-  uint32_t scale = (1<<16) * source / dest;
-  if (hvs_debug) printf("PPF 0x%x\n", scale);
-  return SCALER_PPF_AGC | (scale << 8) | (0 << 0);
 }
 
 static void hvs_add_plane_scaled(hvs_layer *layer) {
@@ -704,6 +724,8 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     int channel = 1;
     console_layer[channel] = malloc(sizeof(hvs_layer));
     mk_unity_layer(console_layer[channel], gfx_console, 50, 50, 30);
+    hvs_allocate_premade(console_layer[channel], 7);
+    hvs_regen_noscale_noviewport_noalpha(console_layer[channel]);
     console_layer[channel]->name = strdup("console");
 
     mutex_acquire(&channels[channel].lock);
@@ -715,6 +737,8 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     channel = 0;
     console_layer[channel] = malloc(sizeof(hvs_layer));
     mk_unity_layer(console_layer[channel], gfx_console, 50, 1, 1);
+    hvs_allocate_premade(console_layer[channel], 7);
+    hvs_regen_noscale_noviewport_noalpha(console_layer[channel]);
     console_layer[channel]->name = strdup("console0");
 
     mutex_acquire(&channels[channel].lock);
@@ -768,6 +792,7 @@ void hvs_update_dlist(int channel) {
       } else
 #endif
       {
+        puts("legacy layer");
         hvs_add_plane_scaled(layer);
       }
     }

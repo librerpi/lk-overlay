@@ -96,6 +96,8 @@ typedef struct {
   uint8_t *chroma;
   unsigned int luma_stride;
   unsigned int chroma_stride;
+  unsigned int chroma_hscale;
+  unsigned int chroma_vscale;
 } yuv_image_2plane;
 
 typedef struct {
@@ -204,6 +206,8 @@ typedef struct {
 #define POS2_W(n) (n & 0xffff)
 #define POS2_H(n) ((n & 0xffff) << 16)
 
+#define SCALER_PPF_AGC (1<<30)
+
 extern int display_slot;
 extern volatile uint32_t* dlist_memory;
 extern const int scaling_kernel;
@@ -233,7 +237,20 @@ uint32_t hvs_wait_vsync(int channel);
 int cmd_hvs_dump_dlist(int argc, const console_cmd_args *argv);
 // returns the recommended xywh of the framebuffer
 void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos);
-uint32_t gen_ppf(unsigned int source, unsigned int dest);
+
+// functions to populate l->premade_dlist with the required values, reducing cpu usage for static sprites
+// hvs_update_dlist() will read from the buffer, and could tear, it is recommended to hold the channels[channel].lock when updating any layer that is visible
+// renders l->fb at 1:1 scale, no alpha, no viewport cropping
+void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l);
+
+inline uint32_t gen_ppf_fixedpoint(uint32_t source, uint32_t dest) {
+  uint32_t scale = source / dest;
+  return SCALER_PPF_AGC | (scale << 8) | (0 << 0);
+}
+
+inline uint32_t gen_ppf(unsigned int source, unsigned int dest) {
+  return gen_ppf_fixedpoint(source << 16, dest);
+}
 
 // 0xRRGGBB
 inline __attribute__((always_inline)) void hvs_set_background_color(int channel, uint32_t color) {
@@ -275,6 +292,11 @@ static inline void mk_unity_layer(hvs_layer *l, gfx_surface *fb, int layer, unsi
 
   l->premade_dlist = NULL;
   l->dlist_length = 0;
+}
+
+static inline void hvs_allocate_premade(hvs_layer *l, int words) {
+  l->dlist_length = words;
+  l->premade_dlist = malloc(words * 4);
 }
 
 static inline uint palette_get_bpp(enum palette_type type) {
