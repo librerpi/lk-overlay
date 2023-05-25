@@ -174,10 +174,40 @@ static int cmd_hexdump(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+static int cmd_uptime(int argc, const console_cmd_args *argv) {
+  uint64_t now = current_time_hires();
+  now = now / 1000000;
+  uint64_t t = now;
+
+  int seconds = t % 60;
+  t = t / 60;
+
+  int minutes = t % 60;
+  t = t / 60;
+
+  int hours = t % 24;
+  t = t / 24;
+
+  int days = t % 30;
+  t = t / 30;
+
+  if (t > 0) printf("%lld months ", t);
+  if (days > 0) printf("%d days ", days);
+  printf("%d:%02d:%02d\n", hours, minutes, seconds);
+  return 0;
+}
+
+static int cmd_clear_rsts(int argc, const console_cmd_args *argv) {
+  *REG32(PM_RSTS) = PM_PASSWORD | 0;
+  return 0;
+}
+
 STATIC_COMMAND_START
 STATIC_COMMAND("whatareyou", "print the cpu arch", &cmd_what_are_you)
 STATIC_COMMAND("shorthang", "hang for a bit", &cmd_short_hang)
 STATIC_COMMAND("r", "reboot", &cmd_platform_reboot)
+STATIC_COMMAND("uptime", "show uptime", &cmd_uptime)
+STATIC_COMMAND("clear_rsts", "clear PM_RSTS", &cmd_clear_rsts)
 #ifdef ARCH_VPU
 STATIC_COMMAND("arm_hd", "do a hexdump, via the arm mmu mappings", &cmd_arm_hd)
 #endif
