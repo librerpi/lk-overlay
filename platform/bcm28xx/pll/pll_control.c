@@ -275,7 +275,7 @@ static uint32_t saved_ana_vco[PLL_NUM] = {
 };
 #endif
 
-int set_pll_freq(enum pll pll, uint32_t freq) {
+static int set_pll_freq(enum pll pll, uint32_t freq) {
   const struct pll_def *def = &pll_def[pll];
   bool was_prescaled;
   bool is_prescaled;
@@ -637,4 +637,27 @@ void setup_pllh(uint64_t target_freq) {
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+}
+
+int get_peripheral_parent(int source) {
+  switch (source) {
+  case CM_SRC_OSC:
+    return xtal_freq;
+  case CM_SRC_PLLC_CORE0:
+    return freq_pllc_per;
+  }
+  return 0;
+}
+
+bool clock_set_pwm(int freq, int source) {
+  int reference = get_peripheral_parent(source);
+  float desired_divider = (float)reference / freq;
+  int divisor_fixed = desired_divider * 4096;
+  if (divisor_fixed < 0x2000) {
+    puts("divisor too low, abort!");
+    return false;
+  }
+  *REG32(CM_PWMDIV) = CM_PASSWORD | divisor_fixed;
+  *REG32(CM_PWMCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | 1<<CM_PWMCTL_MASH_LSB;
+  return true;
 }

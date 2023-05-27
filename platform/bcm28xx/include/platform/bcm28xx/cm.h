@@ -30,11 +30,24 @@
 #define CM_GPnCTL_KILL_SET      0x00000020
 #define CM_GPnCTL_BUSY_SET      0x00000080
 
+#define CM_PWMCTL (CM_BASE + 0x0a0)
+#define CM_PWMCTL_ENABLE     1<<4
+#define CM_PWMCTL_MASH_LSB   9
+#define CM_PWMDIV (CM_BASE + 0x0a4)
+
 #define CM_TCNTCTL              (CM_BASE + 0x0c0)
 #define CM_TCNTCNT              (CM_BASE + 0x0c4)
 #define CM_TD0CTL               (CM_BASE + 0x0d0)
 #define CM_TD0CTL_ENAB_SET      0x00000010
 #define CM_TD0DIV               (CM_BASE + 0x0d4)
+
+
+#define CM_TSENSCTL             (CM_BASE + 0xe0)
+#define CM_TSENSCTL_ENAB_SET                               0x00000010
+#define CM_TSENSCTL_ENAB_CLR                               0xffffffef
+#define CM_TSENSCTL_BUSY_SET                               0x00000080
+#define CM_TSENSDIV             (CM_BASE + 0xe4)
+
 #define CM_TIMERCTL             (CM_BASE + 0x0e8)
 #define CM_TIMERDIV             (CM_BASE + 0x0ec)
 #define CM_UARTCTL              (CM_BASE + 0x0f0)
