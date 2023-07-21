@@ -1,3 +1,6 @@
 [submodule "lk"]
 	path = lk
 	url = https://github.com/librerpi/lk
+[submodule "lib/tinyusb/upstream"]
+	path = lib/tinyusb/upstream
+	url = https://github.com/hathach/tinyusb
