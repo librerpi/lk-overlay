@@ -77,7 +77,7 @@ typedef struct {
   struct list_node open_endpoints;
 } dwc_host_state_t;
 
-int debug_device = 2;
+int debug_device = 10;
 
 static const char *speeds[] = {
   [TUSB_SPEED_FULL] = "FS",
@@ -834,7 +834,7 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
   opep->buffer = buffer;
 
 
-  printf("size %d, mps %d, packets %d, pid %d/%d, type %d\n", size, opep->max_packet_size, packets, pid, opep->next_pid, opep->ep_type);
+  //printf("size %d, mps %d, packets %d, pid %d/%d, type %d\n", size, opep->max_packet_size, packets, pid, opep->next_pid, opep->ep_type);
   //assert(size <= opep->max_packet_size);
 
   // TODO, set packet count correctly
@@ -845,7 +845,7 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
   chan->hcdma = (uint32_t)buffer;
   chan->hcintmsk = 0xffff;
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(max_packet_size) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | HCCHARn_IN | (1<<20) | (type << 18);
-  dump_channel(channel, "IN init");
+  //dump_channel(channel, "IN init");
   chan->hcchar |= HCCHARn_ENABLE;
 }
 
@@ -862,7 +862,7 @@ static void dwc_host_out(dwc_host_state_t *state, int channel, int addr, int end
   int type = 0; // TODO
   int packets = (size / mps)+1;
   int last_packet = size - ((packets-1)*mps);
-  printf("OUT size %d, mps %d, packets %d, last_packet %d\n", size, mps, packets, last_packet);
+  //printf("OUT size %d, mps %d, packets %d, last_packet %d\n", size, mps, packets, last_packet);
   opep->buflen = size;
   opep->buffer = buffer;
   opep->packets = packets;
@@ -1020,7 +1020,7 @@ static void dwc2_init_hook(uint level) {
   lan_run(0);
   uint32_t t;
 
-  dwc_dump_all_state();
+  //dwc_dump_all_state();
 
 
   logf("queue init\n");
@@ -1061,14 +1061,6 @@ static void dwc2_init_hook(uint level) {
     udelay(100 * 1000);
     logf("100ms later\n");
     dump_channel(0, "unused");
-  }
-
-  int mps = 8;
-  for (int i=0; i<24; i++) {
-    int packets = (i/mps)+1;
-    //int last_packet = mps + i - (packets * mps);
-    int last_packet = i - ((packets-1) * mps);
-    printf("%d\t%d\t%d\n", i, packets, last_packet);
   }
 }
 
