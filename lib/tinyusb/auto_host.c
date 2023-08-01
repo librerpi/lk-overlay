@@ -10,6 +10,7 @@ static void auto_host_entry(const struct app_descriptor *app, void *args) {
   while (true) {
     //tuh_task();
     tuh_task_ext(UINT32_MAX, false);
+    thread_sleep(100); // TODO, this shouldnt be needed
   }
 }
 

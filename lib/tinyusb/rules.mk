@@ -4,7 +4,15 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_SRCS += $(LOCAL_DIR)/upstream/src/tusb.c $(LOCAL_DIR)/upstream/src/host/usbh.c $(LOCAL_DIR)/upstream/src/common/tusb_fifo.c $(LOCAL_DIR)/upstream/src/host/hub.c $(LOCAL_DIR)/upstream/examples/host/bare_api/src/main.c
 
-MODULE_SRCS += $(LOCAL_DIR)/auto_host.c $(LOCAL_DIR)/basic-host.c
+TUH_MSC := 1
+
+ifeq ($(TUH_MSC),1)
+  MODULE_SRCS += $(LOCAL_DIR)/upstream/src/class/msc/msc_host.c
+  GLOBAL_DEFINES += CFG_TUH_MSC=1
+  MODULES += lib/bio lib/partition
+endif
+
+MODULE_SRCS += $(LOCAL_DIR)/auto_host.c $(LOCAL_DIR)/basic-host.c $(LOCAL_DIR)/usb_utils.c
 
 GLOBAL_INCLUDES += $(LOCAL_DIR)/include $(LOCAL_DIR)/upstream/src
 

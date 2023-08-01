@@ -13,6 +13,7 @@
 #define USB_GINTSTS   (USB_BASE + 0x0014)
 #define USB_GINTSTS_RXFLVL  (1 << 4)
 #define USB_GINTMSK   (USB_BASE + 0x0018)
+#define USB_GINTMSK_PortInt  BIT(24)
 #define USB_GRXSTSR   (USB_BASE + 0x001c)
 
 #define USB_GRXSTSP   (USB_BASE + 0x0020)
@@ -92,6 +93,8 @@
 #define USB_DOEPINT7  (USB_BASE + 0x0be8)
 #define USB_DOEPINT8  (USB_BASE + 0x0c08)
 #define USB_DOEPINT9  (USB_BASE + 0x0c28)
+
+#define USB_PCGCCTL   (USB_BASE + 0x0e00)
 
 #define USB_DFIFO0    (USB_BASE + 0x1000)
 #define USB_DFIFO1    (USB_BASE + 0x2000)
