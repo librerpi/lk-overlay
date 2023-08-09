@@ -29,6 +29,18 @@ SECTIONS {
     PROVIDE(__stop_commands = .);
   } >ram
 
+  fs_impl : {
+    PROVIDE(__start_fs_impl = .);
+    KEEP(*(fs_impl))
+    PROVIDE(__stop_fs_impl = .);
+  } > ram
+
+  usb_hooks : {
+    PROVIDE(__start_usb_hooks = .);
+    KEEP(*(usb_hooks))
+    PROVIDE(__stop_usb_hooks = .);
+  } > ram
+
   .init_array : {
     . = ALIGN(16);
     PROVIDE(__ctor_list = .);

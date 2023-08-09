@@ -10,12 +10,13 @@ GROUP(-lgcc)
 MEMORY {
   /* in the 8 alias, L2 cached
    */
-  ram (rwx) : ORIGIN = 0xC0000000 + 64M, LENGTH = 20M
+  ram (rwx) : ORIGIN = 0xC0000000 + 64M, LENGTH = 50M
 }
 SECTIONS {
   .text : {
     PROVIDE(_start = .);
     . = ALIGN(4);
+    _stext = .;
     *(.text .stub .text.* .gnu.linkonce.t.*)
     *(.gnu.warning)
     KEEP (*(.init))
@@ -37,6 +38,18 @@ SECTIONS {
     KEEP(*(commands))
     PROVIDE(__stop_commands = .);
   } >ram
+
+  fs_impl : {
+    PROVIDE(__start_fs_impl = .);
+    KEEP(*(fs_impl))
+    PROVIDE(__stop_fs_impl = .);
+  } > ram
+
+  usb_hooks : {
+    PROVIDE(__start_usb_hooks = .);
+    KEEP(*(usb_hooks))
+    PROVIDE(__stop_usb_hooks = .);
+  } > ram
 
   .init_array : {
     PROVIDE (__init_array_start = .);
