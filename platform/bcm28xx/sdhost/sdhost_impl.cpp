@@ -550,6 +550,7 @@ struct BCM2708SDHost : BlockDevice {
       }
       return NO_ERROR;
     } else {
+      card_ready = false;
       puts("failed to reinitialize the eMMC controller");
       return ERR_NOT_FOUND;
     }
