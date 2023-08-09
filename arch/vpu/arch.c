@@ -24,7 +24,7 @@ uint32_t arch_init_timestamp;
 
 STATIC_COMMAND_START
 STATIC_COMMAND("boot_other_core", "boot the 2nd vpu core", &cmd_boot_other_core)
-STATIC_COMMAND("testit", "do some asm tests", &cmd_testit)
+//STATIC_COMMAND("testit", "do some asm tests", &cmd_testit)
 //STATIC_COMMAND("jitter", "jitter test", &cmd_jitter)
 STATIC_COMMAND_END(arch);
 
