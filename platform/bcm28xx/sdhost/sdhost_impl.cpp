@@ -21,7 +21,10 @@ SDHOST driver. This used to be known as ALTMMC.
 #include "block_device.hpp"
 
 #include <lib/bio.h>
+#include <lib/partition.h>
 #include <lk/debug.h>
+#include <lk/err.h>
+#include <lk/init.h>
 #include <lk/reg.h>
 #include <malloc.h>
 #include <platform/bcm28xx.h>
@@ -34,6 +37,7 @@ SDHOST driver. This used to be known as ALTMMC.
 
 extern "C" {
   #include <dev/gpio.h>
+  static bdev_t *sd;
 }
 
 #define SDEDM_WRITE_THRESHOLD_SHIFT 9
@@ -512,7 +516,7 @@ struct BCM2708SDHost : BlockDevice {
 		return true;
 	}
 
-  void restart_controller() {
+  status_t restart_controller() {
     is_sdhc = false;
 
     logf("hcfg 0x%X, cdiv 0x%X, edm 0x%X, hsts 0x%X\n",
@@ -544,8 +548,10 @@ struct BCM2708SDHost : BlockDevice {
           panic("fifo flush cycle %d failed", i);
         }
       }
+      return NO_ERROR;
     } else {
-      panic("failed to reinitialize the eMMC controller");
+      puts("failed to reinitialize the eMMC controller");
+      return ERR_NOT_FOUND;
     }
   }
 
@@ -582,10 +588,10 @@ struct BCM2708SDHost : BlockDevice {
 		*REG32(SH_ARG) = 0;
 	}
 
-	BCM2708SDHost() {
-		restart_controller();
-		logf("eMMC driver sucessfully started!\n");
-	}
+  BCM2708SDHost() {
+    restart_controller();
+    logf("eMMC driver sucessfully started!\n");
+  }
 };
 
 struct BCM2708SDHost *sdhost = 0;
@@ -605,12 +611,24 @@ static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block
 bdev_t *rpi_sdhost_init() {
   if (!sdhost) {
     sdhost = new BCM2708SDHost;
-    auto blocksize = sdhost->get_block_size();
-    auto blocks = sdhost->capacity_bytes / blocksize;
-    bio_initialize_bdev(sdhost, "sdhost", blocksize, blocks, 0, NULL, BIO_FLAGS_NONE);
-    //sdhost->read = sdhost_read_wrap;
-    sdhost->read_block = sdhost_read_block_wrap;
-    bio_register_device(sdhost);
+    if (sdhost->card_ready) {
+      auto blocksize = sdhost->get_block_size();
+      auto blocks = sdhost->capacity_bytes / blocksize;
+      bio_initialize_bdev(sdhost, "sdhost", blocksize, blocks, 0, NULL, BIO_FLAGS_NONE);
+      //sdhost->read = sdhost_read_wrap;
+      sdhost->read_block = sdhost_read_block_wrap;
+      bio_register_device(sdhost);
+      partition_publish("sdhost", 0);
+    } else {
+      puts("no SD card found, ignoring SD interface");
+    }
   }
   return sdhost;
 }
+
+static void sdhost_init(uint level) {
+  sd = rpi_sdhost_init();
+  printf("%p\n", sd);
+}
+
+LK_INIT_HOOK(sdhost, sdhost_init, LK_INIT_LEVEL_PLATFORM + 1);
