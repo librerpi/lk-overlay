@@ -1,0 +1,11 @@
+LOCAL_DIR := $(GET_LOCAL_DIR)
+
+MODULE := $(LOCAL_DIR)
+
+GLOBAL_INCLUDES += $(LOCAL_DIR)/../include $(LOCAL_DIR)/../upstream/src
+
+GLOBAL_DEFINES += CFG_TUSB_MCU=OPT_MCU_BCM2835 CFG_TUSB_DEBUG=0
+
+MODULE_SRCS += $(LOCAL_DIR)/manual.c
+
+include make/module.mk

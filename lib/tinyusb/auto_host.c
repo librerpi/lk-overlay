@@ -7,7 +7,6 @@ thread_t *autohost_thread;
 static void auto_host_entry(const struct app_descriptor *app, void *args) {
   autohost_thread = get_current_thread();
   basic_host_init();
-  //thread_sleep(10000);
   puts("doing init");
   tusb_init();
   tuh_init(0);

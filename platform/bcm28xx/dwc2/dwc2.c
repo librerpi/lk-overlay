@@ -1,9 +1,11 @@
 #include <assert.h>
+//#include <cksum-helper/cksum-helper.h>
 #include <dev/gpio.h>
 #include <host/hcd.h>
 #include <kernel/event.h>
 #include <kernel/mutex.h>
 #include <kernel/timer.h>
+#include <lib/bio.h>
 #include <lib/heap.h>
 #include <lib/hexdump.h>
 #include <lk/console_cmd.h>
@@ -12,9 +14,11 @@
 #include <lk/list.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/dwc2.h>
 #include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/otp.h>
+#include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/queue.h>
 #include <platform/bcm28xx/udelay.h>
@@ -48,6 +52,11 @@ struct dwc2_host_channel {
 };
 
 typedef struct {
+  struct list_node node;
+  int channel;
+} idle_channel_t;
+
+typedef struct {
   struct list_node l;
   uint8_t dev_addr;
   uint8_t ep_addr;
@@ -59,6 +68,7 @@ typedef struct {
   int buflen;
   uint32_t max_packet_size;
   int packets;
+  idle_channel_t *ic;
 } open_endpoint_t;
 
 typedef struct {
@@ -71,13 +81,19 @@ typedef struct {
 #define MAX_DEVICES 10
 #define MAX_CHANNELS 16
 
+// there is a race condition with 2 threads trying to init the same channel
+// for now, just have one mutex for all channel setup
+// for later, claim a mutex per channel and release when its done
+spin_lock_t channel_setup = SPIN_LOCK_INITIAL_VALUE;
+
 typedef struct {
   channelState channels[MAX_CHANNELS];
   queue_t portsPendingAddress;
   struct list_node open_endpoints;
+  struct list_node idle_channels;
 } dwc_host_state_t;
 
-int debug_device = 10;
+int debug_device = 20;
 
 static const char *speeds[] = {
   [TUSB_SPEED_FULL] = "FS",
@@ -100,12 +116,60 @@ static void __attribute((noinline)) control_in(dwc_host_state_t *state, int chan
 static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int endpoint, setupData *setup, open_endpoint_t *opep);
 static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endpoint, uint32_t *buffer, uint32_t size, open_endpoint_t *opep);
 static void dwc_host_out(dwc_host_state_t *state, int channel, int addr, int endpoint, uint32_t *buffer, uint32_t size, open_endpoint_t *opep);
-static int dwc_find_idle_channel(void);
+static idle_channel_t *dwc_find_idle_channel(void);
 
 static int dwc_get_speed(int argc, const console_cmd_args *argv) {
   tusb_speed_t speed = hcd_port_speed_get(0);
   logf("%s\n", speeds[speed]);
   return 0;
+}
+
+extern uint8_t _stext, _etext;
+
+thread_t *shell_thread;
+
+static int dwc_testit(int argc, const console_cmd_args *argv) {
+  shell_thread = get_current_thread();
+  bdev_t *dev = bio_open("usb2_0");
+  STACKBUF_DMA_ALIGN(buffer, 512);
+  assert(dev);
+
+  uint32_t start = *REG32(ST_CLO);
+  int blocks = 32;
+  if (argc >= 2) blocks = argv[1].u;
+
+  for (int i=0; i<blocks; i++) {
+    //hash_blob(&sha256_implementation, &_stext, &_etext - &_stext, next_hash);
+    //print_hash(next_hash, sha256_implementation.hash_size);
+    bio_read_block(dev, buffer, i, 1);
+  }
+  uint32_t stop = *REG32(ST_CLO);
+  printf("read %d blocks in %d uSec, %d uSec per block\n", blocks, stop - start, (stop-start)/blocks);
+
+  bio_close(dev);
+  return 0;
+}
+
+static void dump_fifo(uint32_t base, uint32_t size) {
+  uint32_t base_addr = USB_BASE + 0x20000 + (base * 4);
+  uint32_t bytes = size*4;
+  hexdump_ram((void*)base_addr, base_addr, bytes);
+}
+
+void dump_nptxfifo(void) {
+  uint32_t t = *REG32(USB_GNPTXFSIZ);
+  uint32_t base = t & 0xffff;
+  uint32_t length = t >> 16;
+  printf(GREEN"non periodic tx fifo 0x%x -> 0x%x (0x%x)\n"DEFAULT, base, base + length - 1, length);
+  dump_fifo(base, length);
+}
+
+void dump_rxfifo(void) {
+  uint32_t t = *REG32(USB_GRXFSIZ);
+  uint32_t base = 0;
+  uint32_t length = t & 0xffff;
+  printf(GREEN"rx fifo 0x%x -> 0x%x\n"DEFAULT, base, base+length-1);
+  dump_fifo(base, length);
 }
 
 STATIC_COMMAND_START
@@ -118,11 +182,17 @@ STATIC_COMMAND("lan_run", "set the LAN_RUN pin", &rpi_lan_run)
 STATIC_COMMAND("addr0_get", "", &dwc_addr0_get_desc)
 STATIC_COMMAND("addr0_get_conf", "", &dwc_addr0_get_conf)
 STATIC_COMMAND("get_speed", "get speed", &dwc_get_speed)
+STATIC_COMMAND("testit", "debug", &dwc_testit)
 STATIC_COMMAND_END(dwc);
 
 static dwc_host_state_t dwc_state;
 
+#ifdef MEASURE_SOF
 uint32_t last_sof = 10;
+int measure_sof = 0;
+int sof_total = 0;
+#endif
+
 deviceDescriptor devDesc __attribute__((aligned(4)));
 
 static int dwc_addr0_get_desc(int argc, const console_cmd_args *argv) {
@@ -229,22 +299,41 @@ static void lan_run(int level) {
   uint32_t revision = otp_read(30);
   uint32_t type = (revision >> 4) & 0xff;
   int lan_run = 0;
+  int ethclk_pin = 0;
 
   switch (type) {
   case 4: // 2B
     lan_run = 31;
+    ethclk_pin = 44;
     break;
   case 8: // 3B
     lan_run = 29;
+    ethclk_pin = 42;
     break;
   case 0xd: // 3B+
     lan_run = 30;
+    ethclk_pin = 42;
     break;
   }
 
   if (lan_run > 0) {
     gpio_config(lan_run, kBCM2708PinmuxOut);
     gpio_set(lan_run, level);
+    if (level == 0) {
+      if (ethclk_pin > 0) {
+        // GP1 routed to GPIO42 to drive ethernet/usb chip
+        *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
+        while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
+
+        uint32_t divisor = freq_pllc_per / (25000000/0x1000);
+
+        *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
+        *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
+        *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
+
+        gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
+      }
+    }
   }
 }
 
@@ -345,7 +434,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   printf("hub_port: %d ", opep->info.hub_port);
   printf("speed: %d(%s) ", opep->info.speed, speeds[opep->info.speed]);
   printf("opep: 0x%x\n"DEFAULT, (uint32_t)opep);
-  print_endpoint(ep_desc);
+  //print_endpoint(ep_desc);
   list_add_tail(&dwc_state.open_endpoints, &opep->l);
   return true;
 }
@@ -373,30 +462,43 @@ open_endpoint_t *get_open_ep(uint8_t dev_addr, uint8_t ep_addr) {
 }
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8]) {
-  int channel = dwc_find_idle_channel();
+  uint32_t state;
+  spin_lock_irqsave(&channel_setup, state);
+  idle_channel_t *ic = dwc_find_idle_channel();
   open_endpoint_t *opep = get_open_ep(dev_addr, 0);
+  opep->ic = ic;
+  int channel = ic->channel;
+
+  //hexdump_ram(setup_packet, (uint32_t)setup_packet, 16);
 
   if (dev_addr == debug_device) {
     logf(RED"\tHOST%d SETUP %d.%02x 0x%x/%d opep:0x%x\n"DEFAULT, channel, dev_addr, 0, (uint32_t)setup_packet, 8, (uint32_t)opep);
   }
   timer_cancel(&opep->retry);
   dwc_send_setup(&dwc_state, channel, dev_addr, 0, (setupData *)setup_packet, opep);
+  spin_unlock_irqrestore(&channel_setup, state);
 
   return true;
 }
 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * buffer, uint16_t buflen) {
+  assert(((uint32_t)buffer & 0x3) == 0);
   uint8_t epnr = ep_addr & 0xf;
-  int channel = dwc_find_idle_channel();
-  udelay(10000); // TODO, if all logging is removed, enumeration fails
+  uint32_t state;
+  //udelay(20); // TODO, if all logging is removed, enumeration fails
+
+  spin_lock_irqsave(&channel_setup, state);
+  idle_channel_t *ic = dwc_find_idle_channel();
   open_endpoint_t *opep = get_open_ep(dev_addr, epnr);
+  assert(opep);
+  opep->ic = ic;
+  int channel = ic->channel;
+
   if (!opep) {
     printf("dev_addr %d epnrf %d lr=0x%x\n", dev_addr, epnr, (uint32_t)__builtin_return_address(0));
   }
-  assert(opep);
 
   if (ep_addr & 0x80) { // IN
-    //thread_sleep(1000);
     if (dev_addr == debug_device) {
       logf(RED"\tHOST%d  <-   %d.%02x 0x%x/%d opep:0x%x type:%d pid:%d\n"DEFAULT, channel, dev_addr, ep_addr, (uint32_t)buffer, buflen, (uint32_t)opep, opep->ep_type, opep->next_pid);
     }
@@ -410,40 +512,54 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     timer_cancel(&opep->retry);
     dwc_host_out(&dwc_state, channel, dev_addr, epnr, (uint32_t*)buffer, buflen, opep);
   }
+  //puts("releasing");
+  spin_unlock_irqrestore(&channel_setup, state);
   return true;
 }
 
+bool hcd_edpt_abort_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr) {
+  assert(0);
+}
+
 static enum handler_return dwc_in_retry(timer_t *t, lk_time_t now, void *arg) {
-  int channel = dwc_find_idle_channel();
+  uint32_t state;
+  spin_lock_irqsave(&channel_setup, state);
+  idle_channel_t *ic = dwc_find_idle_channel();
   // TODO, a 0-length OUT can NAK, and this doesnt deal with that
 
   open_endpoint_t *opep = arg;
+  opep->ic = ic;
+  int channel = ic->channel;
   int dev_addr = opep->dev_addr;
   void *buffer = opep->buffer;
   int buflen = opep->buflen;
   uint8_t epnr = opep->ep_addr & 0xf;
 
-  if (dev_addr == debug_device || true) {
+  if (dev_addr == debug_device) {
     logf(RED"\tHOST%d  <-   %d.%02x 0x%x/%d type:%d pid:%d opep:0x%x RETRY\n"DEFAULT, channel, dev_addr, epnr | 0x80, (uint32_t)buffer, buflen, opep->ep_type, opep->next_pid, (uint32_t)opep);
   }
   dwc_host_in(&dwc_state, channel, dev_addr, epnr, (uint32_t*)buffer, buflen, opep);
+  spin_unlock_irqrestore(&channel_setup, state);
   return INT_NO_RESCHEDULE;
 }
 
-static int dwc_find_idle_channel(void) {
-  for (int i=0; i<8; i++) {
+static idle_channel_t *dwc_find_idle_channel(void) {
+  idle_channel_t *ic = list_remove_head_type(&dwc_state.idle_channels, idle_channel_t, node);
+  //printf("found %p\n", ic);
+  assert(ic);
+  return ic;
+  for (int i=1; i<8; i++) {
     struct dwc2_host_channel *chan = get_channel(i);
 
     if (chan->hcchar & BIT(31)) continue;
     if (chan->hcchar & BIT(30)) continue;
-    return i;
+    printf(GREEN"selected channel %d\n"DEFAULT, i);
+    //return i;
   }
   assert(0);
 }
 
 
-int measure_sof = 0;
-int sof_total = 0;
 
 static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
   enum handler_return ret = INT_NO_RESCHEDULE;
@@ -476,7 +592,8 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
 
   if (interrupt_status & BIT(3)) {
     ack |= BIT(3);
-    uint32_t framenr = *REG32(USB_HFNUM) & 0xffff;
+    //uint32_t framenr = *REG32(USB_HFNUM) & 0xffff;
+#ifdef MEASURE_SOF
     if (framenr % 100 == 0) {
       if (measure_sof < 100) {
         sof_total += *REG32(ST_CLO) - last_sof;
@@ -488,27 +605,27 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
       //printf("SOF interval: %d\n", *REG32(ST_CLO) - last_sof);
     }
     last_sof = *REG32(ST_CLO);
+#endif
   }
 
+#if DMA == 0
   if (interrupt_status & BIT(4)) {
     ack |= BIT(4);
-    //logf("RX irq\n");
+    logf("RX irq\n");
     //dumpreg(USB_GRXSTSP);
     uint32_t sts = *REG32(USB_GRXSTSP);
+    printf("USB_GRXSTSP: 0x%x\n", sts);
     int chan = sts & 0xf;
     int status = (sts >> 17) & 0xf;
     open_endpoint_t *opep = state->channels[chan].opep;
-    if ((opep->dev_addr == debug_device) && (status != 7)) {
+    //if ((opep->dev_addr == debug_device) && (status != 7)) {
       printf("  channel: %d\n", chan);
       printf("  byte count: %d\n", (sts >> 4) & 0x7ff);
       printf("  PID: %d\n", (sts >> 15) & 0x3);
       printf("  packet status: %d\n", status);
-    }
+    //}
     if (status == 2) {
       //printf("IN packet, popping\n");
-#if DMA
-        assert(0);
-#else
       uint32_t *dest_buf = state->channels[chan].buffer;
       uint32_t buffer_size = state->channels[chan].buffer_size;
       uint32_t expected_bytes = MIN((sts >> 4) & 0x7ff, buffer_size);
@@ -528,7 +645,6 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
         }
         dest_buf++;
       }
-#endif
       ret = INT_RESCHEDULE;
     } else if (status == 3) {
       //logf("IN complete\n");
@@ -548,6 +664,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
       uint32_t bytes = (sts >> 4) & 0x7ff;
       //logf("hcd_event_xfer_complete(%d, 0x%x, %d, success, true)\n", devaddr, epnr | (in ? 0x80 : 0), bytes);
       hcd_event_xfer_complete(devaddr, epnr | (in ? 0x80 : 0), bytes, XFER_RESULT_SUCCESS, true);
+      ret = INT_RESCHEDULE;
     } else if (status == 7) {
       // channel halted
     } else {
@@ -558,6 +675,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
       printf("  packet status: %d\n", status);
     }
   }
+#endif
 
   if (interrupt_status & BIT(8)) {
     ack |= BIT(8);
@@ -573,6 +691,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
       tusb_speed_t speed = hcd_port_speed_get(0);
       logf("Port Connect Detected at %s\n", speeds[speed]);
       hcd_event_device_attach(0, true);
+      ret = INT_RESCHEDULE;
     }
 
     if (hprt & BIT(3)) {
@@ -613,8 +732,8 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
         if (opep->dev_addr == debug_device) {
           //uint32_t now = *REG32(ST_CLO);
           //printf(RED"channel %d wants attention after %d uSec\n"DEFAULT, i, now - state->channels[i].req_start);
-          //dump_channel(i, "wants att");
-          //printf("acking 0x%x\n", int_flags);
+          dump_channel(i, "wants att");
+          printf("acking 0x%x\n", int_flags);
         }
 
         if (int_flags & BIT(4)) {
@@ -629,7 +748,14 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
         uint8_t devaddr = (hcchar >> 22) & 0x7f;
         uint32_t bytes = chan->hctsiz & 0x7ffff;
 
-        if (int_flags & BIT(0)) { // transfer completed
+        if ((int_flags == (BIT(4) | BIT(1))) && (type == 3)) {
+          // interrupt endpoint NAK + HALT
+
+          // attempt a restart
+          timer_set_oneshot(&opep->retry, 1000, dwc_in_retry, opep);
+          list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
+          //chan->hcchar = BIT(31) | BIT(30);
+        } else if (int_flags & BIT(0)) { // transfer completed
           int total_size = opep->buflen - bytes;
           if ((!in) && (total_size == 0)) {
             total_size = opep->buflen;
@@ -637,7 +763,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           if (total_size < 0) total_size = 0;
           if (devaddr == debug_device) {
             if (total_size) {
-              hexdump_ram(opep->buffer, (uint32_t)opep->buffer, total_size+8);
+              hexdump_ram(opep->buffer, (uint32_t)opep->buffer, total_size+15);
             }
             dump_channel(i, "xfer comp");
             logf("bytes %d, buflen %d, packets: %d, old next_pid: %d\n", bytes, opep->buflen, opep->packets, opep->next_pid);
@@ -653,8 +779,10 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           }
           timer_cancel(&opep->retry);
           state->channels[i].opep = NULL;
-          // TODO, is bytes not correct
+          list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
+          // TODO, is bytes not always correct?
           hcd_event_xfer_complete(devaddr, epnr | (in ? 0x80 : 0), total_size, XFER_RESULT_SUCCESS, true);
+          ret = INT_RESCHEDULE;
           //}
         } else if (int_flags & BIT(10)) {
           logf("HOST%d data toggle error\n", i);
@@ -670,22 +798,25 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           //chan->hctsiz = 0;
           //chan->hcchar = BIT(30);
         } else if (int_flags & BIT(9)) {
-          logf("frame overrun\n");
+          //logf("frame overrun\n");
           // not sure on the cause, can just retry
+          // current theory, is that a transfer was started too late in a (micro)frame
+          // SOF had to interrupt it
           opep->buffer = state->channels[i].buffer;
           opep->buflen = state->channels[i].buffer_size;
           timer_set_oneshot(&opep->retry, 1000, dwc_in_retry, opep);
           chan->hcchar = BIT(31) | BIT(30);
           chan->hctsiz = 0;
-        } else if (int_flags & BIT(1)) {
-          // halt complete
-          //dump_channel(i, "halt finished");
+          list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
         } else if (int_flags & BIT(7)) {
           logf("transaction error on channel %d\n", i);
-          //chan->hcchar = BIT(30);
+          list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
+          chan->hcchar = BIT(31) | BIT(30);
           logf("hcd_event_xfer_complete(%d, 0x%x, %d, fail, true)\n", devaddr, epnr | (in ? 0x80 : 0), bytes);
           hcd_event_xfer_complete(devaddr, epnr | (in ? 0x80 : 0), bytes, XFER_RESULT_FAILED, true);
-        } else if ((type == 0) && (!in)) { // control
+          ret = INT_RESCHEDULE;
+        } /*else if ((type == 0) && (!in)) { // control
+          printf("acked 0x%x\n", int_flags);
           assert(0);
           //dump_channel(i);
           //logf("hcd_event_xfer_complete(%d, 0x%x, %d, success, true)\n", devaddr, epnr | (in ? 0x80 : 0), bytes);
@@ -695,6 +826,10 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           }
           state->channels[i].opep = NULL;
           hcd_event_xfer_complete(devaddr, epnr | (in ? 0x80 : 0), bytes, XFER_RESULT_SUCCESS, true);
+        }*/
+        if (int_flags & BIT(1)) {
+          // halt complete
+          //dump_channel(i, "halt finished");
         }
 
         ret = INT_RESCHEDULE;
@@ -711,6 +846,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
     ack |= BIT(29);
     logf("Disconnect Detected Interrupt\n");
     hcd_event_device_remove(0, true);
+    ret = INT_RESCHEDULE;
   }
 
   if (interrupt_status & BIT(30)) {
@@ -763,7 +899,7 @@ static void dump_channel(int i, const char * reason) {
   t = chan->hctsiz;
   printf("  HCTSIZ%d: 0x%x\n", i, t);
   printf("    size:%d packets:%d pid:%d ping:%d\n", t & 0x7ffff, (t >> 19) & 0x3ff, (t >> 29) & 0x3, (t >> 31) & 1);
-  printf("  HCDMA%d: 0x%x\n", i, chan->hcdma);
+  printf("  HCDMA%d: 0x%08x\n", i, chan->hcdma);
 }
 
 static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int endpoint, setupData *setup, open_endpoint_t *opep) {
@@ -781,6 +917,7 @@ static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int e
   opep->buflen = 8;
   opep->packets = 1;
   opep->next_pid = 3;
+  opep->buffer = setup;
 
   chan->hctsiz = HCTSIZn_BYTES(8) | HCTSIZn_PACKET_COUNT(1) | HCTSIZn_PID(3);
   chan->hcsplt = 0;
@@ -801,7 +938,7 @@ static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int e
   dest[0] = src[1];
 #endif
   //dumpreg(USB_GNPTXSTS); // 2c
-  thread_sleep(10);
+  //thread_sleep(10);
   //dwc_show_masked_irq(0, NULL);
 }
 
@@ -835,18 +972,22 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
 
 
   //printf("size %d, mps %d, packets %d, pid %d/%d, type %d\n", size, opep->max_packet_size, packets, pid, opep->next_pid, opep->ep_type);
-  //assert(size <= opep->max_packet_size);
 
-  // TODO, set packet count correctly
-  // and handle the device responding with fewer bytes then expected
+  // TODO handle the device responding with fewer bytes then expected
   chan->hctsiz = HCTSIZn_BYTES(size) | HCTSIZn_PACKET_COUNT(packets) | HCTSIZn_PID(pid);
   chan->hcsplt = 0;
   chan->hcint = 0xffff;
   chan->hcdma = (uint32_t)buffer;
   chan->hcintmsk = 0xffff;
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(max_packet_size) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | HCCHARn_IN | (1<<20) | (type << 18);
+
+  //THREAD_LOCK(state2);
   //dump_channel(channel, "IN init");
+  //puts("enabling...");
+  //dump_channel(channel, "IN init2");
   chan->hcchar |= HCCHARn_ENABLE;
+  //puts("enabled");
+  //THREAD_UNLOCK(state2);
 }
 
 static void dwc_host_out(dwc_host_state_t *state, int channel, int addr, int endpoint, uint32_t *buffer, uint32_t size, open_endpoint_t *opep) {
@@ -959,6 +1100,18 @@ static void dwc_dump_all_state(void) {
 
   if (device_mode) {
   }
+
+  printf("rx fifo depth: 0x%x\n", *REG32(USB_GRXFSIZ));
+  t = *REG32(USB_GNPTXFSIZ);
+  printf("non-periodic tx fifo depth: 0x%x\n", t >> 16);
+  printf("non-periodic tx fifo start: 0x%x\n", t & 0xffff);
+  t = *REG32(USB_GNPTXSTS);
+  printf("non-periodic tx fifo space available: 0x%x\n", t & 0xffff);
+  printf("non-periodic tx request queue space available: 0x%x\n", (t >> 16) & 0xff);
+  printf("top entry: 0x%x\n", (t >> 24) & 0x7f);
+  t = *REG32(USB_HPTXFSIZ);
+  printf("host periodic tx start: 0x%x\n", t & 0xffff);
+  printf("host periodic tx fifo depth: 0x%x\n", (t >> 16) & 0xffff);
 }
 
 bool hcd_init(uint8_t rhport) {
@@ -980,18 +1133,45 @@ bool hcd_init(uint8_t rhport) {
   *REG32(USB_GAHBCFG) = BIT(0)
 #if DMA
   | BIT(5)
+  | (3 << 1) // burst type INCR4
 #endif
   ;
 
   dumpreg(USB_GRSTCTL);
   dumpreg(USB_PCGCCTL);
 
-  thread_sleep(100);
+  thread_sleep(50);
+
+  list_initialize(&dwc_state.idle_channels);
+
+  uint32_t ghwcfg2 = *REG32(USB_GHWCFG2);
+  int channel_count = ((ghwcfg2 >> 14) & 0xf) + 1;
+  printf("controller has %d host channels\n", channel_count);
+  for (int i=0; i<channel_count; i++) {
+    idle_channel_t *c = malloc(sizeof(idle_channel_t));
+    c->channel = i;
+    list_add_tail(&dwc_state.idle_channels, &c->node);
+  }
+
+  // re-configure all FIFO's
+  *REG32(USB_GRXFSIZ) =                   0x0e00;
+  *REG32(USB_GNPTXFSIZ) = (0x100 << 16) | 0x1000;
+  *REG32(USB_HPTXFSIZ) =  (0x200 << 16) | 0x2000;
+
+  *REG32(USB_GRSTCTL) = (0x10 << 6) | BIT(5);
+  while (*REG32(USB_GRSTCTL) & BIT(5)) {}
+
+  *REG32(USB_GRSTCTL) = BIT(4);
+  while (*REG32(USB_GRSTCTL) & BIT(4)) {}
+  // fifo reset done
 
   register_int_handler(DWC_IRQ, (int_handler)dwc_irq, &dwc_state);
-  logf("int registered\n");
 
-  *REG32(USB_GINTMSK) = BIT(1) | BIT(2) | /* BIT(3) |*/ BIT(4) | USB_GINTMSK_PortInt | BIT(25) | BIT(28) | BIT(29) | BIT(30);
+  *REG32(USB_GINTMSK) = BIT(1) | BIT(2) | /* BIT(3) |*/
+#if DMA == 0
+    BIT(4) |
+#endif
+    USB_GINTMSK_PortInt | BIT(25) | BIT(28) | BIT(29) | BIT(30);
   *REG32(USB_GINTSTS) = BIT(1) | BIT(11) | BIT(12) | BIT(15); // clear some interrupts
   *REG32(USB_HAINTMSK) = 0xffff;
 
@@ -1000,9 +1180,8 @@ bool hcd_init(uint8_t rhport) {
   // turn VBUS on
   *REG32(USB_HPRT) = BIT(12);
 
-  thread_sleep(100);
+  //thread_sleep(100);
 
-  thread_sleep(10);
   lan_run(1);
   return true;
 }
@@ -1012,6 +1191,14 @@ void hcd_int_enable (uint8_t rhport) {
   unmask_interrupt(DWC_IRQ);
   logf("int unmasked\n");
   //dwc_show_masked_irq(0, NULL);
+}
+
+void hcd_int_disable(uint8_t rhport) {
+  mask_interrupt(DWC_IRQ);
+}
+
+bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
+  return false;
 }
 
 #define PRINTREG(x) t = *REG32(x); printf( #x ": 0x%x\n", t)
