@@ -90,6 +90,8 @@ static void setup_framebuffer(void) {
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
   mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
+  hvs_allocate_premade(simple_fb_layer, 7);
+  hvs_regen_noscale_noviewport_noalpha(simple_fb_layer);
   //simple_fb_layer->w /= 4;
   //simple_fb_layer->h /= 4;
   simple_fb_layer->name = strdup("simple-framebuffer");
@@ -104,7 +106,7 @@ static void setup_framebuffer(void) {
 
 static void *setupInterArchDtb(void) {
   size_t buffer_size = 1 * 1024 * 1024;
-  void *v_fdt = malloc(buffer_size);
+  void *v_fdt = memalign(8, buffer_size);
   int ret;
 
   ret = fdt_create(v_fdt, buffer_size);
@@ -206,7 +208,10 @@ static void choose_arm_payload(void) {
   assert(chosenPayload->payload_addr);
 
   logf("detected a bcm%d, picking payload at %p size 0x%x\n", 2835 + processor, chosenPayload->payload_addr, chosenPayload->payload_size);
-  if (processor == 2) aarch64 = true;
+  if (processor == 2) {
+    aarch64 = true;
+    puts("enabling aarch64");
+  }
 }
 
 static void choose_armstub(uint32_t bits) {
@@ -295,7 +300,7 @@ static void cam1_enable(void) {
 }
 
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
-  bool jtag = true;
+  bool jtag = false;
 
 #if ARMSTUB == 1
   choose_armstub(32);
