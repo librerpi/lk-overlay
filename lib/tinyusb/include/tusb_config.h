@@ -96,7 +96,7 @@
 #define CFG_TUH_ENUMERATION_BUFSIZE 512
 
 // only hub class is enabled
-#define CFG_TUH_HUB                 1
+#define CFG_TUH_HUB                 2
 
 // max device support (excluding hub device)
 // 1 hub typically has 4 ports

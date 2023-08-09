@@ -1,9 +1,11 @@
-#include <stdint.h>
-#include <platform/bcm28xx/print_timestamp.h>
-#include <stdio.h>
 #include "tusb.h"
-#include <usb_utils.h>
+#include <lib/hexdump.h>
+#include <platform/bcm28xx/print_timestamp.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <usb_utils.h>
+#include <usbhooks.h>
 
 
 #if CFG_TUH_MSC
@@ -11,6 +13,9 @@
 #include <lib/partition.h>
 #include <lk/err.h>
 #endif
+
+extern const usb_hook_t __start_usb_hooks __WEAK;
+extern const usb_hook_t __stop_usb_hooks __WEAK;
 
 static tusb_desc_device_t desc_device;
 
@@ -24,6 +29,13 @@ static uint16_t count_interface_total_len(tusb_desc_interface_t const* desc_itf,
 // English
 #define LANGUAGE_ID 0x0409
 
+void basic_host_init(void) {
+  const usb_hook_t *hook;
+  for (hook = &__start_usb_hooks; hook != &__stop_usb_hooks; hook++) {
+    if (hook->init) hook->init();
+  }
+}
+
 // Invoked when device is mounted (configured)
 void tuh_mount_cb (uint8_t daddr)
 {
@@ -31,7 +43,7 @@ void tuh_mount_cb (uint8_t daddr)
 
   // Get Device Descriptor
   // TODO: invoking control transfer now has issue with mounting hub with multiple devices attached, fix later
-  tuh_descriptor_get_device(daddr, &desc_device, 18, print_device_descriptor, 0);
+  //tuh_descriptor_get_device(daddr, &desc_device, 18, print_device_descriptor, 0);
 }
 
 void print_device_descriptor(tuh_xfer_t* xfer)
@@ -60,12 +72,14 @@ void print_device_descriptor(tuh_xfer_t* xfer)
   // Get String descriptor using Sync API
   uint16_t temp_buf[128];
 
+/*
   printf("  iManufacturer       %u     "     , desc_device.iManufacturer);
   if (XFER_RESULT_SUCCESS == tuh_descriptor_get_manufacturer_string_sync(daddr, LANGUAGE_ID, temp_buf, sizeof(temp_buf)) )
   {
     print_utf16(temp_buf, TU_ARRAY_SIZE(temp_buf));
   }
   printf("\r\n");
+  */
 
   printf("  iProduct            %u     "     , desc_device.iProduct);
   if (XFER_RESULT_SUCCESS == tuh_descriptor_get_product_string_sync(daddr, LANGUAGE_ID, temp_buf, sizeof(temp_buf)))
@@ -242,9 +256,7 @@ typedef struct {
   size_t block_size;
 } usb_dev_t;
 
-#define container_of(ptr, type, member) ({                      \
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
+static usb_dev_t usb_devices[16];
 
 typedef struct {
   event_t evt;
@@ -258,15 +270,46 @@ static bool tuh_msc_read_block_cb(uint8_t dev_addr, tuh_msc_complete_data_t cons
   return true;
 }
 
+void dump_nptxfifo(void);
+void dump_rxfifo(void);
+static mutex_t msd_mutex = MUTEX_INITIAL_VALUE(msd_mutex);
+
 static ssize_t tuh_msc_read_block(bdev_t *bdev, void *buf, bnum_t block, uint count) {
-  usb_dev_t *dev = container_of(bdev, usb_dev_t, bdev);
+  usb_dev_t *dev = containerof(bdev, usb_dev_t, bdev);
   callback_state_t cbs = {
     .evt = EVENT_INITIAL_VALUE(cbs.evt, false, 0)
   };
 
+  //logf("tuh_msc_read_block(%p, %p, %d, %d)\n", bdev, buf, block, count);
+  //dump_nptxfifo();
+  //dump_rxfifo();
+
+  mutex_acquire(&msd_mutex);
+
   tuh_msc_read10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uint32_t)&cbs);
   event_wait(&cbs.evt);
   event_destroy(&cbs.evt);
+
+  mutex_release(&msd_mutex);
+
+  if (cbs.success) {
+    //hexdump_ram(buf, block * bdev->block_size, count * bdev->block_size);
+    return count * dev->block_size;
+  } else {
+    return ERR_GENERIC;
+  }
+}
+
+static ssize_t tuh_msc_write_block(bdev_t *bdev, const void *buf, bnum_t block, uint count) {
+  usb_dev_t *dev = containerof(bdev, usb_dev_t, bdev);
+  callback_state_t cbs = {
+    .evt = EVENT_INITIAL_VALUE(cbs.evt, false, 0)
+  };
+
+  tuh_msc_write10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uint32_t)&cbs);
+  event_wait(&cbs.evt);
+  event_destroy(&cbs.evt);
+
   if (cbs.success) {
     return count * dev->block_size;
   } else {
@@ -275,7 +318,12 @@ static ssize_t tuh_msc_read_block(bdev_t *bdev, void *buf, bnum_t block, uint co
 }
 
 static int part_prober(void *arg) {
+  const usb_hook_t *hook;
+
   partition_publish(arg,0);
+  for (hook = &__start_usb_hooks; hook != &__stop_usb_hooks; hook++) {
+    if (hook->msd_probed) hook->msd_probed(arg);
+  }
   free(arg);
   return 0;
 }
@@ -286,14 +334,19 @@ void tuh_msc_mount_cb(uint8_t dev_addr) {
   char buffer[20];
   for (int lun = 0; lun < total_luns; lun++) {
     printf("LUN %d\n", lun);
+    // to support multiple LUN's, usb_devices needs to become more complex
+    // it needs to support lookup by dev_addr, for disconnect to find it
+    // it needs to store multiple triplets of lun, bdev, and block_size
+    assert(lun == 0);
     snprintf(buffer, 20, "usb%d_%d", dev_addr, lun);
-    usb_dev_t *dev = malloc(sizeof(usb_dev_t));
+    usb_dev_t *dev = &usb_devices[dev_addr];
     dev->dev_addr = dev_addr;
     dev->lun = lun;
     dev->block_size = tuh_msc_get_block_size(dev_addr, lun);
     bnum_t block_count = tuh_msc_get_block_count(dev_addr, lun);
     bio_initialize_bdev(&dev->bdev, buffer, dev->block_size, block_count, 0, NULL, BIO_FLAGS_NONE);
     dev->bdev.read_block = tuh_msc_read_block;
+    dev->bdev.write_block = tuh_msc_write_block;
     bio_register_device(&dev->bdev);
 
     thread_t * thread = thread_create(buffer, part_prober, strdup(buffer), DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
@@ -302,5 +355,7 @@ void tuh_msc_mount_cb(uint8_t dev_addr) {
 }
 void tuh_msc_umount_cb(uint8_t dev_addr) {
   printf("MSD at %d lost\n", dev_addr);
+  partition_unpublish(usb_devices[dev_addr].bdev.name);
+  bio_unregister_device(&usb_devices[dev_addr].bdev);
 }
 #endif

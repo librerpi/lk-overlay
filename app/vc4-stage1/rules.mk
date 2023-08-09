@@ -6,7 +6,6 @@ MODULE_DEPS += \
 	lib/elf \
 	lib/fs \
 	lib/fs/ext2 \
-	lib/lua \
 	lib/partition \
 
 MODULE_SRCS += \

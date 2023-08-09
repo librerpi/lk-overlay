@@ -1,41 +1,44 @@
 #include <app.h>
+#include <kernel/event.h>
+#include <kernel/mutex.h>
 #include <kernel/novm.h>
 #include <kernel/thread.h>
 #include <kernel/wait.h>
 #include <lib/elf.h>
 #include <lib/fs.h>
 #include <lib/io.h>
-#include <lib/partition.h>
 #include <lk/debug.h>
-#include <lk/init.h>
+#include <lk/list.h>
 #include <lk/reg.h>
 #include <platform.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/sdram.h>
 #include <string.h>
+#include <usbhooks.h>
 
-#include <lua.h>
-#include <lib/lua/lua-utils.h>
+//#include <lua.h>
+//#include <lib/lua/lua-utils.h>
 
-#define UNCACHED_RAM 0xc0000000
 #define MB (1024*1024)
+#define logf(fmt, ...) { print_timestamp(); printf("[stage1:%s:%d]: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__); }
 
-static void stage1_dram_init(uint level) {
-  sdram_init();
-  uint32_t start = UNCACHED_RAM | (1 * MB);
-  uint32_t length = 10 * MB;
-  novm_add_arena("dram", start, length);
-}
+typedef struct {
+  struct list_node node;
+  const char *name;
+} pending_device_t;
 
-LK_INIT_HOOK(stage1, &stage1_dram_init, LK_INIT_LEVEL_PLATFORM_EARLY + 1);
+mutex_t pending_device_lock = MUTEX_INITIAL_VALUE(pending_device_lock);
+struct list_node pending_devices = LIST_INITIAL_VALUE(pending_devices);
+event_t pending_devices_nonempty = EVENT_INITIAL_VALUE(pending_devices_nonempty, false, 0);
 
 static ssize_t fs_read_wrapper(struct elf_handle *handle, void *buf, uint64_t offset, size_t len) {
   return fs_read_file(handle->read_hook_arg, buf, offset, len);
 }
 
-static wait_queue_t waiter;
+//static wait_queue_t waiter;
 
 static int waker_entry(void *arg) {
   wait_queue_t *waiter_ = (wait_queue_t*) arg;
@@ -66,41 +69,7 @@ static void *load_and_run_elf(elf_handle_t *stage2_elf) {
   return entry;
 }
 
-static void mount_rootfs(void) {
-  int ret;
-  bdev_t *sd = rpi_sdhost_init();
-  printf("%p\n", sd);
-  partition_publish("sdhost", 0);
-  //fs_mount("/boot", "fat32", "sdhostp0");
-  ret = fs_mount("/root", "ext2", "sdhostp1");
-  if (ret) {
-    printf("mount failure: %d\n", ret);
-    return;
-  }
-}
-
-static void load_stage2(void) {
-  int ret;
-
-  mount_rootfs();
-
-  filehandle *stage2;
-  ret = fs_open_file("/root/boot/lk.elf", &stage2);
-  if (ret) {
-    printf("open failed: %d\n", ret);
-    return;
-  }
-  elf_handle_t *stage2_elf = malloc(sizeof(elf_handle_t));
-  ret = elf_open_handle(stage2_elf, fs_read_wrapper, stage2, false);
-  if (ret) {
-    printf("failed to elf open: %d\n", ret);
-    return;
-  }
-  void *entry = load_and_run_elf(stage2_elf);
-  fs_close_file(stage2);
-  arch_chain_load(entry, 0, 0, 0, 0);
-}
-
+#if 0
 struct xmodem_packet {
   uint8_t magic;
   uint8_t block_num;
@@ -185,15 +154,83 @@ static void xmodem_receive(void) {
   }
   free(buffer);
 }
+#endif
 
 static void stage1_init(const struct app_descriptor *app) {
   puts("stage1_init");
 }
 
+#if 0
+static int chainload(lua_State *L) {
+  return 0;
+}
+#endif
+
+static void try_to_boot(const char *device) {
+  int ret;
+  logf("trying to boot from %s\n", device);
+  //bdev_t *sd = rpi_sdhost_init();
+  //fs_mount("/boot", "fat32", "sdhostp0");
+  ret = fs_mount("/root", "ext2", device);
+  if (ret) {
+    printf("mount failure: %d\n", ret);
+    return;
+  }
+  filehandle *stage2;
+  ret = fs_open_file("/root/boot/lk.elf", &stage2);
+  if (ret) {
+    printf("failed to open /root/boot/lk.elf: %d\n", ret);
+    goto unmount;
+  }
+
+  elf_handle_t *stage2_elf = malloc(sizeof(elf_handle_t));
+  ret = elf_open_handle(stage2_elf, fs_read_wrapper, stage2, false);
+  if (ret) {
+    printf("failed to elf open: %d\n", ret);
+    goto closefile;
+  }
+  void *entry = load_and_run_elf(stage2_elf);
+  fs_close_file(stage2);
+  arch_chain_load(entry, 0, 0, 0, 0);
+  return;
+  closefile:
+    fs_close_file(stage2);
+  unmount:
+    fs_unmount("/root");
+}
+
+static void add_boot_target(const char *device) {
+  mutex_acquire(&pending_device_lock);
+  logf("condidering %s as boot target\n", device);
+  pending_device_t *pd = malloc(sizeof(pending_device_t));
+  pd->name = device;
+  list_add_tail(&pending_devices, &pd->node);
+  event_signal(&pending_devices_nonempty, true);
+  mutex_release(&pending_device_lock);
+}
+
 static void stage1_entry(const struct app_descriptor *app, void *args) {
   int ret;
   puts("stage1 entry\n");
-  mount_rootfs();
+  thread_set_real_time(get_current_thread());
+  thread_set_priority(HIGHEST_PRIORITY);
+  // sdhost initializes in a blocking mode before threads are ran, so will be available immediately if detected
+  // usb initiailizes in a thread and wont show up until stage1_msd_probed() gets called
+  add_boot_target("sdhostp1");
+
+  while (true) {
+    event_wait(&pending_devices_nonempty);
+
+    mutex_acquire(&pending_device_lock);
+
+    pending_device_t *pd = list_remove_head_type(&pending_devices, pending_device_t, node);
+    if (list_is_empty(&pending_devices)) event_unsignal(&pending_devices_nonempty);
+
+    mutex_release(&pending_device_lock);
+
+    try_to_boot(pd->name);
+    free(pd);
+  }
 
   /*lua_State *L = lua_newstate(&lua_allocator, NULL);
   register_globals(L);
@@ -241,7 +278,14 @@ static void stage1_entry(const struct app_descriptor *app, void *args) {
     xmodem_receive();
 #endif
   } else {
-    load_stage2();
+  }
+}
+
+static void stage1_msd_probed(const char *name) {
+  char buffer[64];
+  for (int i=0; i<4; i++) {
+    snprintf(buffer, 64, "%sp%d", name, i);
+    add_boot_target(strdup(buffer));
   }
 }
 
@@ -249,3 +293,8 @@ APP_START(stage1)
   .init = stage1_init,
   .entry = stage1_entry,
 APP_END
+
+USB_HOOK_START(stage1)
+  //.init = bad_apple_usb_init,
+  .msd_probed = stage1_msd_probed,
+USB_HOOK_END

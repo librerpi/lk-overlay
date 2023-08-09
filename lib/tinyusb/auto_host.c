@@ -1,8 +1,13 @@
 #include <app.h>
 #include <tusb.h>
+#include <usbhooks.h>
+
+thread_t *autohost_thread;
 
 static void auto_host_entry(const struct app_descriptor *app, void *args) {
-  thread_sleep(10000);
+  autohost_thread = get_current_thread();
+  basic_host_init();
+  //thread_sleep(10000);
   puts("doing init");
   tusb_init();
   tuh_init(0);
@@ -10,7 +15,6 @@ static void auto_host_entry(const struct app_descriptor *app, void *args) {
   while (true) {
     //tuh_task();
     tuh_task_ext(UINT32_MAX, false);
-    thread_sleep(100); // TODO, this shouldnt be needed
   }
 }
 
