@@ -2,7 +2,7 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS += $(LOCAL_DIR)/upstream/src/tusb.c $(LOCAL_DIR)/upstream/src/host/usbh.c $(LOCAL_DIR)/upstream/src/common/tusb_fifo.c $(LOCAL_DIR)/upstream/src/host/hub.c $(LOCAL_DIR)/upstream/examples/host/bare_api/src/main.c
+MODULE_SRCS += $(LOCAL_DIR)/upstream/src/tusb.c $(LOCAL_DIR)/upstream/src/host/usbh.c $(LOCAL_DIR)/upstream/src/common/tusb_fifo.c $(LOCAL_DIR)/upstream/src/host/hub.c
 
 TUH_MSC := 1
 

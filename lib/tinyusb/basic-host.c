@@ -46,6 +46,11 @@ void tuh_mount_cb (uint8_t daddr)
   //tuh_descriptor_get_device(daddr, &desc_device, 18, print_device_descriptor, 0);
 }
 
+void tuh_umount_cb(uint8_t daddr)
+{
+  printf("Device removed, address = %d\r\n", daddr);
+}
+
 void print_device_descriptor(tuh_xfer_t* xfer)
 {
   if ( XFER_RESULT_SUCCESS != xfer->result )
