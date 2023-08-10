@@ -1,5 +1,8 @@
+#ifdef ARCH_ARM64
+#include <arch/arm64/mmu.h>
+#include <kernel/vm.h>
+#endif
 #include <assert.h>
-//#include <cksum-helper/cksum-helper.h>
 #include <dev/gpio.h>
 #include <host/hcd.h>
 #include <kernel/event.h>
@@ -10,6 +13,7 @@
 #include <lib/hexdump.h>
 #include <lk/console_cmd.h>
 #include <lk/err.h>
+//#include <cksum-helper/cksum-helper.h>
 #include <lk/init.h>
 #include <lk/list.h>
 #include <lk/reg.h>
@@ -17,7 +21,6 @@
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/dwc2.h>
 #include <platform/bcm28xx/gpio.h>
-#include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/queue.h>
@@ -93,7 +96,7 @@ typedef struct {
   struct list_node idle_channels;
 } dwc_host_state_t;
 
-int debug_device = 20;
+int debug_device = BIT(0);
 
 static const char *speeds[] = {
   [TUSB_SPEED_FULL] = "FS",
@@ -109,7 +112,6 @@ static void dump_channel(int i, const char *reason);
 static struct dwc2_host_channel *get_channel(int i);
 static void dwc_dump_all_state(void);
 static int dwc_cmd_show_state(int argc, const console_cmd_args *argv);
-static int rpi_lan_run(int argc, const console_cmd_args *argv);
 static int dwc_addr0_get_desc(int argc, const console_cmd_args *argv);
 static int dwc_addr0_get_conf(int argc, const console_cmd_args *argv);
 static void __attribute((noinline)) control_in(dwc_host_state_t *state, int channel, int addr, int endpoint, setupData *setup, uint32_t *buffer);
@@ -151,9 +153,22 @@ static int dwc_testit(int argc, const console_cmd_args *argv) {
 }
 
 static void dump_fifo(uint32_t base, uint32_t size) {
-  uint32_t base_addr = USB_BASE + 0x20000 + (base * 4);
+  uintptr_t base_addr = USB_BASE + 0x20000 + (base * 4);
   uint32_t bytes = size*4;
   hexdump_ram((void*)base_addr, base_addr, bytes);
+}
+
+static uint32_t virtual_to_dma(void *buffer) {
+  assert(((uintptr_t)buffer & 0x3) == 0);
+#ifdef ARCH_VPU
+  // TODO, retest this
+  return (uint32_t)buffer;
+#elif defined(ARCH_ARM64)
+  addr_t phys_addr = vaddr_to_paddr(buffer);
+  uint32_t truncated = (phys_addr & 0x3fffffff) | 0xc0000000;
+  //logf("%p -> 0x%x, cacheline %d\n", buffer, truncated, CACHE_LINE);
+  return truncated;
+#endif
 }
 
 void dump_nptxfifo(void) {
@@ -178,7 +193,6 @@ STATIC_COMMAND("dwc_root_disable", "disable the root port", &dwc_root_disable)
 STATIC_COMMAND("dwc_root_reset", "reset the root port", &dwc_root_reset)
 STATIC_COMMAND("dwc_masked_irq", "show irq's that are firing but masked", &dwc_show_masked_irq)
 STATIC_COMMAND("dwc_show_state", "show all register states", &dwc_cmd_show_state)
-STATIC_COMMAND("lan_run", "set the LAN_RUN pin", &rpi_lan_run)
 STATIC_COMMAND("addr0_get", "", &dwc_addr0_get_desc)
 STATIC_COMMAND("addr0_get_conf", "", &dwc_addr0_get_conf)
 STATIC_COMMAND("get_speed", "get speed", &dwc_get_speed)
@@ -284,59 +298,6 @@ static int dwc_addr0_get_conf(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
-static void lan_run(int level);
-
-static int rpi_lan_run(int argc, const console_cmd_args *argv) {
-  if (argc != 2) {
-    printf("usage: lan_run <0|1>\n");
-    return 0;
-  }
-  lan_run(argv[1].u);
-  return 0;
-}
-
-static void lan_run(int level) {
-  uint32_t revision = otp_read(30);
-  uint32_t type = (revision >> 4) & 0xff;
-  int lan_run = 0;
-  int ethclk_pin = 0;
-
-  switch (type) {
-  case 4: // 2B
-    lan_run = 31;
-    ethclk_pin = 44;
-    break;
-  case 8: // 3B
-    lan_run = 29;
-    ethclk_pin = 42;
-    break;
-  case 0xd: // 3B+
-    lan_run = 30;
-    ethclk_pin = 42;
-    break;
-  }
-
-  if (lan_run > 0) {
-    gpio_config(lan_run, kBCM2708PinmuxOut);
-    gpio_set(lan_run, level);
-    if (level == 0) {
-      if (ethclk_pin > 0) {
-        // GP1 routed to GPIO42 to drive ethernet/usb chip
-        *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
-        while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
-
-        uint32_t divisor = freq_pllc_per / (25000000/0x1000);
-
-        *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
-        *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
-        *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
-
-        gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
-      }
-    }
-  }
-}
-
 static void hprt_wc_bit(int bit) {
   uint32_t hprt = *REG32(USB_HPRT);
   hprt &= ~(BIT(7) | BIT(6) | BIT(5) | BIT(3) | BIT(2) | BIT(1));
@@ -433,7 +394,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   printf("hub_addr: %d ", opep->info.hub_addr);
   printf("hub_port: %d ", opep->info.hub_port);
   printf("speed: %d(%s) ", opep->info.speed, speeds[opep->info.speed]);
-  printf("opep: 0x%x\n"DEFAULT, (uint32_t)opep);
+  printf("opep: 0x%p\n"DEFAULT, opep);
   //print_endpoint(ep_desc);
   list_add_tail(&dwc_state.open_endpoints, &opep->l);
   return true;
@@ -471,8 +432,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
   //hexdump_ram(setup_packet, (uint32_t)setup_packet, 16);
 
-  if (dev_addr == debug_device) {
-    logf(RED"\tHOST%d SETUP %d.%02x 0x%x/%d opep:0x%x\n"DEFAULT, channel, dev_addr, 0, (uint32_t)setup_packet, 8, (uint32_t)opep);
+  if (BIT(dev_addr) & debug_device) {
+    logf(RED"\tHOST%d SETUP %d.%02x 0x%p/%d opep:0x%p\n"DEFAULT, channel, dev_addr, 0, setup_packet, 8, opep);
   }
   timer_cancel(&opep->retry);
   dwc_send_setup(&dwc_state, channel, dev_addr, 0, (setupData *)setup_packet, opep);
@@ -482,7 +443,6 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 }
 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * buffer, uint16_t buflen) {
-  assert(((uint32_t)buffer & 0x3) == 0);
   uint8_t epnr = ep_addr & 0xf;
   uint32_t state;
   //udelay(20); // TODO, if all logging is removed, enumeration fails
@@ -495,19 +455,19 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
   int channel = ic->channel;
 
   if (!opep) {
-    printf("dev_addr %d epnrf %d lr=0x%x\n", dev_addr, epnr, (uint32_t)__builtin_return_address(0));
+    printf("dev_addr %d epnrf %d lr=0x%p\n", dev_addr, epnr, __builtin_return_address(0));
   }
 
   if (ep_addr & 0x80) { // IN
-    if (dev_addr == debug_device) {
-      logf(RED"\tHOST%d  <-   %d.%02x 0x%x/%d opep:0x%x type:%d pid:%d\n"DEFAULT, channel, dev_addr, ep_addr, (uint32_t)buffer, buflen, (uint32_t)opep, opep->ep_type, opep->next_pid);
+    if (BIT(dev_addr) & debug_device) {
+      logf(RED"\tHOST%d  <-   %d.%02x %p/%d opep:%p type:%d pid:%d\n"DEFAULT, channel, dev_addr, ep_addr, buffer, buflen, opep, opep->ep_type, opep->next_pid);
     }
     assert(opep);
     timer_cancel(&opep->retry);
     dwc_host_in(&dwc_state, channel, dev_addr, epnr, (uint32_t*)buffer, buflen, opep);
   } else { // OUT
-    if (dev_addr == debug_device) {
-      logf(RED"\tHOST%d  ->   %d.%02x 0x%x/%d opep:0x%x type:%d pid:%d\n"DEFAULT, channel, dev_addr, ep_addr, (uint32_t)buffer, buflen, (uint32_t)opep, opep->ep_type, opep->next_pid);
+    if (BIT(dev_addr) & debug_device) {
+      logf(RED"\tHOST%d  ->   %d.%02x 0x%p/%d opep:0x%p type:%d pid:%d\n"DEFAULT, channel, dev_addr, ep_addr, buffer, buflen, opep, opep->ep_type, opep->next_pid);
     }
     timer_cancel(&opep->retry);
     dwc_host_out(&dwc_state, channel, dev_addr, epnr, (uint32_t*)buffer, buflen, opep);
@@ -535,8 +495,8 @@ static enum handler_return dwc_in_retry(timer_t *t, lk_time_t now, void *arg) {
   int buflen = opep->buflen;
   uint8_t epnr = opep->ep_addr & 0xf;
 
-  if (dev_addr == debug_device) {
-    logf(RED"\tHOST%d  <-   %d.%02x 0x%x/%d type:%d pid:%d opep:0x%x RETRY\n"DEFAULT, channel, dev_addr, epnr | 0x80, (uint32_t)buffer, buflen, opep->ep_type, opep->next_pid, (uint32_t)opep);
+  if (BIT(dev_addr) & debug_device) {
+    //logf(RED"\tHOST%d  <-   %d.%02x 0x%p/%d type:%d pid:%d opep:0x%p RETRY\n"DEFAULT, channel, dev_addr, epnr | 0x80, buffer, buflen, opep->ep_type, opep->next_pid, opep);
   }
   dwc_host_in(&dwc_state, channel, dev_addr, epnr, (uint32_t*)buffer, buflen, opep);
   spin_unlock_irqrestore(&channel_setup, state);
@@ -728,8 +688,16 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
         struct dwc2_host_channel *chan = get_channel(i);
 
         uint32_t int_flags = chan->hcint;
+        if (!opep) {
+          //printf("HOST%d opep: %p, HCINT 0x%x\n", i, opep, int_flags);
+          //dump_channel(i, "opep invalid");
+          // for an unknown reason, the halt interrupt seems to sometimes fire twice on arm
+          chan->hcint = int_flags;
+          continue;
+        }
+        assert(opep);
 
-        if (opep->dev_addr == debug_device) {
+        if (BIT(opep->dev_addr) & debug_device) {
           //uint32_t now = *REG32(ST_CLO);
           //printf(RED"channel %d wants attention after %d uSec\n"DEFAULT, i, now - state->channels[i].req_start);
           dump_channel(i, "wants att");
@@ -752,7 +720,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           // interrupt endpoint NAK + HALT
 
           // attempt a restart
-          timer_set_oneshot(&opep->retry, 1000, dwc_in_retry, opep);
+          timer_set_oneshot(&opep->retry, 100, dwc_in_retry, opep);
           list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
           //chan->hcchar = BIT(31) | BIT(30);
         } else if (int_flags & BIT(0)) { // transfer completed
@@ -761,9 +729,9 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
             total_size = opep->buflen;
           }
           if (total_size < 0) total_size = 0;
-          if (devaddr == debug_device) {
+          if (BIT(opep->dev_addr) & debug_device) {
             if (total_size) {
-              hexdump_ram(opep->buffer, (uint32_t)opep->buffer, total_size+15);
+              hexdump_ram(opep->buffer, (uintptr_t)opep->buffer, total_size+15);
             }
             dump_channel(i, "xfer comp");
             logf("bytes %d, buflen %d, packets: %d, old next_pid: %d\n", bytes, opep->buflen, opep->packets, opep->next_pid);
@@ -804,7 +772,7 @@ static enum handler_return dwc_check_interrupt(dwc_host_state_t *state) {
           // SOF had to interrupt it
           opep->buffer = state->channels[i].buffer;
           opep->buflen = state->channels[i].buffer_size;
-          timer_set_oneshot(&opep->retry, 1000, dwc_in_retry, opep);
+          timer_set_oneshot(&opep->retry, 100, dwc_in_retry, opep);
           chan->hcchar = BIT(31) | BIT(30);
           chan->hctsiz = 0;
           list_add_tail(&dwc_state.idle_channels, &opep->ic->node);
@@ -905,9 +873,11 @@ static void dump_channel(int i, const char * reason) {
 static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int endpoint, setupData *setup, open_endpoint_t *opep) {
   struct dwc2_host_channel *chan = get_channel(channel);
 
+  arch_clean_cache_range((addr_t)setup, 8);
+
   //thread_sleep(500);
-  if (addr == debug_device) {
-    logf(RED"dwc_send_setup(0x%x, %d, %d, %d, 0x%x)\n"DEFAULT, (uint32_t)state, channel, addr, endpoint, (uint32_t)setup);
+  if (BIT(addr) & debug_device) {
+    logf(RED"dwc_send_setup(0x%p, %d, %d, %d, 0x%p)\n"DEFAULT, state, channel, addr, endpoint, setup);
     dump_channel(channel, "setup pre");
   }
   assert((chan->hcchar & HCCHARn_ENABLE) == 0);
@@ -921,11 +891,11 @@ static void dwc_send_setup(dwc_host_state_t *state, int channel, int addr, int e
 
   chan->hctsiz = HCTSIZn_BYTES(8) | HCTSIZn_PACKET_COUNT(1) | HCTSIZn_PID(3);
   chan->hcsplt = 0;
-  chan->hcdma = (uint32_t)setup;
+  chan->hcdma = virtual_to_dma(setup);
   chan->hcint = 0xffff;
   chan->hcintmsk = 0xffff;
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(opep->max_packet_size) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | (1<<20) | HCCHARn_OUT;
-  if (addr == debug_device) {
+  if (BIT(addr) & debug_device) {
     dump_channel(channel, "setup init");
   }
   chan->hcchar |= HCCHARn_ENABLE;
@@ -947,6 +917,12 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
   int max_packet_size = opep->max_packet_size;
   int type = opep->ep_type;
   int pid = 2;
+
+#ifdef ARCH_ARM64
+  if (size > 0) {
+    arch_clean_invalidate_cache_range((addr_t)buffer, size);
+  }
+#endif
 
   if (endpoint == 1) {
     pid = 0;
@@ -977,7 +953,7 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
   chan->hctsiz = HCTSIZn_BYTES(size) | HCTSIZn_PACKET_COUNT(packets) | HCTSIZn_PID(pid);
   chan->hcsplt = 0;
   chan->hcint = 0xffff;
-  chan->hcdma = (uint32_t)buffer;
+  chan->hcdma = virtual_to_dma(buffer);
   chan->hcintmsk = 0xffff;
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(max_packet_size) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | HCCHARn_IN | (1<<20) | (type << 18);
 
@@ -993,7 +969,13 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
 static void dwc_host_out(dwc_host_state_t *state, int channel, int addr, int endpoint, uint32_t *buffer, uint32_t size, open_endpoint_t *opep) {
   struct dwc2_host_channel *chan = get_channel(channel);
 
-  if (addr == debug_device) {
+#ifdef ARCH_ARM64
+  if (size > 0) {
+    arch_clean_invalidate_cache_range((addr_t)buffer, size);
+  }
+#endif
+
+  if (BIT(addr) & debug_device) {
     logf("size=%d\n", size);
     dump_channel(channel, "out pre");
   }
@@ -1016,9 +998,9 @@ static void dwc_host_out(dwc_host_state_t *state, int channel, int addr, int end
   chan->hcsplt = 0;
   chan->hcint = 0xffff;
   chan->hcintmsk = 0xffff;
-  chan->hcdma = (uint32_t)buffer;
+  chan->hcdma = virtual_to_dma(buffer);
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(mps) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | (1<<20) | HCCHARn_OUT | (type << 18);
-  if (addr == debug_device) {
+  if (BIT(addr) & debug_device) {
     dump_channel(channel, "OUT init");
   }
   chan->hcchar |= HCCHARn_ENABLE;
@@ -1116,7 +1098,6 @@ static void dwc_dump_all_state(void) {
 
 bool hcd_init(uint8_t rhport) {
   uint32_t t;
-  lan_run(0);
 
   dumpreg(USB_PCGCCTL);
 
@@ -1182,7 +1163,6 @@ bool hcd_init(uint8_t rhport) {
 
   //thread_sleep(100);
 
-  lan_run(1);
   return true;
 }
 
@@ -1204,7 +1184,6 @@ bool hcd_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
 #define PRINTREG(x) t = *REG32(x); printf( #x ": 0x%x\n", t)
 static void dwc2_init_hook(uint level) {
   puts("dwc2 init hook");
-  lan_run(0);
   uint32_t t;
 
   //dwc_dump_all_state();

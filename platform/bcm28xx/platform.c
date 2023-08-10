@@ -9,6 +9,8 @@
 #include <dev/gpio.h>
 #include <dev/uart.h>
 #include <kernel/spinlock.h>
+#include <kernel/thread.h>
+#include <lib/hexdump.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
 #include <lk/err.h>
@@ -21,7 +23,7 @@
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
-#include <lib/hexdump.h>
+#include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/print_timestamp.h>
@@ -159,7 +161,16 @@ static int cmd_arm_hd(int argc, const console_cmd_args *argv) {
   if (argc >= 2) addr = argv[1].u;
   if (argc >= 3) len = argv[2].u;
 
-  hexdump_ram((void*)(0xc0000000 | addr), addr, len);
+  addr |= 0xc0000000;
+
+  hexdump_ram((void*)addr, addr, len);
+  return 0;
+}
+#endif
+
+#ifdef ARCH_ARM64
+static int cmd_dump_local_periph(int argc, const console_cmd_args *argv) {
+  hexdump_ram((void*)BCM_LOCAL_PERIPH_BASE_VIRT, 0x40000000, 64);
   return 0;
 }
 #endif
@@ -210,6 +221,9 @@ STATIC_COMMAND("uptime", "show uptime", &cmd_uptime)
 STATIC_COMMAND("clear_rsts", "clear PM_RSTS", &cmd_clear_rsts)
 #ifdef ARCH_VPU
 STATIC_COMMAND("arm_hd", "do a hexdump, via the arm mmu mappings", &cmd_arm_hd)
+#endif
+#ifdef ARCH_ARM64
+STATIC_COMMAND("dump_local_periph", "dump arm local peripherals", cmd_dump_local_periph)
 #endif
 STATIC_COMMAND("hexdump", "hexdump ram", &cmd_hexdump)
 STATIC_COMMAND_END(platform);
@@ -351,12 +365,13 @@ static void old_switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
-  int core0_div = 2;
-  int per_div = 3;
+  int core0_div = 1;
+  int per_div = 1;
 
   uint64_t pllc_mhz = 108 * per_div * 4;
+  //pllc_mhz = 100 * per_div * 10;
 
-  pllc_mhz = 108 * 9;
+  //pllc_mhz = 108 * 9;
 
   printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 
@@ -367,8 +382,15 @@ static void old_switch_vpu_to_pllc() {
 
   switch_vpu_to_pllc_core0(vpu_divisor);
 
-  //*REG32(CM_TIMERDIV) = CM_PASSWORD | (19 << 12) | 819; // TODO, look into this timer
-  //*REG32(CM_TIMERCTL) = CM_PASSWORD | CM_SRC_OSC | 0x10;
+#if 0
+  // changing this divisor does impact CM_CLO/CM_CHI as expected, but complicates current_time_hires() and causes issues in code using CLO directly
+  *REG32(CM_TIMERCTL) = CM_PASSWORD | 0x20;
+
+  while (*REG32(CM_TIMERCTL) & 0x80) {}
+
+  *REG32(CM_TIMERDIV) = CM_PASSWORD | (19 << 12) | 819;
+  *REG32(CM_TIMERCTL) = CM_PASSWORD | CM_SRC_OSC | 0x10;
+#endif
 
   vpu_clock_updated(core0_div, vpu_divisor);
 }
@@ -419,7 +441,8 @@ void platform_early_init(void) {
     uint32_t rsts = *REG32(PM_RSTS);
     uint8_t partition = decode_rsts(rsts);
     printf("PM_RSTS: 0x%x 0x%x\n", rsts, partition);
-#if DEBUG > 0
+    *REG32(PM_RSTS) = PM_PASSWORD | 0;
+#if 1
     if (rsts & PM_RSTS_HADPOR_SET) puts("  had power on reset");
 
     if (rsts & PM_RSTS_HADSRH_SET) puts("  had software hard reset");
@@ -463,7 +486,7 @@ void platform_early_init(void) {
 
 #if BCM2835
 #elif BCM2837
-    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, xtal_freq);
+    arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, 1000000);
 
     /* look for a flattened device tree just before the kernel */
     const void *fdt = (void *)KERNEL_BASE;
@@ -607,12 +630,55 @@ void platform_init(void) {
 #if 0
     init_framebuffer();
 #endif
-//#if DEBUG > 0
+#if DEBUG > 0
   printf("crystal is %lf MHz\n", (double)xtal_freq/1000/1000);
   printf("BCM_PERIPH_BASE_VIRT: 0x%x\n", (int)BCM_PERIPH_BASE_VIRT);
   printf("BCM_PERIPH_BASE_PHYS: 0x%x\n", BCM_PERIPH_BASE_PHYS);
-//#endif
+#endif
   //hdmi_init();
+
+#ifdef ARCH_VPU
+  uint32_t revision = otp_read(30);
+  uint32_t type = (revision >> 4) & 0xff;
+  int lan_run = 0;
+  int ethclk_pin = 0;
+  switch (type) {
+  case 4: // 2B
+    lan_run = 31;
+    ethclk_pin = 44;
+    break;
+  case 8: // 3B
+    lan_run = 29;
+    ethclk_pin = 42;
+    break;
+  case 0xd: // 3B+
+    lan_run = 30;
+    ethclk_pin = 42;
+    break;
+  }
+  if (lan_run > 0) {
+    gpio_config(lan_run, kBCM2708PinmuxOut);
+    gpio_set(lan_run, 0);
+
+    if (ethclk_pin > 0) {
+      // GP1 routed to GPIO42 to drive ethernet/usb chip
+      *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
+      while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
+
+      uint32_t divisor = freq_pllc_per / (25000000/0x1000);
+
+      *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
+      *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
+      *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
+
+      gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
+    }
+
+    udelay(10*1000);
+
+    gpio_set(lan_run, 1);
+  }
+#endif
 }
 
 void platform_dputc(char c) {
@@ -631,7 +697,6 @@ int platform_dgetc(char *c, bool wait) {
 
 void platform_halt(platform_halt_action suggested_action,
                    platform_halt_reason reason) {
-  printf("PM_WDOG: 0x%x\n", (uint32_t)PM_WDOG);
   if (suggested_action == HALT_ACTION_REBOOT) {
     dprintf(ALWAYS, "waiting for watchdog\n");
     uart_flush_tx(0);
