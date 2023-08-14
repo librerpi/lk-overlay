@@ -22,6 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef MB
+  #define MB (1024*1024)
+#endif
+
 typedef struct {
   uint8_t *payload_addr;
   uint32_t payload_size;
@@ -44,13 +48,13 @@ bool aarch64 = false;
 
 timer_t arm_check;
 uint32_t w = 620;
-uint32_t h = 210;
+uint32_t h = 420;
 
 // place arm framebuffer 96mb into ram
 static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
 
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
-void setupClock(void);
+static void setupClock(void);
 void bridgeStart(bool cycleBrespBits);
 
 typedef unsigned char v16b __attribute__((__vector_size__(16)));
@@ -89,8 +93,9 @@ static void setup_framebuffer(void) {
   gfx_surface *simple_fb = gfx_create_surface(fb_addr_uncached, w, h, w, GFX_FORMAT_RGB_x888);
   gfx_fillrect(simple_fb, 0, 0, w, h, 0xff00ff00);
   hvs_layer *simple_fb_layer = malloc(sizeof(hvs_layer));
-  mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30 + 210);
+  mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30);
   hvs_allocate_premade(simple_fb_layer, 7);
+  simple_fb_layer->alpha_mode = alpha_mode_fixed;
   hvs_regen_noscale_noviewport_noalpha(simple_fb_layer);
   //simple_fb_layer->w /= 4;
   //simple_fb_layer->h /= 4;
@@ -146,6 +151,17 @@ static void *setupInterArchDtb(void) {
     checkerr;
   }
 
+  {
+    ret = fdt_begin_node(v_fdt, "otp");
+    checkerr;
+
+    fdt_property_u32(v_fdt, "revision", otp_read(30));
+    fdt_property_u32(v_fdt, "serial", otp_read(28));
+
+    ret = fdt_end_node(v_fdt);
+    checkerr;
+  }
+
   ret = fdt_end_node(v_fdt);
   checkerr;
   //puts("d");
@@ -158,6 +174,7 @@ static void *setupInterArchDtb(void) {
 }
 
 static void enable_usb_host(void) {
+  // TODO, move to platform.c
   uint32_t revision = otp_read(30);
   uint32_t type = (revision >> 4) & 0xff;
   int lan_run = 0;
@@ -269,25 +286,26 @@ static inter_core_header *find_header(uint32_t *start, uint32_t size) {
 static bool patch_arm_payload(void) {
   void *dtb_src = setupInterArchDtb();
   if (!dtb_src) return false;
-  void *dtb_dst = (void*) ROUNDUP(chosenPayload->payload_size, 4);
+  void *dtb_dst = (void*) ROUNDUP(chosenPayload->payload_size, 8);
 
   uint32_t t0 = *REG32(ST_CLO);
   inter_core_header *hdr = find_header((uint32_t*)0xc0000000, chosenPayload->payload_size);
   uint32_t t1 = *REG32(ST_CLO);
   if (hdr) {
     printf("header found at %p in %d uSec\n", hdr, t1-t0);
-    printf("MEMORY: 0x0 + 0x%x: payload ram\n", hdr->end_of_ram);
-    dtb_dst = (void*)(ROUNDUP(hdr->end_of_ram, 4));
+    logf("MEMORY: 0x0 + 0x%x: payload ram\n", hdr->end_of_ram);
+    dtb_dst = (void*)(ROUNDUP(hdr->end_of_ram, 8));
   }
 
   int ret;
   size_t size = fdt_totalsize(dtb_src);
 
+  printf("fdt move %p -> %p, size: %d\n", dtb_src, dtb_dst, size);
   ret = fdt_move(dtb_src, (void*)(0xc0000000 | (uint32_t)dtb_dst), size);
   checkerr;
   free(dtb_src);
   hdr->dtb_base = (uint32_t)dtb_dst;
-  printf("MEMORY: %p + 0x%x: inter arch dtb\n", dtb_dst, size);
+  logf("MEMORY: %p + 0x%x: inter arch dtb\n", dtb_dst, size);
   return true;
 }
 
@@ -342,17 +360,22 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   for (int i=0; i<64 ; i += 16) {
     mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
   }
+  logf("MEMORY: 0x%x + 0x%x: ram\n", 0, 64 * MB);
 
   for (int i=112; i<512 ; i += 16) {
     mapBusToArm(0xc0000000 | (i * 1024 * 1024), i * 1024 * 1024);
   }
+  logf("MEMORY: 0x%x + 0x%x: ram\n", 112*MB, (512-112) * MB);
 
   // add mmio
   mapBusToArm(0x7e000000, 0x20000000);
   mapBusToArm(0x7e000000, 0x3f000000);
+  logf("MEMORY: 0x20000000 + 0x1000000 (16mb): mmio\n");
+  logf("MEMORY: 0x3f000000 + 0x1000000 (16mb): mmio\n");
 
   // add framebuffer
   mapBusToArm(0xc0000000 | fb_phys_addr, fb_phys_addr);
+  logf("MEMORY: 0x%x + 0x1000000 (16mb): framebuffer\n", fb_phys_addr);
 
   logf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
 
@@ -407,16 +430,25 @@ void mapBusToArm(uint32_t busAddr, uint32_t armAddr) {
   tte[index] = pte;
 }
 
-void setupClock(void) {
+static void setupClock(void) {
   puts("initializing PLLB ...");
+
+  const uint64_t arm_mhz_goal = ARM_FREQ_MHZ;
+  // prediv is a 3bit (1-7) number
+  // the ultimate arm clock is (19.2mhz/prediv) * divisor
+  const int prediv = 1;
+  const uint64_t divisor = (arm_mhz_goal * 0x100000 * 10 * prediv) / 192;
+  uint32_t int_divisor = divisor >> 20;
+  uint32_t frac_divisor = divisor & 0xfffff;
+  printf("arm divisor: 0x%x 0x%x\n", int_divisor, frac_divisor);
 
   /* oscillator->pllb */
   *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_PLLBEN_SET;
 
-  *REG32(A2W_PLLB_FRAC) = A2W_PASSWORD | 0x15555; // out of 0x100000
-  *REG32(A2W_PLLB_CTRL) = A2W_PASSWORD | 52 | 0x1000;
+  *REG32(A2W_PLLB_FRAC) = A2W_PASSWORD | frac_divisor; // out of 0x100000
+  *REG32(A2W_PLLB_CTRL) = A2W_PASSWORD | int_divisor | ((prediv & 7) << 12);
 
-  // sets clock to 19.2 * (52 + (0x15555 / 0x100000))
+  // 52 and 0x15555 sets clock to 19.2 * (52 + (0x15555 / 0x100000))
   // aka ~1000mhz
 
   *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET;
@@ -498,7 +530,7 @@ void bridgeStart(bool cycleBrespBits) {
     *REG32(PM_PROC) |= PM_PASSWORD | ~PM_PROC_ARMRSTN_CLR;
   }
 
-  udelay(6 * 1000 * 1000);
+  //udelay(6 * 1000 * 1000);
   //puts("");
 
   //rechecksum_arm();
