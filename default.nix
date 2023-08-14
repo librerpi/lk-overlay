@@ -63,6 +63,7 @@ in lib.fix (self: {
     name = "shell";
     buildInputs = with pkgs; [
       pkgsCross.arm-embedded.stdenv.cc
+      libpng
       #pkgsCross.i686-embedded.stdenv.cc
       pkgsCross.vc4.stdenv.cc
       pkgsCross.aarch64-embedded.stdenv.cc
@@ -79,6 +80,9 @@ in lib.fix (self: {
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
     ARCH_arm64_TOOLCHAIN_PREFIX = "aarch64-none-elf-";
     ARMSTUBS = self.armstubs;
+    shellHook = ''
+      unset CC OBJDUMP LD OBJCOPY
+    '';
   };
   roots = pkgs.writeText "gc-roots" ''
     ${pkgs.pkgsCross.vc4.stdenv.cc}"
@@ -106,6 +110,11 @@ in lib.fix (self: {
         ln -sv ${self.arm.rpi1-test}/lk.bin build-rpi1-test/lk.bin
         ln -sv ${self.arm.rpi2-test}/lk.bin build-rpi2-test/lk.bin
         ln -sv ${self.arm.rpi3-test}/lk.bin build-rpi3-test/lk.bin
+
+        mkdir $out
+        ln -sv ${self.arm.rpi1-test} $out/rpi1-test
+        ln -sv ${self.arm.rpi2-test} $out/rpi2-test
+        ln -sv ${self.arm.rpi3-test} $out/rpi3-test
       '';
       extraAttrs = {
         ARMSTUBS = self.armstubs;
