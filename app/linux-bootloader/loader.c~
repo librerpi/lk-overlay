@@ -1,0 +1,181 @@
+#include <app.h>
+#include <arch.h>
+#include <arch/ops.h>
+#include <lib/fs.h>
+#include <lib/partition.h>
+#include <libfdt.h>
+#include <stdio.h>
+#include <lk/debug.h>
+#include <platform/bcm28xx/sdhost_impl.h>
+#include <platform/bcm28xx/udelay.h>
+#include <stdlib.h>
+
+struct mem_entry {
+  uint32_t address;
+  uint32_t size;
+};
+
+struct ranges {
+  uint32_t child;
+  uint32_t parent;
+  uint32_t size;
+};
+
+void find_and_mount(void);
+bool load_kernel(void**, size_t *);
+void asm_set_ACTLR(uint32_t);
+
+void find_and_mount(void) {
+  uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
+  int ret;
+  bdev_t *sd = rpi_sdhost_init();
+  partition_publish("sdhost", 0);
+  ret = fs_mount("/root", "ext2", "sdhostp1");
+  if (ret) {
+    printf("mount failure: %d\n", ret);
+    panic("unable to mount rootfs\n");
+    return;
+  }
+}
+
+#define KERNEL_LOAD_ADDRESS 0x81000000 // 16mb from start
+#define DTB_LOAD_ADDRESS    0x82000000 // 32mb from start
+
+bool load_kernel(void **buf, size_t *size) {
+  uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
+  filehandle *kernel, *fh;
+  void *buffer = (void*)KERNEL_LOAD_ADDRESS;
+  int ret;
+  struct file_stat stat;
+  uint64_t sizeRead;
+
+  ret = fs_open_file("/root/zImage", &kernel);
+  if (ret) {
+    printf("zImage open failed: %d\n", ret);
+    return false;
+  }
+  ret = fs_stat_file(kernel, &stat);
+  if (ret) {
+    printf("failed to stat: %d\n", ret);
+    return false;
+  }
+  //buffer = malloc(stat.size);
+  printf("size is %lld, buffer 0x%x\n", stat.size, buffer);
+  sizeRead = fs_read_file(kernel, buffer, 0, stat.size);
+  printf("read %lld bytes\n", sizeRead);
+  if (sizeRead != stat.size) {
+    printf("failed to read entire file: %lld %lld\n", sizeRead, stat.size);
+    //free(buffer);
+    return false;
+  }
+  puts("closing");
+  fs_close_file(kernel);
+
+  ret = fs_open_file("/root/rpi2.dtb", &fh);
+  if (ret) {
+    printf("dtb open failed: %d\n", ret);
+    return false;
+  }
+  ret = fs_stat_file(fh, &stat);
+  if (ret) {
+    printf("failed to stat: %d\n", ret);
+    return false;
+  }
+  sizeRead = fs_read_file(fh, (void*)DTB_LOAD_ADDRESS, 0, stat.size);
+  if (sizeRead != stat.size) {
+    printf("failed to read entire file: %lld %lld\n", sizeRead, stat.size);
+    return false;
+  }
+  fs_close_file(fh);
+  printf("loaded DTB file to 0x%x + 0x%x\n", DTB_LOAD_ADDRESS, stat.size);
+
+  return true;
+}
+
+static bool patch_dtb(void) {
+  int ret;
+  void* v_fdt = (void*)DTB_LOAD_ADDRESS;
+
+  ret = fdt_open_into(v_fdt, v_fdt, 16 * 1024);
+  if (ret) {
+    printf("ERROR: fdt_open_into() == %d\n", ret);
+    return false;
+  }
+  int chosen = fdt_path_offset(v_fdt, "/chosen");
+  if (chosen < 0) {
+    puts("ERROR: no chosen node in fdt");
+    return false;
+  } else {
+    const char *cmdline = "print-fatal-signals=1 console=ttyAMA0,115200 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init";
+    ret = fdt_setprop(v_fdt, chosen, "bootargs", cmdline, strlen(cmdline)+1);
+    //const char *v = "simple-bus";
+    //fdt_setprop(v_fdt, chosen, "compatible", v, strlen(v) + 1);
+  }
+  int memory = fdt_path_offset(v_fdt, "/memory");
+  if (memory < 0) panic("no memory node in fdt");
+  else {
+    struct mem_entry memmap[] = {
+      { .address = htonl(0), .size = htonl(((64) * 1024 * 1024)) },
+      //{ .address = htonl(128*1024*1024), .size = htonl(1 * 1024 * 1024) },
+    };
+    ret = fdt_setprop(v_fdt, memory, "reg", (void*) memmap, sizeof(memmap));
+  }
+
+  int soc = fdt_path_offset(v_fdt, "/soc");
+  if (soc < 0) panic("no /soc node in fdt");
+  else {
+    struct ranges ranges[] = {
+      { .child = htonl(0x7e000000), .parent = htonl(MMIO_BASE_PHYS), .size = htonl(16 * 1024 * 1024) },
+      { .child = htonl(0x40000000), .parent = htonl(0x40000000), .size = htonl(0x1000) }
+    };
+    //fdt_setprop(v_fdt, soc, "ranges", (void*)ranges, sizeof(ranges));
+  }
+  int simplefb = fdt_path_offset(v_fdt, "/system/framebuffer0");
+  if (simplefb) {
+    fdt_setprop_string(v_fdt, simplefb, "status", "disabled");
+  } else {
+    puts("cant find /system/framebuffer0");
+  }
+  return true;
+}
+
+static void execute_linux(void) {
+  puts("passing control off to linux!!!");
+  arm_write_actlr(arm_read_actlr() | 1<<6); // on cortex-A7, this is the SMP bit
+  arch_chain_load((void*)KERNEL_LOAD_ADDRESS, 0, ~0, 0x2000000, 0);
+}
+
+static void prepare_arm_core() {
+  bool need_timer = true; // FIXME, only on pi2/pi3
+  bool unlock_coproc = true; // FIXME, only on pi2/pi3
+  if (need_timer) {
+    __asm__ __volatile__ ("mcr p15, 0, %0, c14, c0, 0": :"r"(19200000));
+  }
+  if (unlock_coproc) {
+    // NSACR = all copros to non-sec
+    __asm__ __volatile__ ("mcr p15, 0, %0, c1, c1, 2": :"r"(0x63ff));
+  }
+}
+
+static void loader_entry(const struct app_descriptor *app, void *args) {
+  uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
+  if (arch_ints_disabled()) puts("interrupts off??");
+  find_and_mount();
+  if (!load_kernel(NULL, NULL)) {
+    return;
+  }
+  if (!patch_dtb()) {
+    return;
+  }
+  if (false) {
+    puts("running linux in 60 seconds");
+    udelay(60 * 1000 * 1000);
+  }
+  prepare_arm_core();
+  execute_linux();
+}
+
+APP_START(loader)
+  //.init = property_init,
+  .entry = loader_entry,
+APP_END
