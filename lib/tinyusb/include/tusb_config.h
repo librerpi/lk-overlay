@@ -85,7 +85,11 @@
 #endif
 
 #ifndef CFG_TUH_MEM_ALIGN
-#define CFG_TUH_MEM_ALIGN        __attribute__ ((aligned(4)))
+#ifdef ARCH_VPU
+#  define CFG_TUH_MEM_ALIGN        __attribute__ ((aligned(4)))
+#elif defined(ARCH_ARM64)
+#  define CFG_TUH_MEM_ALIGN        __CPU_ALIGN
+#endif
 #endif
 
 //--------------------------------------------------------------------

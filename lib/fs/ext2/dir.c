@@ -48,6 +48,8 @@ static int ext2_dir_lookup(ext2_t *ext2, struct ext2_inode *dir_inode, const cha
 
     buf = malloc(EXT2_BLOCK_SIZE(ext2->sb));
 
+    char namebuf[256];
+
     file_blocknum = 0;
     for (;;) {
         /* read in the offset */
@@ -63,13 +65,22 @@ static int ext2_dir_lookup(ext2_t *ext2, struct ext2_inode *dir_inode, const cha
         while (pos < EXT2_BLOCK_SIZE(ext2->sb)) {
             ent = (struct ext2_dir_entry_2 *)&buf[pos];
 
-            // TODO, this has been caught printing 13 chars when the namelen was 12
+            assert(ent->name_len < 256);
+            memcpy(namebuf, ent->name, ent->name_len);
+            namebuf[ent->name_len] = 0;
+
             LTRACEF("ent %d:%d: inode 0x%x, reclen %d, namelen %d, type: %d, name '%s'\n",
-                    file_blocknum, pos, LE32(ent->inode), LE16(ent->rec_len), ent->name_len, ent->file_type , ent->name);
+                    file_blocknum, pos, LE32(ent->inode), LE16(ent->rec_len), ent->name_len, ent->file_type , namebuf);
 
             /* sanity check the record length */
             if (LE16(ent->rec_len) == 0)
                 break;
+
+            // checksum entry
+            if (ent->name_len == 0) {
+              pos += ROUNDUP(LE16(ent->rec_len), 4);
+              continue;
+            }
 
             if (ent->name_len == namelen && memcmp(name, ent->name, ent->name_len) == 0) {
                 // match
@@ -141,11 +152,11 @@ nextcomponent:
 
         /* is it a symlink? */
         if (S_ISLNK(inode.i_mode)) {
-            char link[512];
+            char *link = malloc(512);
 
             LTRACEF("hit symlink\n");
 
-            err = ext2_read_link(ext2, &inode, link, sizeof(link));
+            err = ext2_read_link(ext2, &inode, link, 512);
             if (err < 0)
                 return err;
 
@@ -158,6 +169,7 @@ nextcomponent:
             } else {
                 err = ext2_walk(ext2, link, &dir_inode, inum, recurse + 1);
             }
+            free(link);
 
             LTRACEF("recursive walk returns %d\n", err);
 
@@ -196,10 +208,11 @@ nextcomponent:
 int ext2_lookup(ext2_t *ext2, const char *_path, inodenum_t *inum) {
     LTRACEF("path '%s', inum %p\n", _path, inum);
 
-    char path[512];
-    strlcpy(path, _path, sizeof(path));
+    char *path = strdup(_path);
 
-    return ext2_walk(ext2, path, &ext2->root_inode, inum, 1);
+    int ret = ext2_walk(ext2, path, &ext2->root_inode, inum, 1);
+    free(path);
+    return ret;
 }
 
 status_t ext2_opendir(fscookie *cookie, const char *name, dircookie **dcookie) {
@@ -209,6 +222,8 @@ status_t ext2_opendir(fscookie *cookie, const char *name, dircookie **dcookie) {
     inodenum_t inum;
     //uint file_blocknum;
     if (name[0] == 0) {
+      inum = EXT2_ROOT_INO;
+    } else if (strcmp(name, "/") == 0) {
       inum = EXT2_ROOT_INO;
     } else {
       err = ext2_lookup(ext2, name, &inum);
@@ -244,6 +259,7 @@ status_t ext2_readdir(dircookie *cookie, struct dirent *ent_out) {
     uint8_t *buf;
     struct ext2_dir_entry_2 *ent;
     uint pos;
+    char namebuf[256];
 
     if (!ent_out)
         return ERR_INVALID_ARGS;
@@ -267,7 +283,11 @@ status_t ext2_readdir(dircookie *cookie, struct dirent *ent_out) {
     pos = cookie->cursor;
     ent = (struct ext2_dir_entry_2 *)&buf[pos];
 
-    LTRACEF("ent %d:%d: inode 0x%x, reclen %d, namelen %d\n", cookie->fileblock, pos, LE32(ent->inode), LE16(ent->rec_len), ent->name_len/* , ent->name*/);
+    assert(ent->name_len < 256);
+    memcpy(namebuf, ent->name, ent->name_len);
+    namebuf[ent->name_len] = 0;
+
+    LTRACEF("ent %d:%d: inode 0x%x, reclen %d, namelen %d name '%s'\n", cookie->fileblock, pos, LE32(ent->inode), LE16(ent->rec_len), ent->name_len, namebuf);
 
     /* sanity check the record length */
     if (LE16(ent->rec_len) == 0) {
@@ -279,6 +299,7 @@ status_t ext2_readdir(dircookie *cookie, struct dirent *ent_out) {
     if (ent->inode == 0) { // deleted file
       // TODO, assumes end of dir listing
       // it should continue to the next record, potentially in the next block
+      puts("TODO, aborting dir walk early");
       free(buf);
       return ERR_NOT_FOUND;
     }

@@ -17,6 +17,8 @@
 
 #define LOCAL_TRACE 0
 
+bcache_t *last_ext2_cache;
+
 static void endian_swap_superblock(struct ext2_super_block *sb) {
     LE32SWAP(sb->s_inodes_count);
     LE32SWAP(sb->s_blocks_count);
@@ -184,17 +186,21 @@ status_t ext2_mount(bdev_t *dev, fscookie **cookie) {
 
     /* read in all the group descriptors */
     ext2->gd = malloc(sizeof(struct ext2_group_desc) * ext2->s_group_count);
+    printf("group descriptors: %p\n", ext2->gd);
     for (i=0; i < ext2->s_group_count; i++) {
         uint32_t block_groups_start = (EXT2_BLOCK_SIZE(ext2->sb) == 4096) ? 4096 : 2048;
         uint32_t offset = block_groups_start + (i * block_group_size);
+        //printf("loading GD#%d, disk offset %d\n", i, offset);
         err = bio_read(ext2->dev, (void *)&ext2->gd[i], offset,
                        sizeof(struct ext2_group_desc));
+        //puts("read done");
         if (err < 0) {
             err = -4;
             return err;
         }
         endian_swap_group_desc(&ext2->gd[i]);
     }
+    //puts("descriptors loaded");
 
     for (i=0; i < ext2->s_group_count; i++) {
         LTRACEF(" Group %2d: block bitmap at %d, inode bitmap at %d, inode table at %d\n", i, ext2->gd[i].bg_block_bitmap,
@@ -204,7 +210,8 @@ status_t ext2_mount(bdev_t *dev, fscookie **cookie) {
     }
 
     /* initialize the block cache */
-    ext2->cache = bcache_create(ext2->dev, EXT2_BLOCK_SIZE(ext2->sb), 4);
+    ext2->cache = bcache_create(ext2->dev, EXT2_BLOCK_SIZE(ext2->sb), 128);
+    last_ext2_cache = ext2->cache;
 
     /* load the first inode */
     err = ext2_load_inode(ext2, EXT2_ROOT_INO, &ext2->root_inode);

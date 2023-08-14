@@ -6,13 +6,13 @@
  * https://opensource.org/licenses/MIT
  */
 
+#include "ext2_priv.h"
+#include <lk/debug.h>
+#include <lk/err.h>
+#include <lk/trace.h>
+#include <stdlib.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdlib.h>
-#include <lk/err.h>
-#include <lk/debug.h>
-#include <lk/trace.h>
-#include "ext2_priv.h"
 
 #define LOCAL_TRACE 0
 
@@ -53,8 +53,10 @@ ssize_t ext2_read_file(filecookie *fcookie, void *buf, off_t offset, size_t len)
         return -1;
     }
 
+
     // read from the inode
     err = ext2_read_inode(file->ext2, &file->inode, buf, offset, len);
+
 
     return err;
 }

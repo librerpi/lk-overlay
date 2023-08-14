@@ -6,12 +6,12 @@
  * https://opensource.org/licenses/MIT
  */
 
-#include <string.h>
-#include <stdlib.h>
-#include <lk/debug.h>
-#include <lk/trace.h>
 #include "ext2_priv.h"
 #include <lib/hexdump.h>
+#include <lk/debug.h>
+#include <lk/trace.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define LOCAL_TRACE 0
 
@@ -137,7 +137,7 @@ static blocknum_t file_block_to_fs_block(ext2_t *ext2, struct ext2_inode *inode,
         ext4_extent_header *eh = (ext4_extent_header*)&inode->i_block;
         while (true) {
 #if 0
-          if (LOCAL_TRACE) {
+          if (1) {
             printf("its an extent based object\n");
             printf("eh_magic:      0x%x\n", LE16(eh->eh_magic));
             printf("eh_entries:    %d\n", LE16(eh->eh_entries));
@@ -148,7 +148,7 @@ static blocknum_t file_block_to_fs_block(ext2_t *ext2, struct ext2_inode *inode,
 #endif
 
           if (LE16(eh->eh_magic) != 0xf30a) {
-            puts("extent header magic invalid");
+            assert(0);
             return 0;
           }
 
@@ -174,8 +174,11 @@ static blocknum_t file_block_to_fs_block(ext2_t *ext2, struct ext2_inode *inode,
             break;
           } else {
             ext4_extent_idx *extents = (ext4_extent_idx*)( ((ext4_extent_idx*)&inode->i_block) + 1);
-            for (int i=0; i < LE16(eh->eh_entries); i++) {
+            const int entries = LE16(eh->eh_entries);
+            struct { uint32_t block_start; uint32_t length; uint32_t leaf; } translated[entries];
+            for (int i=0; i < entries; i++) {
 #if 0
+              printf("loop %d\n", i);
               printf("extent %d.%d\n", LE16(eh->eh_depth), i);
               printf("  ei_block:    %d\n", LE32(extents[i].ei_block));
               printf("  ei_leaf_lo   %d\n", LE32(extents[i].ei_leaf_lo));
@@ -185,16 +188,37 @@ static blocknum_t file_block_to_fs_block(ext2_t *ext2, struct ext2_inode *inode,
                 puts("unsupported >32bit blocknr");
                 return 0;
               }
-              assert(i == 0);
 
+              translated[i].block_start = LE32(extents[i].ei_block);
+              translated[i].leaf = LE32(extents[i].ei_leaf_lo);
+              if ((i+1) == entries) {
+                //printf("last\n");
+                translated[i].length = inode->i_blocks - translated[i].block_start;
+              }
+              if (i > 0) {
+                //printf("not first\n");
+                translated[i-1].length = translated[i].block_start - translated[i-1].block_start;
+              }
+            }
+            bool match = false;
+            for (int i=0; i < entries; i++) {
+              //printf("  %d/%d, %d-%d -> %d-%d\n", i+1, entries, translated[i].block_start, translated[i].block_start + translated[i].length - 1, translated[i].leaf, translated[i].leaf + translated[i].length - 1);
+              if ((fileblock >= translated[i].block_start) && (fileblock < (translated[i].block_start + translated[i].length))) {
+                //puts("match");
+                match = true;
+                if (indirect_block) ext2_put_block(ext2, indirect_block);
+
+                void *buffer;
+                indirect_block = translated[i].leaf;
+                ext2_get_block(ext2, &buffer, indirect_block);
+                //indirect_block_ptr = buffer;
+                eh = buffer;
+                break;
+              }
+            }
+            if (!match) {
               if (indirect_block) ext2_put_block(ext2, indirect_block);
-
-              void *buffer;
-              indirect_block = LE32(extents[i].ei_leaf_lo);
-              ext2_get_block(ext2, &buffer, indirect_block);
-              //indirect_block_ptr = buffer;
-              eh = buffer;
-              break;
+              return 0;
             }
             assert(iterations++ < 10);
           }
@@ -321,7 +345,7 @@ ssize_t ext2_read_inode(ext2_t *ext2, struct ext2_inode *inode, void *_buf, off_
     }
 
     LTRACEF("err %d, bytes_read %zu\n", err, bytes_read);
-    //hexdump_ram(_buf, 0, orig_len);
+    //hexdump_ram(_buf, 0, len);
 
     return (err < 0) ? err : (ssize_t)bytes_read;
 }

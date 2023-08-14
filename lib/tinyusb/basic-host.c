@@ -291,7 +291,7 @@ static ssize_t tuh_msc_read_block(bdev_t *bdev, void *buf, bnum_t block, uint co
 
   mutex_acquire(&msd_mutex);
 
-  tuh_msc_read10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uint32_t)&cbs);
+  tuh_msc_read10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uintptr_t)&cbs);
   event_wait(&cbs.evt);
   event_destroy(&cbs.evt);
 
@@ -311,7 +311,7 @@ static ssize_t tuh_msc_write_block(bdev_t *bdev, const void *buf, bnum_t block, 
     .evt = EVENT_INITIAL_VALUE(cbs.evt, false, 0)
   };
 
-  tuh_msc_write10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uint32_t)&cbs);
+  tuh_msc_write10(dev->dev_addr, dev->lun, buf, block, count, &tuh_msc_read_block_cb, (uintptr_t)&cbs);
   event_wait(&cbs.evt);
   event_destroy(&cbs.evt);
 
@@ -326,7 +326,9 @@ static int part_prober(void *arg) {
   const usb_hook_t *hook;
 
   partition_publish(arg,0);
+  printf("%p %p\n", &__start_usb_hooks, &__stop_usb_hooks);
   for (hook = &__start_usb_hooks; hook != &__stop_usb_hooks; hook++) {
+    logf("running hooks for %s\n", hook->name);
     if (hook->msd_probed) hook->msd_probed(arg);
   }
   free(arg);
