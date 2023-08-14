@@ -7,6 +7,9 @@ WITH_SMP := 1
 #LK_HEAP_IMPLEMENTATION ?= dlmalloc
 MODULE_DEPS += platform/bcm28xx/power lib/hexdump
 
+# on my pi3, this bottoms out at 320mhz
+ARM_FREQ_MHZ := 1000
+
 ifeq ($(ARCH),vpu)
   MODULE_DEPS += platform/bcm28xx/pll
   ifeq ($(BOOTCODE),1)
@@ -70,12 +73,13 @@ else ifeq ($(TARGET),rpi2)
   MEMSIZE ?= 0x10000000 # 256MB
   SMP_CPU_ID_BITS := 8
   GLOBAL_DEFINES += ARM_WITH_HYP=1
+  SMP_MAX_CPUS ?= 4
 
   MODULE_SRCS += $(LOCAL_DIR)/uart.c
 else ifeq ($(TARGET),rpi3)
   KERNEL_LOAD_OFFSET := 0x00000000
   #MEMSIZE ?= 0x40000000 # 1GB
-  MEMSIZE ?= 0x1400000 # 20mb
+  MEMSIZE ?= 0x1000000 # 16mb
   MMIO_BASE_VIRT = 0xffffffffc0000000ULL
   MMIO_BASE_PHYS = 0x20000000U
 

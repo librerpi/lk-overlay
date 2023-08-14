@@ -8,4 +8,6 @@ $(BUILDDIR)/platform/bcm28xx/arm/payload.S.o: build-rpi1-test/lk.bin build-rpi2-
 
 MODULE_INCLUDES += $(ARMSTUBS)
 
+MODULE_DEFINES += ARM_FREQ_MHZ=$(ARM_FREQ_MHZ)
+
 include make/module.mk
