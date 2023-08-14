@@ -4,7 +4,7 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_SRCS += $(LOCAL_DIR)/loader.c
 
-ifeq ($(ARCH_ARM64),1)
+ifeq ($(ARCH),arm64)
 MODULE_SRCS += $(LOCAL_DIR)/chain.S
 endif
 
