@@ -14,3 +14,5 @@ extern uint32_t fb_addr;
 // width/height of framebuffer
 extern uint32_t w, h;
 extern uint32_t stage2_arch_init, stage2_arm_start;
+
+extern uint32_t hw_revision, hw_serial;

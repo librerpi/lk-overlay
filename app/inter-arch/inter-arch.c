@@ -15,6 +15,9 @@ uint32_t fb_addr = 0;
 vaddr_t fb_addr_virt = 0;
 uint32_t stage2_arch_init, stage2_arm_start;
 
+uint32_t hw_revision = 0;
+uint32_t hw_serial = 0;
+
 inter_core_header hdr __attribute__((aligned(16))) = {
   .magic = INTER_ARCH_MAGIC,
   .header_size = sizeof(inter_core_header),
@@ -104,6 +107,9 @@ static bool parse_dtb_from_vpu(void) {
     } else if (strcmp(name, "timestamps") == 0) {
       if (!fdt_getprop_u32(v_fdt, offset, "3stage2_arch_init", &stage2_arch_init)) puts("err4");
       if (!fdt_getprop_u32(v_fdt, offset, "4stage2_arm_start", &stage2_arm_start)) puts("err5");
+    } else if (strcmp(name, "otp") == 0) {
+      if (!fdt_getprop_u32(v_fdt, offset, "revision", &hw_revision)) puts("err6");
+      if (!fdt_getprop_u32(v_fdt, offset, "serial", &hw_serial)) puts("err7");
     }
   }
   return true;
