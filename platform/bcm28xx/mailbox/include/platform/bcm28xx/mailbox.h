@@ -8,6 +8,7 @@ __BEGIN_CDECLS
 
 void mailbox_init(void);
 uint32_t mailbox_fifo_pop(void);
+void mailbox_send(uint32_t word);
 
 typedef struct mailbox_fifo {
   uint head;

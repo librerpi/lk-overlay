@@ -21,21 +21,24 @@ STATIC_COMMAND("mailbox_send", "send a word over a mailbox", &cmd_mailbox_send)
 STATIC_COMMAND("mailbox_dump", "dump mailbox status and config", &cmd_mailbox_dump)
 STATIC_COMMAND_END(mailbox);
 
-static int cmd_mailbox_send(int argc, const console_cmd_args *argv) {
+void mailbox_send(uint32_t word) {
 #ifdef ARCH_VPU
   int id = 0;
 #elif defined(ARCH_ARM)
   int id = 1;
 #endif
+  *REG32(MAILBOX_DATA(id)) = word;
+}
+
+static int cmd_mailbox_send(int argc, const console_cmd_args *argv) {
   if (argc < 2) {
-    puts("usage: mailbox_send <msg> (id2)");
+    puts("usage: mailbox_send <msg>");
     return 0;
   }
-  if (argc > 2) id = argv[2].u;
 
   uint32_t msg = argv[1].u;
   if (msg == 42) msg = *REG32(ST_CLO);
-  *REG32(MAILBOX_DATA(id)) = msg;
+  mailbox_send(msg);
   if (argv[1].u == 42) {
     uint32_t now = *REG32(ST_CLO);
     udelay(5000);
@@ -86,6 +89,8 @@ void mailbox_fifo_push(uint32_t word) {
 uint32_t mailbox_fifo_pop(void) {
   uint32_t result;
 retry:
+  // work around https://github.com/itszor/gcc-vc4/issues/7
+  __asm__ volatile ("nop");
   event_wait(&fifo.event);
   spin_lock_saved_state_t state;
   spin_lock_irqsave(&fifo.lock, state);

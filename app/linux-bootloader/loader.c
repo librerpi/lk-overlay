@@ -22,7 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <target.h>
+#ifdef WITH_LIB_TINYUSB
 #include <usbhooks.h>
+#endif
 
 #if defined(ARCH_ARM)
 #include <arch/arm/mmu.h>
@@ -389,6 +391,7 @@ static bool patch_dtb(uint32_t initrd_size) {
 
 void arm_chain_load(paddr_t entry, ulong arg0, ulong arg1, ulong arg2, ulong arg3) __NO_RETURN;
 
+#ifdef ARCH_ARM64
 void arch_chain_load(void *entry, ulong arg0, ulong arg1, ulong arg2, ulong arg3) {
   // having gfxconsole active when this function prints, will cause a crash
   int ret;
@@ -458,6 +461,7 @@ void arch_chain_load(void *entry, ulong arg0, ulong arg1, ulong arg2, ulong arg3
   void (*loader)(paddr_t entry, ulong, ulong, ulong, ulong) __NO_RETURN = (void *)loader_pa;
   loader(entry_pa, arg0, arg1, arg2, arg3);
 }
+#endif
 
 static void execute_linux(void) {
 #ifdef ARCH_ARM
@@ -548,6 +552,8 @@ APP_START(loader)
   .entry = loader_entry,
 APP_END
 
+#ifdef WITH_LIB_TINYUSB
 USB_HOOK_START(loader)
   .msd_probed = loader_msd_probed,
 USB_HOOK_END
+#endif

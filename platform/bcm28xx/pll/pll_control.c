@@ -653,8 +653,13 @@ bool clock_set_pwm(int freq, int source) {
   int reference = get_peripheral_parent(source);
   float desired_divider = (float)reference / freq;
   int divisor_fixed = desired_divider * 4096;
+  printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
   if (divisor_fixed < 0x2000) {
     puts("divisor too low, abort!");
+    return false;
+  }
+  if (divisor_fixed >= 0x1000000) {
+    puts("divisor too high, abort!");
     return false;
   }
   *REG32(CM_PWMDIV) = CM_PASSWORD | divisor_fixed;

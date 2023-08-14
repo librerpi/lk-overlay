@@ -80,9 +80,9 @@ enum palette_type {
 };
 
 enum alpha_mode {
-  alpha_mode_pipeline = 0,
-  alpha_mode_fixed = 1,
-  alpha_mode_fixed_nonzero = 2,
+  alpha_mode_pipeline = 0,      // per-pixel alpha allowed, POS0_ALPHA ignored
+  alpha_mode_fixed = 1,         // use POS0_ALPHA() for entire sprite
+  alpha_mode_fixed_nonzero = 2, // POS0_ALPHA() and per-pixel both have an effect
   alpha_mode_fixed_over_7 = 3,
 };
 
@@ -242,6 +242,7 @@ void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos);
 // hvs_update_dlist() will read from the buffer, and could tear, it is recommended to hold the channels[channel].lock when updating any layer that is visible
 // renders l->fb at 1:1 scale, no alpha, no viewport cropping
 void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l);
+void hvs_regen_noscale_viewport_noalpha(hvs_layer *l);
 
 inline uint32_t gen_ppf_fixedpoint(uint32_t source, uint32_t dest) {
   uint32_t scale = source / dest;

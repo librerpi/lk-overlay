@@ -147,6 +147,33 @@ void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l) {
   // pitch 0
   d[6] = l->fb->stride * l->fb->pixelsize;
 }
+
+void hvs_regen_noscale_viewport_noalpha(hvs_layer *l) {
+  assert(l->dlist_length == 7);
+  assert(l->premade_dlist);
+
+  const void* imageaddr = l->fb->ptr + (l->fb->stride * l->fb->pixelsize * l->viewport_y) + (l->viewport_x * l->fb->pixelsize);
+
+  uint32_t *d = l->premade_dlist;
+  // CTL0
+  d[0] = CONTROL_VALID
+    | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
+    | CONTROL_UNITY
+    | CONTROL_FORMAT(gfx_to_hvs_pixel_format(l->fb->format))
+    | CONTROL_WORDS(7);
+  // POS0
+  d[1] = POS0_X(l->x) | POS0_Y(l->y) | POS0_ALPHA(0xff);
+  // POS2, input size
+  d[2] = POS2_H(l->viewport_h) | POS2_W(l->viewport_w) | (l->alpha_mode << 30); // fixed alpha
+  // POS3, context
+  d[3] = 0xDEADBEEF;
+  // PTR0
+  d[4] = (uint32_t)imageaddr | 0xc0000000;
+  // context 0
+  d[5] = 0xDEADBEEF;
+  // pitch 0
+  d[6] = l->fb->stride * l->fb->pixelsize;
+}
 #endif
 
 static void write_tpz(unsigned int source, unsigned int dest) {
@@ -164,6 +191,7 @@ static void write_ppf(unsigned int source, unsigned int dest) {
     (scale << 8) | (0 << 0);
 }
 
+// this variant has some bugs
 static void hvs_add_plane_scaled(hvs_layer *layer) {
   int alpha_mode = 1;
   int x = layer->x;
@@ -706,6 +734,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   const int h = 120;
   const gfx_format fmt = GFX_FORMAT_RGB_332;
 #elif PRIMARY_HVS_CHANNEL == 1
+  puts("default FB on VEC");
   const int w = 720 - 120;
   const int h = 480 - 80;
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
@@ -715,7 +744,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #endif
   if (!gfx_console) {
-    puts("creating framebuffer for text console\n");
+    printf("creating %dx%d framebuffer %d for text console\n", w, h, fmt);
     gfx_console = gfx_create_surface(NULL, w, h, w, fmt);
 
     bzero(gfx_console->ptr, gfx_console->len);
@@ -880,7 +909,7 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer) {
 }
 
 static void hvs_init_hook(uint level) {
-  puts("hvs_init_hook()\n");
+  puts("hvs_init_hook()");
   for (int i=0; i<3; i++) {
     list_initialize(&channels[i].layers);
     mutex_init(&channels[i].lock);

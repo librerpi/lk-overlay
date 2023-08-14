@@ -3,7 +3,6 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 TARGET := rpi2
 
 MODULES += \
-	app/linux-bootloader \
 	app/shell \
 	lib/cksum \
 	lib/debugcommands \
@@ -13,7 +12,22 @@ MODULES += \
 	#app/stringtests \
 	platform/bcm28xx/hvs \
 	#app/tests \
-	#platform/bcm28xx/hvs-dance \
+	#platform/bcm28xx/hvs-dance
+
+MODULES += app/linux-bootloader
+MODULES += app/inter-arch
+
+CONFIG_DWC2 := 0
+CONFIG_TINYUSB := 0
+
+ifeq ($(CONFIG_DWC2),1)
+  MODULES += platform/bcm28xx/dwc2
+  #MODULES += platform/bcm28xx/usb-phy
+endif
+
+ifeq ($(CONFIG_TINYUSB),1)
+  MODULES += lib/tinyusb
+endif
 
 GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=8192
 #GLOBAL_DEFINES += PL011_TX_ONLY

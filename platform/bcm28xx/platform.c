@@ -486,6 +486,7 @@ void platform_early_init(void) {
 
 #if BCM2835
 #elif BCM2837
+    // TODO, change the divisor to /1
     arm_generic_timer_init(INTERRUPT_ARM_LOCAL_CNTPNSIRQ, 1000000);
 
     /* look for a flattened device tree just before the kernel */
