@@ -259,7 +259,7 @@ bool load_kernel(void **buf, size_t *size) {
   case 0x10: // CM3+
   case 0x12: // zero-2-w
     name = "rpi3.dtb";
-    kernel_suffix = "Image-aarch64.backup";
+    kernel_suffix = "Image-aarch64";
     break;
   default:
     return false;
@@ -451,13 +451,11 @@ void arch_chain_load(void *entry, ulong arg0, ulong arg1, ulong arg2, ulong arg3
     PANIC_UNIMPLEMENTED;
 #endif
   LTRACEF("disabling instruction/data cache\n");
-  udelay(1000);
   arch_disable_cache(UCACHE);
 
   void *foo = (void*)vaddr_to_paddr(arm_chain_load);
   LTRACEF("branching to physical address of loader, (va --> pa) (%p --> %p)\n", (void*)loader_pa, foo);
 
-  udelay(1000);
   void (*loader)(paddr_t entry, ulong, ulong, ulong, ulong) __NO_RETURN = (void *)loader_pa;
   loader(entry_pa, arg0, arg1, arg2, arg3);
 }
