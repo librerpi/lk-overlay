@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.9" tiledversion="1.9.2" orientation="orthogonal" renderorder="right-down" width="32" height="32" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="1">
  <tileset firstgid="1" source="Tiles.tsx"/>
- <layer id="1" name="Tile Layer 1" width="32" height="32">
+ <layer id="1" name="map" width="32" height="32">
   <data encoding="csv">
 97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,
 97,97,97,108,108,108,108,108,108,108,108,108,108,108,108,97,97,97,97,97,97,97,97,97,97,97,97,123,97,97,97,97,
@@ -37,7 +37,7 @@
 97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,130,130,130,130,130,130,130,130,130,130,130,97
 </data>
  </layer>
- <layer id="2" name="Tile Layer 2" width="32" height="32" visible="0">
+ <layer id="2" name="Tile Layer 2" width="32" height="32">
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
