@@ -14,7 +14,6 @@
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/print_timestamp.h>
-#include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/sdram.h>
 #include <string.h>
 #include <usbhooks.h>
@@ -30,9 +29,9 @@ typedef struct {
   const char *name;
 } pending_device_t;
 
-mutex_t pending_device_lock = MUTEX_INITIAL_VALUE(pending_device_lock);
-struct list_node pending_devices = LIST_INITIAL_VALUE(pending_devices);
-event_t pending_devices_nonempty = EVENT_INITIAL_VALUE(pending_devices_nonempty, false, 0);
+static mutex_t pending_device_lock = MUTEX_INITIAL_VALUE(pending_device_lock);
+static struct list_node pending_devices = LIST_INITIAL_VALUE(pending_devices);
+static event_t pending_devices_nonempty = EVENT_INITIAL_VALUE(pending_devices_nonempty, false, 0);
 
 static ssize_t fs_read_wrapper(struct elf_handle *handle, void *buf, uint64_t offset, size_t len) {
   return fs_read_file(handle->read_hook_arg, buf, offset, len);
@@ -169,8 +168,6 @@ static int chainload(lua_State *L) {
 static void try_to_boot(const char *device) {
   int ret;
   logf("trying to boot from %s\n", device);
-  //bdev_t *sd = rpi_sdhost_init();
-  //fs_mount("/boot", "fat32", "sdhostp0");
   ret = fs_mount("/root", "ext2", device);
   if (ret) {
     printf("mount failure: %d\n", ret);
@@ -201,7 +198,7 @@ static void try_to_boot(const char *device) {
 
 static void add_boot_target(const char *device) {
   mutex_acquire(&pending_device_lock);
-  logf("condidering %s as boot target\n", device);
+  logf("considering %s as boot target\n", device);
   pending_device_t *pd = malloc(sizeof(pending_device_t));
   pd->name = device;
   list_add_tail(&pending_devices, &pd->node);
@@ -212,8 +209,6 @@ static void add_boot_target(const char *device) {
 static void stage1_entry(const struct app_descriptor *app, void *args) {
   int ret;
   puts("stage1 entry\n");
-  thread_set_real_time(get_current_thread());
-  thread_set_priority(HIGHEST_PRIORITY);
   // sdhost initializes in a blocking mode before threads are ran, so will be available immediately if detected
   // usb initiailizes in a thread and wont show up until stage1_msd_probed() gets called
   add_boot_target("sdhostp1");
