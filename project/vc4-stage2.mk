@@ -16,7 +16,6 @@ MODULES += platform/bcm28xx/arm
 #MODULES += app/shell
 #MODULES += app/yuv
 #MODULES += lib/gfxconsole
-MODULES += platform/bcm28xx/vec
 MODULES += lib/fs/ext2
 #MODULES += platform/bcm28xx/dpi
 #MODULES += dev/audio
@@ -29,6 +28,13 @@ MODULES += app/mailbox-property-server
 CONFIG_DWC2 := 0
 CONFIG_TINYUSB := 0
 CONFIG_MANUAL_USB := 0
+CONFIG_VEC := 1
+
+ifeq ($(CONFIG_VEC),1)
+  MODULES += platform/bcm28xx/vec
+  PLLA_FREQ_MHZ := 432
+  GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
+endif
 
 ifeq ($(CONFIG_DWC2),1)
   MODULES += platform/bcm28xx/dwc2
@@ -60,7 +66,6 @@ endif
 
 GLOBAL_DEFINES += PL011_TX_ONLY
 
-GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
 
 # init order
 # 0x80000 LK_INIT_LEVEL_ARCH
