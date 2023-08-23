@@ -4,11 +4,12 @@
 
 #define A2W_XOSC_CTRL           (A2W_BASE + 0x190)
 #define A2W_SMPS_A_VOLTS        (A2W_BASE + 0x2a0)
+#define A2W_XOSC_CTRL_PLLCEN_SET                           0x00000001
+#define A2W_XOSC_CTRL_HDMIEN_SET                           0x00000002
 #define A2W_XOSC_CTRL_DDREN_SET                            0x00000010
+#define A2W_XOSC_CTRL_PLLDEN_SET                           0x00000020
 #define A2W_XOSC_CTRL_PLLAEN_SET                           0x00000040
 #define A2W_XOSC_CTRL_PLLBEN_SET                           0x00000080
-#define A2W_XOSC_CTRL_PLLCEN_SET                           0x00000001
-#define A2W_XOSC_CTRL_PLLDEN_SET                           0x00000020
 
 #define A2W_PLLA_DIG0           (A2W_BASE + 0x000)
 #define A2W_PLLA_DIG1           (A2W_BASE + 0x004)
@@ -175,5 +176,4 @@
 
 
 #define CM_PLLH_ANARST_SET                                 0x00000100
-#define A2W_XOSC_CTRL_HDMIEN_SET                           0x00000002
 #define CM_PLLH_DIGRST_SET                                 0x00000200

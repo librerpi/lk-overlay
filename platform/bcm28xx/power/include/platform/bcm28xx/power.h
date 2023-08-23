@@ -29,6 +29,10 @@
 // a partition of 63 means linux tried to shutdown, and bootcode.bin should halt
 #define PM_WDOG                 (PM_BASE + 0x24)
 #define PM_WDOG_MASK            0x00000fff
+#define PM_HDMI                 (PM_BASE + 0x058)
+#define PM_HDMI_CTRLEN          (1<<0)
+#define PM_HDMI_LDOPD           (1<<1)
+#define PM_HDMI_RSTDR           (1<<19)
 #define PM_USB                  (PM_BASE + 0x5c)
 #define PM_SMPS                 (PM_BASE + 0x6c)
 #define PM_SPAREW               (PM_BASE + 0x74)

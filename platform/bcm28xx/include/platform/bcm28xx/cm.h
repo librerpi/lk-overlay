@@ -84,6 +84,7 @@
 #define CM_PLLC_LOADCORE0_SET                              0x00000001
 #define CM_PLLD                 (CM_BASE + 0x10C)
 #define CM_PLLH                 (CM_BASE + 0x110)
+#define CM_PLLH_LOADAUX         0x2
 #define CM_LOCK                 (CM_BASE + 0x114)
 #define CM_LOCK_FLOCKA_BIT      8
 #define CM_LOCK_FLOCKB_BIT      9

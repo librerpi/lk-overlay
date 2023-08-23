@@ -5,7 +5,9 @@
 #include <platform/bcm28xx.h>
 #include <platform/bcm28xx/a2w.h>
 #include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/pll.h>
+#include <platform/bcm28xx/udelay.h>
 #include <stdint.h>
 
 #define PLL_MAX_LOCKWAIT 1000
@@ -23,6 +25,8 @@ uint64_t freq_plla_per;
 
 unsigned int freq_pllc_core0;
 uint64_t freq_pllc_per;
+
+uint64_t freq_pllh_aux;
 
 const struct pll_def pll_def[] = {
 #if 0
@@ -84,6 +88,7 @@ const struct pll_def pll_def[] = {
     .ana_kaip = REG32(A2W_PLLD_ANA_KAIP),
     .ana_vco = REG32(A2W_PLLD_ANA_VCO),
   },
+#endif
   [PLL_H] = {
     .name = "PLLH",
     .ana = REG32(A2W_PLLH_ANA0),
@@ -98,7 +103,6 @@ const struct pll_def pll_def[] = {
     .ana_kaip = REG32(A2W_PLLH_ANA_KAIP),
     .ana_vco = REG32(A2W_PLLH_ANA_VCO),
   },
-#endif
 };
 
 const struct pll_chan_def pll_chan_def[] = {
@@ -670,11 +674,19 @@ void setup_plla(uint64_t target_freq, int core_div, int per_div) {
   //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
 }
 
-void setup_pllh(uint64_t target_freq) {
+void setup_pllh(uint64_t target_freq, int aux_div) {
+  printf("bringing PLLH up at %lldMHz\n", target_freq/1000/1000);
+
+  *REG32(PM_HDMI) = PM_PASSWORD | *REG32(PM_HDMI) | PM_HDMI_RSTDR;
+  *REG32(PM_HDMI) = PM_PASSWORD | *REG32(PM_HDMI) | PM_HDMI_CTRLEN;
+  *REG32(PM_HDMI) = PM_PASSWORD | (*REG32(PM_HDMI) & ~PM_HDMI_LDOPD);
+  udelay(100);
+  *REG32(PM_HDMI) = PM_PASSWORD | (*REG32(PM_HDMI) & ~PM_HDMI_RSTDR);
+
   int pdiv = 1;
   uint64_t xtal_in = xtal_freq;
   printf("xtal_in = %llu\n", xtal_in);
-  uint64_t goal_freq = target_freq / 2;
+  uint64_t goal_freq = target_freq;
   printf("goal_freq = %llu\n", goal_freq);
   uint64_t divisor = (goal_freq<<20) / xtal_in;
   int div = divisor >> 20;
@@ -688,12 +700,13 @@ void setup_pllh(uint64_t target_freq) {
 
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
   *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv);
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
   printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLH_FRAC), frac);
 
-  *REG32(A2W_PLLH_ANA3) = A2W_PASSWORD | KA(2);
+  *REG32(A2W_PLLH_ANA3) = A2W_PASSWORD | 0x0;
   *REG32(A2W_PLLH_ANA2) = A2W_PASSWORD | 0x0;
-  *REG32(A2W_PLLH_ANA1) = A2W_PASSWORD | ANA1_DOUBLE | KI(2) | KP(8);
-  *REG32(A2W_PLLH_ANA0) = A2W_PASSWORD | 0x0;
+  *REG32(A2W_PLLH_ANA1) = A2W_PASSWORD | /*PLLH_ANA1_DOUBLE |*/ (6 << 1);
+  *REG32(A2W_PLLH_ANA0) = A2W_PASSWORD | (2 << 19) | (2 << 22);
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
 
@@ -708,27 +721,29 @@ void setup_pllh(uint64_t target_freq) {
   *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLL_CTRL_PRSTN_SET;
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
 
-  *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x42;
-  *REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x500401;
-  *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x4005;
-  *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
+  //*REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x42;
+  //*REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x500401;
+  //*REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x4005;
+  //*REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
 
   //*REG32(A2W_PLLH_CORE0) = A2W_PASSWORD | core0_div;
-  //*REG32(A2W_PLLH_CORE1) = A2W_PASSWORD | 3;
+  *REG32(A2W_PLLH_AUX) = A2W_PASSWORD | aux_div;
 
   //*REG32(A2W_PLLH_PER) = A2W_PASSWORD | per_div;
 
-  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET | CM_PLLH_LOADAUX;
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
 
   puts("waiting for lock");
-  while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKC_BIT)) {}
+  while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKH_BIT)) {}
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+
+  freq_pllh_aux = target_freq / aux_div;
 }
 
 int get_peripheral_parent(enum peripheral_clock_tap source) {
@@ -739,6 +754,8 @@ int get_peripheral_parent(enum peripheral_clock_tap source) {
     return freq_plla_per;
   case PERI_PLLC_PER:
     return freq_pllc_per;
+  case PERI_PLLH_AUX:
+    return freq_pllh_aux;
   default:
     return 0;
   }

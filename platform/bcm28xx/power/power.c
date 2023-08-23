@@ -126,6 +126,7 @@ static int cmd_pm_dump(int argc, const console_cmd_args *argv) {
   dump_power_domain("PM_IMAGE", PM_IMAGE);
   dump_power_domain("PM_GRAFX", PM_GRAFX);
   dump_power_domain("PM_PROC",  PM_PROC);
+  dump_power_domain("PM_HDMI",  PM_HDMI);
   return 0;
 }
 
