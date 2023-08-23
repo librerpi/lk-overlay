@@ -365,13 +365,10 @@ static void old_switch_vpu_to_pllc() {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
-  int core0_div = 1;
-  int per_div = 1;
+  int core0_div = PLLC_CORE0_DIV;
+  int per_div = PLLC_PER_DIV;
 
-  uint64_t pllc_mhz = 100 * per_div * 5;
-  //pllc_mhz = 100 * per_div * 10;
-
-  //pllc_mhz = 108 * 9;
+  uint64_t pllc_mhz = PLLC_FREQ_MHZ;
 
   printf("PLLC target %lld MHz, CORE0 %lld MHz, PER %lld MHz\n", pllc_mhz, pllc_mhz/core0_div, pllc_mhz/per_div);
 
@@ -476,7 +473,7 @@ void platform_early_init(void) {
     if (xtal_freq == 19200000) {
       old_switch_vpu_to_pllc();
       //setup_plla(1000 * 1000 * 1000, 10, 10);
-      setup_plla(108 * 4 * 1000 * 1000, 10, 1);
+      setup_plla(PLLA_FREQ_MHZ * 1000 * 1000, PLLA_CORE_DIV, PLLA_PER_DIV);
     } else {
       switch_vpu_to_crystal();
       int vpu = measure_clock(5);

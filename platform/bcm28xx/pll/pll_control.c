@@ -501,6 +501,7 @@ void switch_vpu_to_src(int src) {
 // linux source says PLLC has a range of 600mhz to 3ghz
 // above 1.75ghz, the pre-div should be enabled
 void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
+  printf("bringing PLLC up at %lldMHz\n", target_freq/1000/1000);
   int pdiv = 1;
   bool prediv = true;
   uint64_t xtal_in = xtal_freq;
