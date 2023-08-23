@@ -14,6 +14,17 @@ enum pll {
   PLL_NUM,
 };
 
+enum peripheral_clock_tap {
+  PERI_GND = 0,
+  PERI_CRYSTAL = 1,
+  PERI_TD0 = 2,
+  PERI_TD1 = 3,
+  PERI_PLLA_PER = 4,
+  PERI_PLLC_PER = 5,
+  PERI_PLLD_PER = 6,
+  PERI_PLLH_AUX = 7
+};
+
 struct pll_def {
   char name[8];
   volatile uint32_t *ana;
@@ -69,10 +80,13 @@ struct pll_chan_def {
 
 static const uint32_t xtal_freq = CRYSTAL;
 extern unsigned int freq_pllc_core0;
+extern uint64_t freq_plla_per;
 extern uint64_t freq_pllc_per;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
+void setup_plla(uint64_t freq, int core_div, int per_div);
 void setup_pllc(uint64_t freq, int core0_div, int per_div);
 void setup_pllh(uint64_t freq);
 void switch_vpu_to_src(int src);
-bool clock_set_pwm(int freq, int source);
+bool clock_set_pwm(int freq, enum peripheral_clock_tap source);
+bool clock_set_vec(int freq, enum peripheral_clock_tap source);

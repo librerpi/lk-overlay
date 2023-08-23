@@ -368,7 +368,7 @@ static void old_switch_vpu_to_pllc() {
   int core0_div = 1;
   int per_div = 1;
 
-  uint64_t pllc_mhz = 108 * per_div * 4;
+  uint64_t pllc_mhz = 100 * per_div * 5;
   //pllc_mhz = 100 * per_div * 10;
 
   //pllc_mhz = 108 * 9;
@@ -475,6 +475,8 @@ void platform_early_init(void) {
 
     if (xtal_freq == 19200000) {
       old_switch_vpu_to_pllc();
+      //setup_plla(1000 * 1000 * 1000, 10, 10);
+      setup_plla(108 * 4 * 1000 * 1000, 10, 1);
     } else {
       switch_vpu_to_crystal();
       int vpu = measure_clock(5);

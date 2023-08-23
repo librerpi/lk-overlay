@@ -59,9 +59,21 @@
 #define CM_VECDIV               (CM_BASE + 0x0fc)
 #define CM_OSCCOUNT             (CM_BASE + 0x100)
 #define CM_PLLA                 (CM_BASE + 0x104)
+
+#define CM_PLLA_HOLDDSI0        0x00000002
+#define CM_PLLA_HOLDCCP2        0x00000008
+
+#define CM_PLLA_LOADCORE        0x00000010
+#define CM_PLLA_HOLDCORE        0x00000020
+
+#define CM_PLLA_LOADPER         0x00000040
+#define CM_PLLA_HOLDPER         0x00000080
+
+#define CM_PLLA_DIGRST          0x00000200
+
 #define CM_PLLC                 (CM_BASE + 0x108)
 #define CM_PLLC_DIGRST_SET                                 0x00000200
-#define CM_PLLC_ANARST_SET                                 0x00000100
+#define CM_PLL_ANARST_SET                                 0x00000100
 #define CM_PLLC_HOLDPER_SET                                0x00000080
 #define CM_PLLC_HOLDCORE2_SET                              0x00000020
 
@@ -100,7 +112,6 @@
 #define CM_PLLB                 (CM_BASE + 0x170)
 #define CM_PLLB_LOADARM_SET                               0x00000001
 #define CM_PLLB_HOLDARM_SET                               0x00000002
-#define CM_PLLB_ANARST_SET                                0x00000100
 #define CM_PLLB_DIGRST_SET                                0x00000200
 
 #define CM_ARMCTL               (CM_BASE + 0x1b0)

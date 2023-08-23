@@ -6,9 +6,8 @@
 
 void udelay(uint32_t t) {
   uint32_t tv = *REG32(ST_CLO);
+  uint32_t goal = tv + t;
   for (;;) {
-    /* nop still takes a cycle i think? */
-    __asm__ __volatile__ ("nop" :::);
-    if ((*REG32(ST_CLO) - tv) > t) return;
+    if ((*REG32(ST_CLO)) > goal) return;
   }
 }

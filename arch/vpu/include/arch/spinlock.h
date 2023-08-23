@@ -22,6 +22,8 @@ typedef unsigned int spin_lock_saved_state_t;
 typedef unsigned int spin_lock_save_flags_t;
 
 static inline void arch_spin_lock(spin_lock_t *lock) {
+    // TODO, actually spin
+    // it only works, because its set to single-core mode, and irq's are turned off before getting the lock
     *lock = 1;
 }
 

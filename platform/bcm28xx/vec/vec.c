@@ -16,6 +16,7 @@
 
 #ifdef WITH_TGA
 #include <lib/tga.h>
+const
 #include "librerpi-logo.h"
 //#include "ResD1_720X480.h"
 //#include <dance.h>
@@ -53,15 +54,12 @@ static void vec_init(uint level) {
 #endif
   hvs_initialize();
 
-  // TODO, this assumes freq_pllc_per is a multiple of 108mhz
+  // TODO, this assumes freq_plla_per is a multiple of 108mhz
   // it should check if it isnt, and report an error
-  int desired_divider = freq_pllc_per / 108000000;
+  clock_set_vec(108000000, PERI_PLLA_PER);
 
-  *REG32(CM_VECDIV) = CM_PASSWORD | desired_divider << 12;
-  *REG32(CM_VECCTL) = CM_PASSWORD | CM_SRC_PLLC_CORE0; // technically its on the PER tap
-  *REG32(CM_VECCTL) = CM_PASSWORD | CM_VECCTL_ENAB_SET | CM_SRC_PLLC_CORE0;
   int rate = measure_clock(29);
-  printf("vec rate: %f, divider: %d, pllc: %lld\n", ((double)rate)/1000/1000, desired_divider, freq_pllc_per);
+  printf("vec rate: %f, plla: %lld, pllc: %lld\n", ((double)rate)/1000/1000, freq_pllc_per, freq_pllc_per);
 
   *REG32(VEC_WSE_RESET) = 1;
   *REG32(VEC_SOFT_RESET) = 1;
@@ -92,13 +90,13 @@ static void vec_init(uint level) {
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_BDGHI_STD;
       *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS;
       break;
-	case pal60:
-	  *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_M_STD;
-	  *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS | VEC_CONFIG1_CUSTOM_FREQ;
-	  *REG32(VEC_FREQ3_2) = 0x2a09;
-	  *REG32(VEC_FREQ1_0) = 0x8acb;
-	  break;
-	case palm:
+    case pal60:
+      *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_M_STD;
+      *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS | VEC_CONFIG1_CUSTOM_FREQ;
+      *REG32(VEC_FREQ3_2) = 0x2a09;
+      *REG32(VEC_FREQ1_0) = 0x8acb;
+      break;
+    case palm:
       *REG32(VEC_CONFIG0) = VEC_CONFIG0_PAL_BDGHI_STD;
       *REG32(VEC_CONFIG1) = VEC_CONFIG1_C_CVBS_CVBS | VEC_CONFIG1_CUSTOM_FREQ;
       *REG32(VEC_FREQ3_2) = 0x223b;

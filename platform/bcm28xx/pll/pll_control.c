@@ -16,6 +16,11 @@ STATIC_COMMAND_START
 STATIC_COMMAND("set_pll_freq", "set pll frequency", &cmd_set_pll_freq)
 STATIC_COMMAND_END(pll_control);
 
+uint64_t freq_plla_dsi0;
+uint64_t freq_plla_ccp2;
+uint64_t freq_plla_core;
+uint64_t freq_plla_per;
+
 unsigned int freq_pllc_core0;
 uint64_t freq_pllc_per;
 
@@ -518,7 +523,7 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   const uint32_t holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0);
   const uint32_t loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0);
 
-  *REG32(CM_PLLC) = CM_PASSWORD | CM_PLLC_ANARST_SET;
+  *REG32(CM_PLLC) = CM_PASSWORD | CM_PLL_ANARST_SET;
 
   *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_PLLCEN_SET;
 
@@ -543,7 +548,7 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   *REG32(A2W_PLLC_DIG1) = A2W_PASSWORD | 0x5;
   *REG32(A2W_PLLC_DIG0) = A2W_PASSWORD | div | 0x555000;
 
-  *REG32(A2W_PLLC_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLLC_CTRL_PRSTN_SET;
+  *REG32(A2W_PLLC_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLL_CTRL_PRSTN_SET;
   *REG32(A2W_PLLC_FRAC) = A2W_PASSWORD | frac;
 
   *REG32(A2W_PLLC_DIG3) = A2W_PASSWORD | 0x42;
@@ -578,6 +583,92 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
   //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
 }
 
+// linux source says PLLC has a range of 600mhz to 2.4ghz
+// above 1.75ghz, the pre-div should be enabled
+void setup_plla(uint64_t target_freq, int core_div, int per_div) {
+  printf("bringing PLLA up at %lldMHz\n", target_freq/1000/1000);
+  int pdiv = 1;
+  bool prediv = false;
+  uint64_t xtal_in = xtal_freq;
+  printf("xtal_in = %llu\n", xtal_in);
+  uint64_t goal_freq = target_freq;
+
+  // if over 1.75ghz, enable an extra /2 stage
+  if (prediv) goal_freq /= 2;
+
+  printf("goal_freq = %llu\n", goal_freq);
+  uint64_t divisor = (goal_freq<<20) / xtal_in;
+  int div = divisor >> 20;
+  int frac = divisor & 0xfffff;
+  printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLA_CTRL), *REG32(A2W_PLLA_FRAC));
+
+  const bool core_enable = false;
+  const bool per_enable = true;
+  // which clocks to keep held when turning it all on
+  const uint32_t holdflags = (!core_enable ? CM_PLLA_HOLDCORE : 0) | (!per_enable ? CM_PLLA_HOLDPER : 0);
+  const uint32_t loadflags = (core_enable ? CM_PLLA_LOADCORE : 0) | (per_enable ? CM_PLLA_LOADPER : 0);
+
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLL_ANARST_SET;
+
+  *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_PLLAEN_SET;
+
+  *REG32(A2W_PLLA_FRAC) = A2W_PASSWORD | frac;
+  *REG32(A2W_PLLA_CTRL) = A2W_PASSWORD | div | PDIV(pdiv);
+  //printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLA_FRAC), frac);
+
+  *REG32(A2W_PLLA_ANA3) = A2W_PASSWORD | KA(2);
+  *REG32(A2W_PLLA_ANA2) = A2W_PASSWORD | 0x0;
+  *REG32(A2W_PLLA_ANA1) = A2W_PASSWORD | (prediv ? ANA1_DOUBLE : 0) | KI(2) | KP(8);
+  *REG32(A2W_PLLA_ANA0) = A2W_PASSWORD | 0x0;
+
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLLA_DIGRST;
+
+  /* hold all */
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLLA_DIGRST |
+            CM_PLLA_HOLDPER | CM_PLLA_HOLDCORE |
+            CM_PLLA_HOLDDSI0 | CM_PLLA_HOLDCCP2;
+
+  *REG32(A2W_PLLA_DIG3) = A2W_PASSWORD | 0x0;
+  *REG32(A2W_PLLA_DIG2) = A2W_PASSWORD | 0x400000;
+  *REG32(A2W_PLLA_DIG1) = A2W_PASSWORD | 0x5;
+  *REG32(A2W_PLLA_DIG0) = A2W_PASSWORD | div | 0x555000;
+
+  *REG32(A2W_PLLA_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLL_CTRL_PRSTN_SET;
+  *REG32(A2W_PLLA_FRAC) = A2W_PASSWORD | frac;
+
+  *REG32(A2W_PLLA_DIG3) = A2W_PASSWORD | 0x42;
+  *REG32(A2W_PLLA_DIG2) = A2W_PASSWORD | 0x500401;
+  *REG32(A2W_PLLA_DIG1) = A2W_PASSWORD | 0x4005;
+  *REG32(A2W_PLLA_DIG0) = A2W_PASSWORD | div | 0x555000;
+
+  *REG32(A2W_PLLA_CORE) = A2W_PASSWORD | core_div;
+
+  *REG32(A2W_PLLA_PER) = A2W_PASSWORD | per_div;
+
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLLA_DIGRST |
+            CM_PLLA_HOLDPER | CM_PLLA_HOLDCORE |
+            CM_PLLA_HOLDDSI0 | CM_PLLA_HOLDCCP2 | loadflags;
+
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLLA_DIGRST |
+            CM_PLLA_HOLDPER | CM_PLLA_HOLDCORE |
+            CM_PLLA_HOLDDSI0 | CM_PLLA_HOLDCCP2;
+
+  *REG32(CM_PLLA) = CM_PASSWORD | CM_PLLA_DIGRST |
+            CM_PLLA_HOLDDSI0 | CM_PLLA_HOLDCCP2 | holdflags;
+
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLA_CTRL), *REG32(A2W_PLLA_FRAC));
+  puts("waiting for lock");
+  while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKA_BIT)) {}
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLA_CTRL), *REG32(A2W_PLLA_FRAC));
+  *REG32(A2W_PLLA_FRAC) = A2W_PASSWORD | frac;
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLA_CTRL), *REG32(A2W_PLLA_FRAC));
+
+  freq_plla_core = target_freq / core_div;
+  freq_plla_per = target_freq / per_div;
+  //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
+}
+
 void setup_pllh(uint64_t target_freq) {
   int pdiv = 1;
   uint64_t xtal_in = xtal_freq;
@@ -590,7 +681,7 @@ void setup_pllh(uint64_t target_freq) {
   printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 
-  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_ANARST_SET;
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLL_ANARST_SET;
 
   *REG32(A2W_XOSC_CTRL) |= A2W_PASSWORD | A2W_XOSC_CTRL_HDMIEN_SET;
 
@@ -613,7 +704,7 @@ void setup_pllh(uint64_t target_freq) {
   *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x5;
   *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
 
-  *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLLH_CTRL_PRSTN_SET;
+  *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLL_CTRL_PRSTN_SET;
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
 
   *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x42;
@@ -639,20 +730,24 @@ void setup_pllh(uint64_t target_freq) {
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 }
 
-int get_peripheral_parent(int source) {
+int get_peripheral_parent(enum peripheral_clock_tap source) {
   switch (source) {
-  case CM_SRC_OSC:
+  case PERI_CRYSTAL:
     return xtal_freq;
-  case CM_SRC_PLLC_CORE0:
+  case PERI_PLLA_PER:
+    return freq_plla_per;
+  case PERI_PLLC_PER:
     return freq_pllc_per;
+  default:
+    return 0;
   }
-  return 0;
 }
 
-bool clock_set_pwm(int freq, int source) {
+bool clock_set_pwm(int freq, enum peripheral_clock_tap source) {
   int reference = get_peripheral_parent(source);
   float desired_divider = (float)reference / freq;
   int divisor_fixed = desired_divider * 4096;
+  int mash = 0;
   printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
   if (divisor_fixed < 0x2000) {
     puts("divisor too low, abort!");
@@ -662,7 +757,31 @@ bool clock_set_pwm(int freq, int source) {
     puts("divisor too high, abort!");
     return false;
   }
+  if (divisor_fixed & 0xfff) mash = 1;
   *REG32(CM_PWMDIV) = CM_PASSWORD | divisor_fixed;
-  *REG32(CM_PWMCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | 1<<CM_PWMCTL_MASH_LSB;
+  *REG32(CM_PWMCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
+  return true;
+}
+
+bool clock_set_vec(int freq, enum peripheral_clock_tap source) {
+  int reference = get_peripheral_parent(source);
+  float desired_divider = (float)reference / freq;
+  int divisor_fixed = desired_divider * 4096;
+  int mash = 0;
+  printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
+  if (divisor_fixed < 0x2000) {
+    puts("divisor too low, abort!");
+    return false;
+  }
+  if (divisor_fixed >= 0x1000000) {
+    puts("divisor too high, abort!");
+    return false;
+  }
+  if (divisor_fixed & 0xfff) {
+    puts("mash not allowed on VEC");
+    return false;
+  }
+  *REG32(CM_VECDIV) = CM_PASSWORD | divisor_fixed;
+  *REG32(CM_VECCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
   return true;
 }

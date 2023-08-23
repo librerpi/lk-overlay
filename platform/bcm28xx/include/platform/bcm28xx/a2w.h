@@ -11,26 +11,44 @@
 #define A2W_XOSC_CTRL_PLLDEN_SET                           0x00000020
 
 #define A2W_PLLA_DIG0           (A2W_BASE + 0x000)
-#define A2W_PLLC_DIG0           (A2W_BASE + 0x020)
-#define A2W_PLLD_DIG0           (A2W_BASE + 0x040)
-#define A2W_PLLH_DIG0           (A2W_BASE + 0x060)
-#define A2W_PLLB_DIG0           (A2W_BASE + 0x0e0)
+#define A2W_PLLA_DIG1           (A2W_BASE + 0x004)
+#define A2W_PLLA_DIG2           (A2W_BASE + 0x008)
+#define A2W_PLLA_DIG3           (A2W_BASE + 0x00c)
+#define A2W_PLLA_ANA0           (A2W_BASE + 0x010)
+#define A2W_PLLA_ANA1           (A2W_BASE + 0x014)
+#define A2W_PLLA_ANA2           (A2W_BASE + 0x018)
+#define A2W_PLLA_ANA3           (A2W_BASE + 0x01c)
 
+#define A2W_PLLC_DIG0           (A2W_BASE + 0x020)
 #define A2W_PLLC_DIG1           (A2W_BASE + 0x024)
 #define A2W_PLLC_DIG2           (A2W_BASE + 0x028)
 #define A2W_PLLC_DIG3           (A2W_BASE + 0x02c)
+#define A2W_PLLC_ANA0           (A2W_BASE + 0x030)
 #define A2W_PLLC_ANA1           (A2W_BASE + 0x034)
 #define A2W_PLLC_ANA2           (A2W_BASE + 0x038)
 #define A2W_PLLC_ANA3           (A2W_BASE + 0x03c)
+
+#define A2W_PLLD_DIG0           (A2W_BASE + 0x040)
+#define A2W_PLLD_ANA0           (A2W_BASE + 0x050)
+
+#define A2W_PLLH_DIG0           (A2W_BASE + 0x060)
+#define A2W_PLLH_DIG1           (A2W_BASE + 0x064)
+#define A2W_PLLH_DIG2           (A2W_BASE + 0x068)
+#define A2W_PLLH_DIG3           (A2W_BASE + 0x06c)
+#define A2W_PLLH_ANA0           (A2W_BASE + 0x070)
+#define A2W_PLLH_ANA1           (A2W_BASE + 0x074)
+#define A2W_PLLH_ANA2           (A2W_BASE + 0x078)
+#define A2W_PLLH_ANA3           (A2W_BASE + 0x07c)
 
 #define A2W_PLLB_DIG0           (A2W_BASE + 0x0e0)
 #define A2W_PLLB_DIG1           (A2W_BASE + 0x0e4)
 #define A2W_PLLB_DIG2           (A2W_BASE + 0x0e8)
 #define A2W_PLLB_DIG3           (A2W_BASE + 0x0ec)
-
+#define A2W_PLLB_ANA0           (A2W_BASE + 0x0f0)
 #define A2W_PLLB_ANA1           (A2W_BASE + 0x0f4)
 #define A2W_PLLB_ANA2           (A2W_BASE + 0x0f8)
 #define A2W_PLLB_ANA3           (A2W_BASE + 0x0fc)
+
 #define A2W_PLLB_ANA_MULTI      (A2W_BASE + 0xff0)
 
 #define A2W_PLL_ANA3_KA_LSB     7
@@ -53,11 +71,6 @@
 #define A2W_PLLH_ANA1_KP_MASK      (BIT_MASK(4) << A2W_PLLH_ANA1_KP_LSB)
 
 
-#define A2W_PLLA_ANA0           (A2W_BASE + 0x010)
-#define A2W_PLLC_ANA0           (A2W_BASE + 0x030)
-#define A2W_PLLD_ANA0           (A2W_BASE + 0x050)
-#define A2W_PLLH_ANA0           (A2W_BASE + 0x070)
-#define A2W_PLLB_ANA0           (A2W_BASE + 0x0f0)
 
 #define A2W_PLLA_FRAC           (A2W_BASE + 0x200)
 #define A2W_PLLC_FRAC           (A2W_BASE + 0x220)
@@ -75,7 +88,7 @@
 #define A2W_PLLA_CTRL           (A2W_BASE + 0x100)
 #define A2W_PLLA_CTRL_NDIV_SET                             0x000003ff
 #define A2W_PLLC_CTRL           (A2W_BASE + 0x120)
-#define A2W_PLLC_CTRL_PRSTN_SET                            0x00020000
+#define A2W_PLL_CTRL_PRSTN_SET                             0x00020000
 #define A2W_PLLC_CTRL_PWRDN_SET                            0x00010000
 #define A2W_PLLC_CTRL_NDIV_SET                             0x000003ff
 #define A2W_PLLD_CTRL           (A2W_BASE + 0x140)
@@ -160,14 +173,7 @@
 #define A2W_PLLH_ANA_VCO        (A2W_BASE + 0x670)
 #define A2W_PLLB_ANA_VCO        (A2W_BASE + 0x6f0)
 
-#define A2W_PLLH_ANA1           (A2W_BASE + 0x074)
-#define A2W_PLLH_ANA2           (A2W_BASE + 0x078)
-#define A2W_PLLH_ANA3           (A2W_BASE + 0x07c)
-#define A2W_PLLH_DIG1           (A2W_BASE + 0x064)
-#define A2W_PLLH_DIG2           (A2W_BASE + 0x068)
-#define A2W_PLLH_DIG3           (A2W_BASE + 0x06c)
 
 #define CM_PLLH_ANARST_SET                                 0x00000100
 #define A2W_XOSC_CTRL_HDMIEN_SET                           0x00000002
 #define CM_PLLH_DIGRST_SET                                 0x00000200
-#define A2W_PLLH_CTRL_PRSTN_SET                            0x00020000

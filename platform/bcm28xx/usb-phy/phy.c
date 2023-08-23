@@ -154,7 +154,7 @@ static void usbphy_init(uint level) {
 
   while((usb_read(0x1B) & (1 << 7)) != 0) { if (tries-- <= 0) break; }
 
-  //*REG32(USB_GVBUSDRV) &= ~BV(7);
+  *REG32(USB_GVBUSDRV) &= ~BV(7);
 
   usb_write(0x1E, 0x8000);
 
@@ -165,8 +165,8 @@ static void usbphy_init(uint level) {
   usb_write(0x24, 0x0010);
   usb_write(0x19, 0x0004);
 
-  return;
 
+  // from here
   *REG32(USB_GVBUSDRV) = (*REG32(USB_GVBUSDRV) & 0xFFF0FFFF) | 0xD0000; // axi priority
   udelay(300);
   if (devmode) {
@@ -186,6 +186,10 @@ static void usbphy_init(uint level) {
       udelay(300);
     }
   }
+  /* to here
+   * something in this block is responsible for fixing the phy corrupting things bug
+   * when the bug is in effect, tcp packets silently get corrupted
+   */
   puts("usb PHY up");
 }
 
