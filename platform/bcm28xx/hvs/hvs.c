@@ -124,8 +124,23 @@ void hvs_add_plane(hvs_layer *l, int x, int y, bool hflip) {
 
 #ifndef RPI4
 // VC4 only
-void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l) {
-  assert(l->dlist_length == 7);
+
+static uint32_t compute_ppf(unsigned int source, unsigned int dest) {
+  uint32_t scale = (1<<16) * source / dest;
+  printf("PPF 0x%x, scale %d/%d\n", scale, source, dest);
+  return SCALER_PPF_AGC | (scale << 8) | (0 << 0);
+}
+
+static void compute_tpz(unsigned int source, unsigned int dest, uint32_t *out) {
+  uint32_t scale = (1<<16) * source / dest;
+  uint32_t recip = ~0 / scale;
+  printf("TPZ 0x%x 0x%x\n", scale, recip);
+  out[0] = scale << 8;
+  out[1] = recip & 0xffff;
+}
+
+void hvs_regen_noscale_noviewport(hvs_layer *l) {
+  assert(l->dlist_length >= 7);
   assert(l->premade_dlist);
   uint32_t *d = l->premade_dlist;
   // CTL0
@@ -137,7 +152,7 @@ void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l) {
   // POS0
   d[1] = POS0_X(l->x) | POS0_Y(l->y) | POS0_ALPHA(0xff);
   // POS2, input size
-  d[2] = POS2_H(l->fb->height) | POS2_W(l->fb->width) | (l->alpha_mode << 30); // fixed alpha
+  d[2] = POS2_H(l->fb->height) | POS2_W(l->fb->width) | (l->alpha_mode << 30);
   // POS3, context
   d[3] = 0xDEADBEEF;
   // PTR0
@@ -146,6 +161,116 @@ void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l) {
   d[5] = 0xDEADBEEF;
   // pitch 0
   d[6] = l->fb->stride * l->fb->pixelsize;
+}
+
+void hvs_regen_scale_noviewport(hvs_layer *l) {
+  assert(l->fb);
+  enum hvs_pixel_format fmt = gfx_to_hvs_pixel_format(l->fb->format);
+  int alpha_mode = 1;
+
+  enum scaling_mode xmode, ymode;
+  const uint32_t input_width = l->fb->width;
+  const uint32_t input_height = l->fb->height;
+  const uint32_t screen_width = l->w;
+  const uint32_t screen_height = l->h;
+  bool any_scaling = true;
+  const uint32_t x = l->x;
+  const uint32_t y = l->y;
+  printf("drawing to %d,%d size %dx%x\n", x, y, screen_width, screen_height);
+  printf("source %dx%d\n", input_width, input_height);
+
+  if (input_width > screen_width) xmode = TPZ;
+  else if (input_width < screen_width) xmode = PPF;
+  else xmode = TPZ;
+
+  if (input_height > screen_height) ymode = TPZ;
+  else if (input_height < screen_height) ymode = PPF;
+  else ymode = TPZ;
+
+  int scl0;
+  switch ((xmode << 2) | ymode) {
+  case (PPF << 2) | PPF:
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_PPF;     // 0
+    break;
+  case (TPZ << 2) | PPF:
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_PPF;     // 1
+    break;
+  case (PPF << 2) | TPZ:
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_TPZ;     // 2
+    break;
+  case (TPZ << 2) | TPZ:
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_TPZ;     // 3
+    break;
+  case (PPF << 2) | scaling_none:
+    scl0 = SCALER_CTL0_SCL_H_PPF_V_NONE;    // 4
+    break;
+  case (scaling_none << 2) | PPF:
+    scl0 = SCALER_CTL0_SCL_H_NONE_V_PPF;    // 5
+    break;
+  case (scaling_none << 2) | TPZ:
+    scl0 = SCALER_CTL0_SCL_H_NONE_V_TPZ;    // 6
+    break;
+  case (TPZ << 2) | scaling_none:
+    // randomly doesnt work right
+    scl0 = SCALER_CTL0_SCL_H_TPZ_V_NONE;    // 7
+    break;
+  default:
+    puts("unsupported scale combination");
+    //printf("rendering FB of size %dx%d at %dx%d, scaled down to %dx%d\n", input_width, input_height, x, y, screen_width, screen_height);
+    return;
+  }
+
+  uint32_t *d = l->premade_dlist;
+  int pos = 0;
+  // control word 0
+  d[pos++] = 0 // CONTROL_VALID
+    | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR)
+//    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
+    | (false ? CONTROL0_HFLIP : 0)
+    | CONTROL_FORMAT(fmt)
+    | (scl0 << 5)
+    | (scl0 << 8); // SCL1
+  d[pos++] = POS0_X(x) | POS0_Y(y) | POS0_ALPHA(0xff);                                   // position word 0
+  if (any_scaling) {
+    d[pos++] = screen_width | (screen_height << 16);                                     // position word 1
+  }
+  d[pos++] = POS2_H(input_width) | POS2_W(input_height) | (alpha_mode << 30);            // position word 2
+  d[pos++] = 0xDEADBEEF;                                                                 // position word 3, dummy for HVS state
+  d[pos++] = (uint32_t)l->fb->ptr | 0xc0000000;                                          // pointer word 0
+  d[pos++] = 0xDEADBEEF;                                                                 // pointer context word 0 dummy for HVS state
+  d[pos++] = l->fb->stride * l->fb->pixelsize;                                           // pitch word 0
+  d[pos++] = (scaled_layer_count * 2400);         // LBM base addr, TODO, should be handled better
+
+  if (xmode == PPF) {
+    d[pos++] = compute_ppf(input_width, screen_width);
+  }
+
+  if (ymode == PPF) {
+    d[pos++] = compute_ppf(input_height, screen_height);
+    d[pos++] = 0xDEADBEEF; // context for scaling
+  }
+
+  if (xmode == TPZ) {
+    compute_tpz(input_width, screen_width, &d[pos]);
+    pos += 2;
+  }
+
+  if (ymode == TPZ) {
+    compute_tpz(input_height, screen_height, &d[pos]);
+    pos += 2;
+    d[pos++] = 0xDEADBEEF; // context for scaling
+  }
+
+  if (ymode == PPF || xmode == PPF) {
+    // TODO, if PPF is in use, write 4 pointers to the scaling kernels
+    uint32_t kernel = scaling_kernel;
+    d[pos++] = kernel;
+    d[pos++] = kernel;
+    d[pos++] = kernel;
+    d[pos++] = kernel;
+  }
+  printf("entry size: %d\n", pos);
+  d[0] |= CONTROL_VALID | CONTROL_WORDS(pos);
 }
 
 void hvs_regen_noscale_viewport_noalpha(hvs_layer *l) {
@@ -374,6 +499,7 @@ static enum handler_return ddr2_checker(struct timer *unused1, unsigned int unus
 }
 
 static void upload_scaling_kernel(void) {
+  printf("uploading scaling kernel\n");
   int kernel_start = scaling_kernel;
 #define PACK(a,b,c) ( (((a) & 0x1ff) << 0) | (((b) & 0x1ff) << 9) | (((c) & 0x1ff) << 18) )
   // the Mitchell/Netravali filter copied from the linux source
@@ -423,7 +549,7 @@ void hvs_initialize() {
 
   hvs_channels[2].dispbase = BASE_BASE(0)      | BASE_TOP(0x7f0);
   hvs_channels[1].dispbase = BASE_BASE(0xf10)  | BASE_TOP(0x50f0);
-  hvs_channels[0].dispbase = BASE_BASE(0x800) | BASE_TOP(0xf00);
+  hvs_channels[0].dispbase = BASE_BASE(0x800)  | BASE_TOP(0xf00);
 
   hvs_wipe_displaylist();
   upload_scaling_kernel();
@@ -602,30 +728,34 @@ static bool bcm_host_is_model_pi4(void) {
 }
 
 void hvs_print_position0(uint32_t w) {
-  printf("position0: 0x%x\n", w);
+  printf("POS0: 0x%x\n", w);
   if (bcm_host_is_model_pi4()) {
     printf("    x: %d y: %d\n", w & 0x3fff, (w >> 16) & 0x3fff);
   } else {
     printf("    x: %d y: %d\n", w & 0xfff, (w >> 12) & 0xfff);
   }
 }
+
+void hvs_print_position1(uint32_t w) {
+  printf("POS1: 0x%x\n", w);
+  printf("    w: %d h: %d (output)\n", w & 0xffff, w >> 16);
+}
+
 void hvs_print_control2(uint32_t w) {
   printf("control2: 0x%x\n", w);
   printf("  alpha: 0x%x\n", (w >> 4) & 0xffff);
   printf("  alpha mode: %d\n", (w >> 30) & 0x3);
 }
-void hvs_print_word1(uint32_t w) {
-  printf("  word1: 0x%x\n", w);
-}
+
 void hvs_print_position2(uint32_t w) {
-  printf("position2: 0x%x\n", w);
-  printf("  width: %d height: %d\n", w & 0xffff, (w >> 16) & 0xfff);
+  printf("POS2: 0x%x\n", w);
+  printf("  w: %d h: %d (input)\n", w & 0xffff, (w >> 16) & 0xfff);
 }
 void hvs_print_position3(uint32_t w) {
-  printf("position3: 0x%x\n", w);
+  printf("POS3: 0x%x\n", w);
 }
 void hvs_print_pointer0(uint32_t w) {
-  printf("pointer word: 0x%x\n", w);
+  printf("PTR0: 0x%x\n", w);
 }
 void hvs_print_pointerctx0(uint32_t w) {
   printf("pointer context word: 0x%x\n", w);
@@ -702,13 +832,15 @@ static int cmd_hvs_dump(int argc, const console_cmd_args *argv) {
       if (unity) {
         puts("unity scaling");
       } else {
-        hvs_print_word1(dlist_memory[x++]);
+        if (!unity) hvs_print_position1(dlist_memory[x++]);
       }
       hvs_print_position2(dlist_memory[x++]);
       hvs_print_position3(dlist_memory[x++]);
       hvs_print_pointer0(dlist_memory[x++]);
       hvs_print_pointerctx0(dlist_memory[x++]);
       hvs_print_pitch0(dlist_memory[x++]);
+      if (!unity) {
+      }
       if (words > 1) {
         i += words - 1;
       }
@@ -754,7 +886,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     console_layer[channel] = malloc(sizeof(hvs_layer));
     mk_unity_layer(console_layer[channel], gfx_console, 50, 50, 30);
     hvs_allocate_premade(console_layer[channel], 7);
-    hvs_regen_noscale_noviewport_noalpha(console_layer[channel]);
+    hvs_regen_noscale_noviewport(console_layer[channel]);
     console_layer[channel]->name = strdup("console");
 
     mutex_acquire(&channels[channel].lock);
@@ -767,7 +899,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     console_layer[channel] = malloc(sizeof(hvs_layer));
     mk_unity_layer(console_layer[channel], gfx_console, 50, 1, 1);
     hvs_allocate_premade(console_layer[channel], 7);
-    hvs_regen_noscale_noviewport_noalpha(console_layer[channel]);
+    hvs_regen_noscale_noviewport(console_layer[channel]);
     console_layer[channel]->name = strdup("console0");
 
     mutex_acquire(&channels[channel].lock);
@@ -811,7 +943,8 @@ void hvs_update_dlist(int channel) {
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
     if (layer->visible) {
       if (layer->premade_dlist && (layer->dlist_length > 0)) {
-        for (unsigned int i=0; i < layer->dlist_length; i++) {
+        uint32_t actual_length = (layer->premade_dlist[0] >> 24) & 0x3f;
+        for (unsigned int i=0; i < actual_length; i++) {
           dlist_memory[display_slot++] = layer->premade_dlist[i];
         }
       } else
@@ -895,7 +1028,7 @@ void hvs_dlist_add(int channel, hvs_layer *new_layer) {
   list_for_every_entry(&channels[channel].layers, layer, hvs_layer, node) {
     //printf("current is %d\n", layer->layer);
     if (layer->layer == new_layer->layer) {
-      puts("match insert");
+      //puts("match insert");
       list_add_after(&layer->node, &new_layer->node);
       return;
     } else if (layer->layer > new_layer->layer) {

@@ -12,6 +12,8 @@
 #define SCALER_DISPCTRL     (SCALER_BASE + 0x00)
 #define SCALER_DISPSTAT     (SCALER_BASE + 0x04)
 #define SCALER_DISPCTRL_ENABLE  (1<<31)
+#define SCALER_DISPECTRL    (SCALER_BASE + 0x0c)
+#define SCALER_DISPECTRL_SECURE_MODE    (1<<31)
 #define SCALER_DISPDITHER   (SCALER_BASE + 0x14)
 #define SCALER_DISPEOLN     (SCALER_BASE + 0x18)
 #define SCALER_DISPLIST0    (SCALER_BASE + 0x20)
@@ -240,9 +242,10 @@ void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos);
 
 // functions to populate l->premade_dlist with the required values, reducing cpu usage for static sprites
 // hvs_update_dlist() will read from the buffer, and could tear, it is recommended to hold the channels[channel].lock when updating any layer that is visible
-// renders l->fb at 1:1 scale, no alpha, no viewport cropping
-void hvs_regen_noscale_noviewport_noalpha(hvs_layer *l);
+// renders l->fb at 1:1 scale, no viewport cropping
+void hvs_regen_noscale_noviewport(hvs_layer *l);
 void hvs_regen_noscale_viewport_noalpha(hvs_layer *l);
+void hvs_regen_scale_noviewport(hvs_layer *l);
 
 inline uint32_t gen_ppf_fixedpoint(uint32_t source, uint32_t dest) {
   uint32_t scale = source / dest;
