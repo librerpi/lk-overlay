@@ -9,6 +9,11 @@ pink_end:
 
 .text
 .global do_fir
+// all testing done with r0==8, r1==r3
+//  77 clock cycles, 432mhz, 0 alias
+// 80 clock cycles when r0 == 8, at 54mhz, with uncached reads
+// 91 clock cycles when r0 == 8, at 216mhz, with uncached reads
+// 153 clock cycles, 432mhz, c alias
 do_fir:
   v16ld HX(0++,32), (r1+=r2) REP r0
   v16ld HX(0++,0),  (r3+=r2) REP r0
