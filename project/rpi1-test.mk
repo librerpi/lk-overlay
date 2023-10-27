@@ -9,7 +9,7 @@ MODULES += \
 	lib/cksum \
 	lib/debugcommands \
 	platform/bcm28xx/sdhost \
-	#app/inter-arch \
+	app/inter-arch \
 	lib/gfxconsole \
 	lib/gfx \
 	#platform/bcm28xx/hvs-dance \
