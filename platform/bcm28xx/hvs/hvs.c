@@ -95,6 +95,9 @@ void hvs_add_plane(gfx_surface *fb, int x, int y, bool hflip) {
   dlist_memory[display_slot++] = 0xdfc14800; // state
   dlist_memory[display_slot++] = 0x00001400; // stride
 }
+void hvs_regen_noscale_noviewport(hvs_layer *l) {
+  assert(0);
+}
 #else
 void hvs_add_plane(hvs_layer *l, int x, int y, bool hflip) {
   assert(l->fb);
