@@ -96,7 +96,7 @@ static void setup_framebuffer(void) {
   mk_unity_layer(simple_fb_layer, simple_fb, 1000, 50, 30);
   hvs_allocate_premade(simple_fb_layer, 7);
   simple_fb_layer->alpha_mode = alpha_mode_fixed;
-  hvs_regen_noscale_noviewport_noalpha(simple_fb_layer);
+  hvs_regen_noscale_noviewport(simple_fb_layer);
   //simple_fb_layer->w /= 4;
   //simple_fb_layer->h /= 4;
   simple_fb_layer->name = strdup("simple-framebuffer");
@@ -244,7 +244,7 @@ static void choose_armstub(uint32_t bits) {
   }
 }
 
-uint32_t orig_checksum;
+//static uint32_t orig_checksum;
 
 static void copy_arm_payload_to(uint32_t offset) {
   void *original_start = chosenPayload->payload_addr;
@@ -253,14 +253,15 @@ static void copy_arm_payload_to(uint32_t offset) {
   void *dest = (void*)(0xc0000000 + offset);
 
   memcpy(dest, original_start, size);
-  uint32_t crc = crc32(0, original_start, size);
-  uint32_t crc2 = crc32(0, dest, size);
-  logf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
+  //uint32_t crc = crc32(0, original_start, size);
+  //uint32_t crc2 = crc32(0, dest, size);
+  //logf("checksums 0x%08x 0x%08x, size: %d\n", crc, crc2, size);
 
   logf("MEMORY: 0x0 + 0x%x: arm payload\n", chosenPayload->payload_size);
-  orig_checksum = crc;
+  //orig_checksum = crc;
 }
 
+#if 0
 static void rechecksum_arm(void) {
   uint32_t *dest = (uint32_t*)0xc0000000;
   uint32_t size = chosenPayload->payload_size;
@@ -275,6 +276,7 @@ static void rechecksum_arm(void) {
     }
   }
 }
+#endif
 
 static inter_core_header *find_header(uint32_t *start, uint32_t size) {
   for (uint32_t *i = start; i < (start + size); i += 4) { // increment by 16 bytes
@@ -338,7 +340,7 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   //timer_set_periodic(&arm_check, 1000, arm_checker, NULL);
   power_arm_start();
   printregs();
-  printf("arm starting...\n");
+  logf("arm starting...\n");
   //printf("CAM1_ICTL: 0x%x\n", *REG32(0x7e801100));
 
   //cam1_enable();
@@ -394,6 +396,7 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   /*
    * enable peripheral access, map arm secure bits to axi secure bits 1:1 and
    * set the mem size for who knows what reason.
+   * without FULLPERI, the PL011 uart still works, but ST_CLO doesnt
    */
   *REG32(ARM_CONTROL0) |=
                   ARM_C0_BRESP2
@@ -451,8 +454,8 @@ static void setupClock(void) {
   // 52 and 0x15555 sets clock to 19.2 * (52 + (0x15555 / 0x100000))
   // aka ~1000mhz
 
-  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET;
-  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;
+  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLL_ANARST_SET;
+  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLL_ANARST_SET | CM_PLLB_HOLDARM_SET;
 
   *REG32(A2W_PLLB_ANA3) = A2W_PASSWORD | 0x100;
   *REG32(A2W_PLLB_ANA2) = A2W_PASSWORD | 0x0;
@@ -483,8 +486,8 @@ static void setupClock(void) {
 
   *REG32(A2W_PLLB_ARM) = A2W_PASSWORD | 4;
 
-  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET | CM_PLLB_LOADARM_SET;
-  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLLB_ANARST_SET | CM_PLLB_HOLDARM_SET;
+  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLL_ANARST_SET | CM_PLLB_HOLDARM_SET | CM_PLLB_LOADARM_SET;
+  *REG32(CM_PLLB) = CM_PASSWORD | CM_PLLB_DIGRST_SET | CM_PLL_ANARST_SET | CM_PLLB_HOLDARM_SET;
   *REG32(CM_PLLB) = CM_PASSWORD;
 
   const int src = 4;
