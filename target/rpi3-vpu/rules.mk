@@ -10,3 +10,4 @@ ARCH := vpu
 
 #include make/module.mk
 
+MODULES += platform/bcm28xx/otp
