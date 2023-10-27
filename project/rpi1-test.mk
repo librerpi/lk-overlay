@@ -17,3 +17,5 @@ MODULES += \
 	#lib/tga \
 
 MEMSIZE = 0xa00000
+
+MODULES += app/linux-bootloader

@@ -5,7 +5,9 @@
 #include <kernel/event.h>
 #include <kernel/mutex.h>
 #include <kernel/thread.h>
+#ifndef TARGET_RPI1
 #include <kernel/vm.h>
+#endif
 #include <lib/fs.h>
 #include <lib/partition.h>
 #include <libfdt.h>
@@ -15,6 +17,7 @@
 #include <lk/trace.h>
 #include <platform.h>
 #include <platform/bcm28xx/clock.h>
+#include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/inter-arch.h>
 #include <platform/bcm28xx/platform.h>
 #include <platform/bcm28xx/print_timestamp.h>
@@ -52,7 +55,9 @@ static void execute_linux(void);
 static void prepare_arm_core(void);
 void asm_set_ACTLR(uint32_t);
 void find_and_mount(void);
+#ifndef TARGET_RPI1
 static bool map_physical(uint32_t phys_addr, void **virt_addr, uint32_t size, const char *name);
+#endif
 
 #define KERNEL_LOAD_ADDRESS (16 * MB)
 #define DTB_LOAD_ADDRESS    (48 * MB)
@@ -121,11 +126,15 @@ static void maybe_load_initrd(size_t *size) {
     return;
   }
 
+#ifndef TARGET_RPI1
   if (!map_physical(INITRD_LOAD_ADDRESS, &initrd_virtual, 16 * MB, "initrd")) {
     puts("unable to map initrd");
     *size = 0;
     return;
   }
+#else
+  initrd_virtual = (void*)INITRD_LOAD_ADDRESS;
+#endif
 
   uint64_t size_read = fs_read_file(fh, initrd_virtual, 0, stat.size);
   if (size_read != stat.size) {
@@ -222,12 +231,14 @@ void *read_file(void *buffer, size_t maxSize, const char *filepath) {
   return buffer;
 }
 
+#ifndef TARGET_RPI1
 static bool map_physical(uint32_t phys_addr, void **virt_addr, uint32_t size, const char *name) {
   logf("map_physical(0x%x, %p, %d, %s)\n", phys_addr, virt_addr, size, name);
   status_t ret = vmm_alloc_physical(vmm_get_kernel_aspace(), name, ROUNDUP(size, PAGE_SIZE), virt_addr, 0, phys_addr, 0, 0);
   logf("done\n");
   return ret == NO_ERROR;
 }
+#endif
 
 bool load_kernel(void **buf, size_t *size) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
@@ -265,10 +276,16 @@ bool load_kernel(void **buf, size_t *size) {
     return false;
   }
 
+  printf("dtb: %s, kernel: %s\n", name, kernel_suffix);
+
+#ifndef TARGET_RPI1
   if (!map_physical(KERNEL_LOAD_ADDRESS, &kernel_virtual, 32 * MB, "zImage")) {
     puts("unable to map kernel");
     return false;
   }
+#else
+  kernel_virtual = (void*)KERNEL_LOAD_ADDRESS;
+#endif
 
   snprintf(namebuffer, 64, "/root/boot/%s", kernel_suffix);
   buffer = read_file(kernel_virtual, 32 * MB, namebuffer);
@@ -277,10 +294,14 @@ bool load_kernel(void **buf, size_t *size) {
     return false;
   }
 
+#ifndef TARGET_RPI1
   if (!map_physical(DTB_LOAD_ADDRESS, &dtb_virtual, 1 * MB, "raw dtb")) {
     puts("unable to map dtb");
     return false;
   }
+#else
+  dtb_virtual = (void*)DTB_LOAD_ADDRESS;
+#endif
 
   snprintf(namebuffer, 64, "/root/boot/%s", name);
   buffer = read_file(dtb_virtual, 1 * MB, namebuffer);
@@ -292,6 +313,21 @@ bool load_kernel(void **buf, size_t *size) {
   printf("loaded DTB file to %p\n", dtb_virtual);
 
   return true;
+}
+
+static void enable_path(void *v_fdt, const char *path) {
+  int node = fdt_path_offset(v_fdt, path);
+  if (node) {
+    fdt_setprop_string(v_fdt, node, "status", "okay");
+  }
+}
+
+static void enable_kms(void *v_fdt) {
+  enable_path(v_fdt, "/soc/gpu");
+  enable_path(v_fdt, "/soc/hvs@7e400000");
+  enable_path(v_fdt, "/soc/pixelvalve@7e206000"); // PV0
+  enable_path(v_fdt, "/soc/pixelvalve@7e207000"); // PV1
+  enable_path(v_fdt, "/soc/pixelvalve@7e807000"); // PV2
 }
 
 static bool patch_dtb(uint32_t initrd_size) {
@@ -326,6 +362,9 @@ static bool patch_dtb(uint32_t initrd_size) {
       ret = fdt_setprop(v_fdt, chosen, "linux,initrd-end", &initrd_end, 4);
     }
   }
+
+  //enable_kms(v_fdt);
+
   int memory = fdt_path_offset(v_fdt, "/memory");
   if (memory < 0) panic("no memory node in fdt");
   else {
