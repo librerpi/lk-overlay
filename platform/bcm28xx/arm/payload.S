@@ -13,6 +13,7 @@ bcm2837_payload_start:
   .incbin "../../../build-rpi3-test/lk.bin"
 bcm2837_payload_end:
 
+#if WITH_ARM_STUB
 armstub_start:
   .incbin "armstub.bin"
 armstub_end:
@@ -28,6 +29,7 @@ armstub8_32_end:
 armstub8_start:
   .incbin "armstub8.bin"
 armstub8_end:
+#endif
 
 .data
 DATA(arm_payload_array)
@@ -43,6 +45,7 @@ arm_payload_array:
   .int bcm2837_payload_end - bcm2837_payload_start
 END_DATA(arm_payload_array)
 
+#if WITH_ARM_STUB
 .data
 DATA(armstub_array)
 armstub_array:
@@ -67,3 +70,4 @@ armstub_array:
   .int 2
   .int 64
 END_DATA(armstub_array)
+#endif
