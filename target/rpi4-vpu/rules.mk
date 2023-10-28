@@ -12,6 +12,7 @@ ifeq ($(BOOTCODE),1)
 else
   MODULES += platform/bcm28xx/start4
 endif
+MODULES += platform/bcm28xx/otp
 
 #include make/module.mk
 
