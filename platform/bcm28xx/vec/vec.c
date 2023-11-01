@@ -59,7 +59,7 @@ static void vec_init(uint level) {
   clock_set_vec(108000000, PERI_PLLA_PER);
 
   int rate = measure_clock(29);
-  printf("vec rate: %f, plla: %lld, pllc: %lld\n", ((double)rate)/1000/1000, freq_pllc_per, freq_pllc_per);
+  printf("vec rate: %f, plla: %lld, pllc: %lld\n", ((double)rate)/1000/1000, freq_plla_per, freq_pllc_per);
 
   *REG32(VEC_WSE_RESET) = 1;
   *REG32(VEC_SOFT_RESET) = 1;
