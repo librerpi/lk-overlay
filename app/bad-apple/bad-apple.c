@@ -174,6 +174,7 @@ static void play_video_once(uint64_t total_bytes, filehandle *video) {
   uint32_t stop = *REG32(ST_CLO);
   uint32_t spent = stop - start;
   free(buffera);
+  list_delete(&bad_apple_layer.node);
   logf("read and displayed all frames in %d uSec\n", spent);
   logf("uSec per frame: %d\n", spent / frames);
   logf("video EOF\n");
