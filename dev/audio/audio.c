@@ -136,6 +136,8 @@ static void mux_analog_audio(void) {
   int pin_right = 0;
 
   switch (type) {
+  case 1: // pi 1b
+  case 3: // pi 1b+
   case 4: // 2b
     pin_left = 45;
     pin_right = 40;
