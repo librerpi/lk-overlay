@@ -131,23 +131,34 @@ static const int range_half = (1<<BITS)/2;
 
 static void mux_analog_audio(void) {
   uint32_t revision = otp_read(30);
-  uint32_t type = (revision >> 4) & 0xff;
   int pin_left = 0;
   int pin_right = 0;
 
-  switch (type) {
-  case 1: // pi 1b
-  case 3: // pi 1b+
-  case 4: // 2b
-    pin_left = 45;
-    pin_right = 40;
-    break;
-  case 8: // 3b
-    pin_left = 41;
-    pin_right = 40;
-    break;
-  default:
-    LOGF("unhandled type code %d\n", type);
+  if (revision & (1<<23)) { // new style revision
+    uint32_t type = (revision >> 4) & 0xff;
+    switch (type) {
+    case 1: // pi 1b
+    case 3: // pi 1b+
+    case 4: // 2b
+      pin_left = 45;
+      pin_right = 40;
+      break;
+    case 8: // 3b
+      pin_left = 41;
+      pin_right = 40;
+      break;
+    default:
+      LOGF("unhandled type code %d\n", type);
+    }
+  } else {
+    switch (revision) {
+    case 0xe: // pi 1b
+      pin_left = 45;
+      pin_right = 40;
+      break;
+    default:
+      LOGF("unhandled type code %d\n", revision);
+    }
   }
   if (pin_left) gpio_config(pin_left, 4);
   if (pin_right) gpio_config(pin_right, 4);
