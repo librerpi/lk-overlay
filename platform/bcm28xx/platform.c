@@ -474,6 +474,7 @@ void platform_early_init(void) {
       old_switch_vpu_to_pllc();
       //setup_plla(1000 * 1000 * 1000, 10, 10);
       setup_plla(PLLA_FREQ_MHZ * 1000 * 1000, PLLA_CORE_DIV, PLLA_PER_DIV);
+      setup_pllh(108 * 6 * 1000 * 1000, 2, 6);
     } else {
       switch_vpu_to_crystal();
       int vpu = measure_clock(5);

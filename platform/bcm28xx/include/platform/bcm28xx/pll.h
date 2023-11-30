@@ -1,6 +1,7 @@
 #pragma once
 
 #include <platform/bcm28xx.h>
+#include <stdbool.h>
 
 #define MHZ_TO_HZ(f) ((f)*1000*1000)
 
@@ -86,7 +87,8 @@ extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
 void setup_plla(uint64_t freq, int core_div, int per_div);
 void setup_pllc(uint64_t freq, int core0_div, int per_div);
-void setup_pllh(uint64_t freq, int aux_div);
+void setup_pllh(uint64_t freq, int aux_div, int pix_div);
 void switch_vpu_to_src(int src);
 bool clock_set_pwm(int freq, enum peripheral_clock_tap source);
 bool clock_set_vec(int freq, enum peripheral_clock_tap source);
+bool clock_set_hsm(int freq, enum peripheral_clock_tap source);

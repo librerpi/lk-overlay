@@ -674,7 +674,7 @@ void setup_plla(uint64_t target_freq, int core_div, int per_div) {
   //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
 }
 
-void setup_pllh(uint64_t target_freq, int aux_div) {
+void setup_pllh(uint64_t target_freq, int aux_div, int pix_div) {
   printf("bringing PLLH up at %lldMHz\n", target_freq/1000/1000);
 
   *REG32(PM_HDMI) = PM_PASSWORD | *REG32(PM_HDMI) | PM_HDMI_RSTDR;
@@ -726,12 +726,12 @@ void setup_pllh(uint64_t target_freq, int aux_div) {
   //*REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x4005;
   //*REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
 
-  //*REG32(A2W_PLLH_CORE0) = A2W_PASSWORD | core0_div;
+  *REG32(A2W_PLLH_PIX) = A2W_PASSWORD | pix_div;
   *REG32(A2W_PLLH_AUX) = A2W_PASSWORD | aux_div;
 
   //*REG32(A2W_PLLH_PER) = A2W_PASSWORD | per_div;
 
-  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET | CM_PLLH_LOADAUX;
+  *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET | CM_PLLH_LOADAUX | CM_PLLH_LOADPIX;
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
 
@@ -801,5 +801,25 @@ bool clock_set_vec(int freq, enum peripheral_clock_tap source) {
   }
   *REG32(CM_VECDIV) = CM_PASSWORD | divisor_fixed;
   *REG32(CM_VECCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
+  return true;
+}
+
+bool clock_set_hsm(int freq, enum peripheral_clock_tap source) {
+  int reference = get_peripheral_parent(source);
+  float desired_divider = (float)reference / freq;
+  int divisor_fixed = desired_divider * 4096;
+  int mash = 0;
+  printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
+  if (divisor_fixed < 0x2000) {
+    puts("divisor too low, abort!");
+    return false;
+  }
+  if (divisor_fixed >= 0x1000000) {
+    puts("divisor too high, abort!");
+    return false;
+  }
+  if (divisor_fixed & 0xfff) mash = 1;
+  *REG32(CM_HSMDIV) = CM_PASSWORD | divisor_fixed;
+  *REG32(CM_HSMCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
   return true;
 }
