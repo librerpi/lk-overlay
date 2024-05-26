@@ -1,4 +1,5 @@
 #include <dev/interrupt/riscv_plic.h>
+#include <dev/uart/pl011.h>
 #include <dev/virtio.h>
 #include <dev/virtio/net.h>
 #include <lib/cbuf.h>
@@ -7,16 +8,19 @@
 #include <platform.h>
 #include <stdbool.h>
 
-static cbuf_t rxbuf;
-#define RXBUF_SIZE 16
 extern ulong lk_boot_args[4];
 
 void platform_early_init(void) {
   plic_early_init(0x10400000, 32, false);
 }
 
+bool uart_online = false;
+
 void platform_init() {
-  cbuf_initialize(&rxbuf, RXBUF_SIZE);
+  pl011_uart_register(0, 0x10000000);
+  pl011_uart_init(0, 1); // TODO, assumes uart is on irq1
+  uart_online = true;
+
   printf("0x%lx\n", lk_boot_args[1]);
   const void *fdt = (void*)lk_boot_args[1];
   int err = fdt_check_header(fdt);
@@ -47,18 +51,36 @@ void platform_init() {
           uint32_t irq = fdt32_to_cpu(reg[0]);
           printf("virtio at 0x%x %d\n", mmio_base, irq);
           //virtio_mmio_detect((void*)mmio_base, 1, &irq, 0);
+        } else if (strcmp(prop_ptr, "arm,pl011") == 0) {
+          const uint32_t *prop = fdt_getprop(fdt, offset, "interrupts", NULL);
+          uint32_t irq = fdt32_to_cpu(prop[0]);
+          printf("uart irq is %d\n", irq);
+        } else {
+          printf("unknown %s\n", prop_ptr);
         }
       } else {
       }
     }
+  } else {
+    printf("DTB invalid: %d %s\n", err, fdt_strerror(err));
   }
 }
 
 void platform_dputc(char c) {
-  *REG32(0x10000000) = c;
+  if (uart_online) {
+    pl011_uart_putc(0, c);
+  } else {
+    *REG32(0x10000000) = c;
+  }
 }
 
 int platform_dgetc(char *c, bool wait) {
-  if (cbuf_read_char(&rxbuf, c, wait) == 1) return 0;
-  else return -1;
+  if (uart_online) {
+    int ret = uart_getc(0, wait);
+    if (ret == -1) return -1;
+    *c = ret;
+    return 0;
+  } else {
+    return -1;
+  }
 }
