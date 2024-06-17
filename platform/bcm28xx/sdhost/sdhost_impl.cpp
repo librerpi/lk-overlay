@@ -20,6 +20,7 @@ SDHOST driver. This used to be known as ALTMMC.
 #include "sd_proto.hpp"
 #include "block_device.hpp"
 
+#include <endian.h>
 #include <lib/bio.h>
 #include <lib/partition.h>
 #include <lk/debug.h>
@@ -29,11 +30,15 @@ SDHOST driver. This used to be known as ALTMMC.
 #include <malloc.h>
 #include <platform/bcm28xx.h>
 #include <platform/bcm28xx/gpio.h>
+#include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/sdhost.h>
 #include <platform/bcm28xx/sdhost_impl.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
+
+#include "lk/trace.h"
+#include "kernel/thread.h"
 
 extern "C" {
   #include <dev/gpio.h>
@@ -82,52 +87,56 @@ extern "C" {
 #define logf(fmt, ...) { print_timestamp(); printf("[EMMC:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); }
 #define mfence() __sync_synchronize()
 
-#define kIdentSafeClockRate 0x148
+#define LOCAL_TRACE 0
 
 struct BCM2708SDHost : BlockDevice {
-	bool is_sdhc;
-	bool is_high_capacity;
-	bool card_ready;
+  bool is_sdhc;
+  bool is_high_capacity;
+  bool card_ready;
 
-	uint32_t ocr;
-	uint32_t rca;
+  uint32_t ocr;
+  uint32_t rca;
 
-	uint32_t cid[4];
-	uint32_t csd[4];
+  uint32_t cid[4];
+  uint32_t csd[4];
+  uint64_t scr;
 
-	uint64_t capacity_bytes;
+  uint64_t capacity_bytes;
 
-	uint32_t r[4];
+  uint32_t r[4];
 
-	uint32_t current_cmd;
+  uint32_t current_cmd;
 
-	void set_power(bool on) {
-		*REG32(SH_VDD) = on ? SH_VDD_POWER_ON_SET : 0x0;
-	}
+  void set_power(bool on) {
+    *REG32(SH_VDD) = on ? SH_VDD_POWER_ON_SET : 0x0;
+  }
 
-	bool wait(uint32_t timeout = 100000) {
-		uint32_t t = timeout;
+  bool wait(uint32_t timeout = 100000) {
+    uint32_t t = timeout;
 
-		while(*REG32(SH_CMD) & SH_CMD_NEW_FLAG_SET) {
-			if (t == 0) {
-				logf("timed out after %dus!\n", timeout)
-				return false;
-			}
-			t--;
-			udelay(10);
-		}
+    while(*REG32(SH_CMD) & SH_CMD_NEW_FLAG_SET) {
+      if (t == 0) {
+        logf("timed out after %dus!\n", timeout)
+        return false;
+      }
+      t--;
+      udelay(10);
+    }
 
-		return true;
-	}
+    return true;
+  }
 
+  // waits for previous command to finish first
+  // allows sending commands with extra flags set
   bool send_raw(uint32_t command, uint32_t arg = 0) {
     uint32_t sts;
 
     wait();
+    LTRACEF("CMD %d, arg=%d\n", command & SH_CMD_COMMAND_SET, arg);
 
     sts = *REG32(SH_HSTS);
     if (sts & SDHSTS_ERROR_MASK)
-            *REG32(SH_HSTS) = sts;
+      *REG32(SH_HSTS) = sts;
 
     current_cmd = command & SH_CMD_COMMAND_SET;
 
@@ -139,17 +148,23 @@ struct BCM2708SDHost : BlockDevice {
     return true;
   }
 
-	bool send(uint32_t command, uint32_t arg = 0) {
-		return send_raw(command & SH_CMD_COMMAND_SET, arg);
-	}
+  // sends a normal command, and filters it to 0-63
+  bool send(uint32_t command, uint32_t arg = 0) {
+    return send_raw(command & SH_CMD_COMMAND_SET, arg);
+  }
 
-	bool send_136_resp(uint32_t command, uint32_t arg = 0) {
-		return send_raw((command & SH_CMD_COMMAND_SET) | SH_CMD_LONG_RESPONSE_SET, arg);
-	}
+  bool send_136_resp(uint32_t command, uint32_t arg = 0) {
+    return send_raw((command & SH_CMD_COMMAND_SET) | SH_CMD_LONG_RESPONSE_SET, arg);
+  }
 
-	bool send_no_resp(uint32_t command, uint32_t arg = 0) {
-		return send_raw((command & SH_CMD_COMMAND_SET) | SH_CMD_NO_RESPONSE_SET, arg);
-	}
+  bool send_no_resp(uint32_t command, uint32_t arg = 0) {
+    return send_raw((command & SH_CMD_COMMAND_SET) | SH_CMD_NO_RESPONSE_SET, arg);
+  }
+
+  bool send_cmd55() {
+    send(MMC_APP_CMD, MMC_ARG_RCA(rca));
+    return wait_and_get_response();
+  }
 
   void configure_pinmux() {
     gpio_config(48, kBCM2708Pinmux_ALT0);
@@ -170,6 +185,20 @@ struct BCM2708SDHost : BlockDevice {
     gpio_apply_batch(&pullBatch);
 
     //logf("pinmux configured for aux0\n");
+  }
+
+  bool set_bus_width(int width) {
+    //for (;;) {
+      send_cmd55();
+      send_no_resp(SD_APP_SET_BUS_WIDTH, width);
+
+      if (!wait_and_get_response()) return false;
+
+      //logf("waiting for SD (0x%x) ...\n", r[0]);
+      udelay(100);
+    //}
+    *REG32(SH_HCFG) |= SH_HCFG_WIDE_EXT_BUS_SET;
+    return true;
   }
 
 	void reset() {
@@ -201,12 +230,12 @@ struct BCM2708SDHost : BlockDevice {
 		mfence();
 	}
 
-	inline void get_response() {
-		r[0] = *REG32(SH_RSP0);
-		r[1] = *REG32(SH_RSP1);
-		r[2] = *REG32(SH_RSP2);
-		r[3] = *REG32(SH_RSP3);
-	}
+  inline void get_response() {
+    r[0] = *REG32(SH_RSP0);
+    r[1] = *REG32(SH_RSP1);
+    r[2] = *REG32(SH_RSP2);
+    r[3] = *REG32(SH_RSP3);
+  }
 
   bool wait_and_get_response() {
     if (!wait())
@@ -214,7 +243,7 @@ struct BCM2708SDHost : BlockDevice {
 
     get_response();
 
-    //printf("Cmd: 0x%x Resp: %08x %08x %08x %08x\n", current_cmd, r[0], r[1], r[2], r[3]);
+    LTRACEF("Cmd: %d Resp: %08x %08x %08x %08x\n", current_cmd, r[0], r[1], r[2], r[3]);
 
     if (*REG32(SH_CMD) & SH_CMD_FAIL_FLAG_SET) {
       if (*REG32(SH_HSTS) & SDHSTS_ERROR_MASK) {
@@ -229,45 +258,43 @@ struct BCM2708SDHost : BlockDevice {
     return true;
   }
 
-	bool query_voltage_and_type() {
-		uint32_t t;
+  bool query_voltage_and_type() {
+    uint32_t t;
+    LTRACEF("\n");
 
-		/* identify */
-		send(SD_SEND_IF_COND, 0x1AA);
-		wait_and_get_response();
+    /* identify */
+    send(SD_SEND_IF_COND, 0x1AA);
+    if (!wait_and_get_response()) return false;
 
-		/* set voltage */
-		t = MMC_OCR_3_3V_3_4V;
-		if (r[0] == 0x1AA) {
-			t |= MMC_OCR_HCS;
-			is_sdhc = true;
-		}
+    /* set voltage */
+    t = MMC_OCR_3_3V_3_4V;
+    if (r[0] == 0x1AA) {
+      t |= MMC_OCR_HCS;
+      is_sdhc = true;
+    }
 
-		/* query voltage and type */
-		for (;;) {
-			send(MMC_APP_CMD); /* 55 */
-			send_no_resp(SD_APP_OP_COND, t);
+    /* query voltage and type */
+    for (;;) {
+      send_cmd55();
+      send_no_resp(SD_APP_OP_COND, t);
 
-			if (!wait_and_get_response())
-				return false;
+      if (!wait_and_get_response()) return false;
 
-			if (r[0] & MMC_OCR_MEM_READY)
-				break;
+      if (r[0] & MMC_OCR_MEM_READY) break;
 
-			//logf("waiting for SD (0x%x) ...\n", r[0]);
-			udelay(100);
-		}
+      //logf("waiting for SD (0x%x) ...\n", r[0]);
+      udelay(100);
+    }
 
-		logf("SD card has arrived!\n");
 
-		is_high_capacity = (r[0] & MMC_OCR_HCS) == MMC_OCR_HCS;
+    logf("SD card has arrived!\n");
 
-		if (is_high_capacity)
-			logf("This is an SDHC card!\n");
+    is_high_capacity = (r[0] & MMC_OCR_HCS) == MMC_OCR_HCS;
 
-		return true;
+    if (is_high_capacity) logf("This is an SDHC card!\n");
 
-	}
+    return true;
+  }
 
 	inline void copy_136_to(uint32_t* dest) {
 		dest[0] = r[0];
@@ -304,26 +331,42 @@ struct BCM2708SDHost : BlockDevice {
 
     copy_136_to(csd);
 
+    scr = 0;
+    logf("sending ACMD51\n");
+    *REG32(SH_HBCT) = 8;
+    *REG32(SH_HBLC) = 1;
+    select_card();
+    send_cmd55();
+    send_raw(SD_APP_SEND_SCR | SH_CMD_READ_CMD_SET);
+    if (wait_and_get_response()) {
+      for (int i=0; i<2; i++) {
+        wait_for_fifo_data();
+        scr |= (uint64_t)(htonl(*REG32(SH_DATA))) << ( (1-i) * 32);
+      }
+      logf("done 0x%llx\n", scr);
+    } else {
+      logf("ACMD51 fail\n");
+    }
+
     return true;
   }
 
 //#define DUMP_READ
 
-	bool wait_for_fifo_data(uint32_t timeout = 100000) {
-		uint32_t t = timeout;
+  bool wait_for_fifo_data(uint32_t timeout = 100000) {
+    uint32_t t = timeout;
 
-		while ((*REG32(SH_HSTS) & SH_HSTS_DATA_FLAG_SET) == 0) {
-			if (t == 0) {
-				putchar('\n');
-				logf("ERROR: no FIFO data, timed out after %dus!\n", timeout)
-				return false;
-			}
-			t--;
-			udelay(10);
-		}
+    while ((*REG32(SH_HSTS) & SH_HSTS_DATA_FLAG_SET) == 0) {
+      if (t == 0) {
+        logf("ERROR: no FIFO data, timed out after %dus!\n", timeout)
+        return false;
+      }
+      t--;
+      udelay(1);
+    }
 
-		return true;
-	}
+    return true;
+  }
 
   void drain_fifo() {
     /* fuck me with a rake ... gently */
@@ -346,78 +389,87 @@ struct BCM2708SDHost : BlockDevice {
     }
   }
 
-	bool real_read_block(bnum_t sector, uint32_t* buf) {
-		if (!card_ready)
-			panic("card not ready");
+  bool real_read_block(bnum_t sector, uint32_t* buf, uint32_t count) {
+    int chunks = 128 * count;
 
-		if (!is_high_capacity)
-			sector <<= 9;
+    *REG32(SH_HBCT) = block_size;
+    *REG32(SH_HBLC) = count;
 
-#ifdef DUMP_READ
-		if (buf) {
-		  logf("Reading %d bytes from sector %d using FIFO ...\n", block_size, sector);
-                } else {
-                  logf("Reading %d bytes from sector %d using FIFO > /dev/null ...\n", block_size, sector);
-                }
-#endif
+    if (!card_ready)
+            panic("card not ready");
 
-		/* drain junk from FIFO */
-		drain_fifo();
-
-		/* enter READ mode */
-		send_raw(MMC_READ_BLOCK_MULTIPLE | SH_CMD_READ_CMD_SET, sector);
-
-		int i;
-		uint32_t hsts_err = 0;
-
+    if (!is_high_capacity)
+            sector <<= 9;
 
 #ifdef DUMP_READ
-		if (buf)
-			printf("----------------------------------------------------\n");
+    if (buf) {
+      logf("Reading %d bytes from sector %d using FIFO ...\n", block_size, sector);
+    } else {
+      logf("Reading %d bytes from sector %d using FIFO > /dev/null ...\n", block_size, sector);
+    }
 #endif
 
-		/* drain useful data from FIFO */
-		for (i = 0; i < 128; i++) {
-			/* wait for FIFO */
-			if (!wait_for_fifo_data()) {
-				break;
-			}
+    /* drain junk from FIFO */
+    drain_fifo();
 
-			hsts_err = *REG32(SH_HSTS) & SDHSTS_ERROR_MASK;
-			if (hsts_err) {
-				logf("ERROR: transfer error on FIFO word %d: 0x%x\n", i, *REG32(SH_HSTS));
-				break;
-			}
+    /* enter READ mode */
+    if (count == 1) {
+      send_raw(MMC_READ_BLOCK_SINGLE | SH_CMD_READ_CMD_SET | SH_CMD_BUSY_CMD_SET, sector);
+    } else {
+      send_raw(MMC_READ_BLOCK_MULTIPLE | SH_CMD_READ_CMD_SET, sector);
+    }
+    wait();
 
+    int i;
+    uint32_t hsts_err = 0;
 
-			volatile uint32_t data = *REG32(SH_DATA);
 
 #ifdef DUMP_READ
-			printf("%08x ", data);
+    if (buf)
+       printf("----------------------------------------------------\n");
 #endif
-			if (buf)
-				*(buf++) = data;
-		}
 
-		send_raw(MMC_STOP_TRANSMISSION | SH_CMD_BUSY_CMD_SET);
+    /* drain useful data from FIFO */
+    for (i = 0; i < chunks; i++) {
+      /* wait for FIFO */
+      if (!wait_for_fifo_data()) {
+              break;
+      }
+
+      hsts_err = *REG32(SH_HSTS) & SDHSTS_ERROR_MASK;
+      if (hsts_err) {
+        logf("ERROR: transfer error on FIFO word %d: 0x%x\n", i, *REG32(SH_HSTS));
+        break;
+      }
+
+
+      volatile uint32_t data = *REG32(SH_DATA);
 
 #ifdef DUMP_READ
-                printf("\n");
-		if (buf)
-			printf("----------------------------------------------------\n");
+      printf("%08x ", data);
 #endif
+      if (buf) *(buf++) = data;
+    }
 
-		if (hsts_err) {
-			logf("ERROR: Transfer error, status: 0x%x\n", *REG32(SH_HSTS));
-			return false;
-		}
+    send_raw(MMC_STOP_TRANSMISSION | SH_CMD_BUSY_CMD_SET);
 
 #ifdef DUMP_READ
-		if (buf)
-			logf("Completed read for %d\n", sector);
+    printf("\n");
+    if (buf)
+      printf("----------------------------------------------------\n");
 #endif
-		return true;
-	}
+
+    if (hsts_err) {
+      logf("ERROR: Transfer error, status: 0x%x\n", *REG32(SH_HSTS));
+      return false;
+    }
+
+#ifdef DUMP_READ
+    if (buf)
+      logf("Completed read for %d\n", sector);
+#endif
+    return true;
+  }
 
 
 
@@ -430,94 +482,109 @@ struct BCM2708SDHost : BlockDevice {
 		return true;
 	}
 
-	bool init_card() {
-		char pnm[8];
-		uint64_t block_length;
-		uint32_t clock_div = 0;
+  bool init_card() {
+    char pnm[8];
+    uint64_t block_length;
+    uint32_t clock_div = 0;
+    LTRACEF("\n");
 
-		send_no_resp(MMC_GO_IDLE_STATE);
+    send_no_resp(MMC_GO_IDLE_STATE);
 
-		if (!query_voltage_and_type()) {
-			//logf("ERROR: Failed to query card voltage!\n");
-			return false;
-		}
+    if (!query_voltage_and_type()) {
+      //logf("ERROR: Failed to query card voltage!\n");
+      return false;
+    }
 
-		if (!identify_card()) {
-			//logf("ERROR: Failed to identify card!\n");
-			return false;
-		}
+    if (!identify_card()) {
+      //logf("ERROR: Failed to identify card!\n");
+      return false;
+    }
 
-		SD_CID_PNM_CPY(cid, pnm);
+    SD_CID_PNM_CPY(cid, pnm);
 
-		//logf("Detected SD card:\n");
-		printf("    Product : %s\n", pnm);
+    //logf("Detected SD card:\n");
+    printf("    Product : %s\n", pnm);
 
-		if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_2_0) {
-			printf("    CSD     : Ver 2.0\n");
-			printf("    Capacity: %d\n", SD_CSD_V2_CAPACITY(csd));
-			printf("    Size    : %d\n", SD_CSD_V2_C_SIZE(csd));
+    if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_2_0) {
+      printf("    CSD     : Ver 2.0\n");
+      printf("    Capacity: %d\n", SD_CSD_V2_CAPACITY(csd));
+      printf("    Size    : %d\n", SD_CSD_V2_C_SIZE(csd));
 
-			block_length = 1 << SD_CSD_V2_BL_LEN;
+      block_length = 1 << SD_CSD_V2_BL_LEN;
 
-			/* work out the capacity of the card in bytes */
-			capacity_bytes = (SD_CSD_V2_CAPACITY(csd) * block_length);
+      /* work out the capacity of the card in bytes */
+      capacity_bytes = (SD_CSD_V2_CAPACITY(csd) * block_length);
 
-			clock_div = 10; // 5;
-		} else if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_1_0) {
-			printf("    CSD     : Ver 1.0\n");
-			printf("    Capacity: %d\n", SD_CSD_CAPACITY(csd));
-			printf("    Size    : %d\n", SD_CSD_C_SIZE(csd));
+      clock_div = vpu_clock / 25; // 5;
+    } else if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_1_0) {
+      printf("    CSD     : Ver 1.0\n");
+      printf("    Capacity: %d\n", SD_CSD_CAPACITY(csd));
+      printf("    Size    : %d\n", SD_CSD_C_SIZE(csd));
 
-			block_length = 1 << SD_CSD_READ_BL_LEN(csd);
+      block_length = 1 << SD_CSD_READ_BL_LEN(csd);
 
-			/* work out the capacity of the card in bytes */
-			capacity_bytes = (SD_CSD_CAPACITY(csd) * block_length);
+      /* work out the capacity of the card in bytes */
+      capacity_bytes = (SD_CSD_CAPACITY(csd) * block_length);
 
-			clock_div = 10;
-		} else {
-			printf("ERROR: Unknown CSD version 0x%x!\n", SD_CSD_CSDVER(csd));
-			return false;
-		}
+      clock_div = vpu_clock / 25;
+    } else {
+      printf("ERROR: Unknown CSD version 0x%x!\n", SD_CSD_CSDVER(csd));
+      return false;
+    }
 
-		printf("    BlockLen: 0x%llx\n", block_length);
+    printf("    BlockLen: 0x%llx\n", block_length);
 
-		if (!select_card()) {
-			//logf("ERROR: Failed to select card!\n");
-			return false;
-		}
+    if (!select_card()) {
+      //logf("ERROR: Failed to select card!\n");
+      return false;
+    }
 
-		if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_1_0) {
-			/*
-			 * only needed for 1.0 ones, the 2.0 ones have this
-			 * fixed at 512.
-			 */
-			//logf("Setting block length to 512 ...\n");
-			send(MMC_SET_BLOCKLEN, 512);
-			if (!wait()) {
-				logf("ERROR: Failed to set block length!\n");
-				return false;
-			}
-		}
+    if (true) {
+      // set bus width to 4bit
+      set_bus_width(2);
+      logf("card now in 4bit mode\n");
+    }
 
-		block_size = 512;
+    if (SD_CSD_CSDVER(csd) == SD_CSD_CSDVER_1_0) {
+      /*
+       * only needed for 1.0 ones, the 2.0 ones have this
+       * fixed at 512.
+       */
+      //logf("Setting block length to 512 ...\n");
+      send(MMC_SET_BLOCKLEN, 512);
+      if (!wait()) {
+        logf("ERROR: Failed to set block length!\n");
+        return false;
+      }
+    }
 
-		logf("Card initialization complete: %s %dMB SD%s Card\n", pnm, (uint32_t)(capacity_bytes >> 20), is_high_capacity ? "HC" : "");
+    block_size = 512;
+    printf("vpu clock is %d, cdiv %d\n", vpu_clock, clock_div);
 
-		/*
-		 * this makes some dangerous assumptions that the all csd2 cards are sdio cards
-		 * and all csd1 cards are sd cards and that mmc cards won't be used. this also assumes
-		 * PLLC.CORE0 is at 250MHz which is probably a safe assumption since we set it.
-		 */
-		if (clock_div) {
-			logf("Identification complete, changing clock to %dMHz for data mode ...\n", 250 / clock_div);
-			*REG32(SH_CDIV) = clock_div - 2;
-		}
+    logf("Card initialization complete: %s %dMB SD%s Card\n", pnm, (uint32_t)(capacity_bytes >> 20), is_high_capacity ? "HC" : "");
 
-		return true;
-	}
+    /*
+     * this makes some dangerous assumptions that the all csd2 cards are sdio cards
+     * and all csd1 cards are sd cards and that mmc cards won't be used. this also assumes
+     * PLLC.CORE0 is at vpu_clock Hz which is probably a safe assumption since we set it.
+     */
+    if (clock_div) {
+      logf("Identification complete, changing clock to %dMHz for data mode ...\n", vpu_clock / clock_div);
+      set_clock_div(clock_div);
+    }
+
+    return true;
+  }
+
+  void set_clock_div(uint32_t clock_div) {
+    LTRACEF("setting clock to %dMHz\n", (uint32_t)(vpu_clock / clock_div));
+    *REG32(SH_CDIV) = clock_div - 2;
+  }
 
   status_t restart_controller() {
+    LTRACEF("\n");
     is_sdhc = false;
+    rca = 0;
 
     logf("hcfg 0x%X, cdiv 0x%X, edm 0x%X, hsts 0x%X\n",
          *REG32(SH_HCFG),
@@ -532,7 +599,7 @@ struct BCM2708SDHost : BlockDevice {
 
     *REG32(SH_HCFG) &= ~SH_HCFG_WIDE_EXT_BUS_SET;
     *REG32(SH_HCFG) = SH_HCFG_SLOW_CARD_SET | SH_HCFG_WIDE_INT_BUS_SET;
-    *REG32(SH_CDIV) = kIdentSafeClockRate;
+    *REG32(SH_CDIV) = (vpu_clock * 1000) / 125;
 
     udelay(300);
     mfence();
@@ -544,7 +611,7 @@ struct BCM2708SDHost : BlockDevice {
        * looks like a silicon bug to me or a quirk of csd2, who knows
        */
       for (int i = 0; i < 3; i++) {
-        if (!real_read_block(0, nullptr)) {
+        if (!real_read_block(0, nullptr, 1)) {
           panic("fifo flush cycle %d failed", i);
         }
       }
@@ -562,7 +629,7 @@ struct BCM2708SDHost : BlockDevice {
 			drain_fifo_nowait();
 
 			logf("asking card to enter idle state ...\n");
-			*REG32(SH_CDIV) = kIdentSafeClockRate;
+			*REG32(SH_CDIV) = (vpu_clock * 1000) / 125;
 			udelay(150);
 
 			send_no_resp(MMC_GO_IDLE_STATE);
@@ -590,8 +657,13 @@ struct BCM2708SDHost : BlockDevice {
 	}
 
   BCM2708SDHost() {
-    restart_controller();
-    logf("eMMC driver sucessfully started!\n");
+    for (int i=0; i<120; i++) {
+      if (restart_controller() == NO_ERROR) {
+        logf("eMMC driver sucessfully started!\n");
+        return;
+      }
+      thread_sleep(1000);
+    }
   }
 };
 
@@ -599,13 +671,11 @@ struct BCM2708SDHost *sdhost = 0;
 
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
-  //printf("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", buf, block, count);
-  for (uint i=0; i<count; i++) {
-    // TODO, wont add right if buf is a 64bit pointer
-    uint32_t *dest = reinterpret_cast<uint32_t*>((vaddr_t)buf + (sdhost->get_block_size() * i));
-    bool ret = dev->real_read_block(block + i, dest);
-    if (!ret) return -1;
-  }
+  LTRACEF("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", (uint32_t)buf, block, count);
+  // TODO, wont add right if buf is a 64bit pointer
+  uint32_t *dest = reinterpret_cast<uint32_t*>((vaddr_t)buf);
+  bool ret = dev->real_read_block(block, dest, count);
+  if (!ret) return -1;
   return sdhost->get_block_size() * count;
 }
 
@@ -622,9 +692,17 @@ bdev_t *rpi_sdhost_init() {
       partition_publish("sdhost", 0);
     } else {
       puts("no SD card found, ignoring SD interface");
+      delete sdhost;
+      sdhost = NULL;
     }
   }
   return sdhost;
+}
+
+void rpi_sdhost_set_clock(uint32_t clock_div) {
+  if (sdhost) {
+    sdhost->set_clock_div(clock_div);
+  }
 }
 
 static void sdhost_init(uint level) {
