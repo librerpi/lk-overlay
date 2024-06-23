@@ -87,7 +87,7 @@ extern "C" {
 #define logf(fmt, ...) { print_timestamp(); printf("[EMMC:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); }
 #define mfence() __sync_synchronize()
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 struct BCM2708SDHost : BlockDevice {
   bool is_sdhc;
@@ -132,7 +132,7 @@ struct BCM2708SDHost : BlockDevice {
     uint32_t sts;
 
     wait();
-    LTRACEF("CMD %d, arg=%d\n", command & SH_CMD_COMMAND_SET, arg);
+    LTRACEF("CMD %d, arg=0x%x\n", command & SH_CMD_COMMAND_SET, arg);
 
     sts = *REG32(SH_HSTS);
     if (sts & SDHSTS_ERROR_MASK)
@@ -161,6 +161,7 @@ struct BCM2708SDHost : BlockDevice {
     return send_raw((command & SH_CMD_COMMAND_SET) | SH_CMD_NO_RESPONSE_SET, arg);
   }
 
+  // use before every ACMD
   bool send_cmd55() {
     send(MMC_APP_CMD, MMC_ARG_RCA(rca));
     return wait_and_get_response();
@@ -184,7 +185,7 @@ struct BCM2708SDHost : BlockDevice {
     GPIO_PULL_SET(pullBatch, 53, kPullUp);
     gpio_apply_batch(&pullBatch);
 
-    //logf("pinmux configured for aux0\n");
+    //logf("pinmux configured for alt0\n");
   }
 
   bool set_bus_width(int width) {
@@ -198,6 +199,35 @@ struct BCM2708SDHost : BlockDevice {
       udelay(100);
     //}
     *REG32(SH_HCFG) |= SH_HCFG_WIDE_EXT_BUS_SET;
+    return true;
+  }
+
+  // based on linux
+  bool sd_switch(int mode, int group, int value, uint32_t *resp) {
+    LTRACEF("(%d, %d, %d, %p)\n", mode, group, value, resp);
+    uint32_t arg = (!!mode) << 31 | 0xffffff;
+    arg &= ~(0xF << (group * 4));
+    arg |= (value & 0xF) << (group * 4);
+
+    *REG32(SH_HBCT) = 64;
+    *REG32(SH_HBLC) = 1;
+    send_raw(SD_SEND_SWITCH_FUNC | SH_CMD_READ_CMD_SET, arg);
+
+    if (wait_and_get_response()) {
+      return read_data(resp, 64);
+    } else {
+      logf("CMD6 fail\n");
+      return false;
+    }
+  }
+
+  bool read_data(uint32_t *resp, uint32_t size) {
+    for (unsigned int i=0; i<(size/4); i++) {
+      if (!wait_for_fifo_data()) {
+        return false;
+      }
+      *(resp++) = *REG32(SH_DATA);
+    }
     return true;
   }
 
@@ -539,6 +569,18 @@ struct BCM2708SDHost : BlockDevice {
       return false;
     }
 
+    uint32_t switch_reply[64/4];
+    sd_switch(0, 0, 1, switch_reply);
+    for (unsigned int i=0; i<(64/4); i++) {
+      printf("0x%08x ", htonl(switch_reply[i]));
+    }
+    puts("");
+    sd_switch(1, 0, 1, switch_reply);
+    for (unsigned int i=0; i<(64/4); i++) {
+      printf("0x%08x ", htonl(switch_reply[i]));
+    }
+    puts("");
+
     if (true) {
       // set bus width to 4bit
       set_bus_width(2);
@@ -577,7 +619,7 @@ struct BCM2708SDHost : BlockDevice {
   }
 
   void set_clock_div(uint32_t clock_div) {
-    LTRACEF("setting clock to %dMHz\n", (uint32_t)(vpu_clock / clock_div));
+    logf("setting clock to %dMHz\n", (uint32_t)(vpu_clock / clock_div));
     *REG32(SH_CDIV) = clock_div - 2;
   }
 
@@ -612,7 +654,7 @@ struct BCM2708SDHost : BlockDevice {
        */
       for (int i = 0; i < 3; i++) {
         if (!real_read_block(0, nullptr, 1)) {
-          panic("fifo flush cycle %d failed", i);
+          panic("fifo flush cycle %d failed\n", i);
         }
       }
       return NO_ERROR;
@@ -671,11 +713,18 @@ struct BCM2708SDHost *sdhost = 0;
 
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
-  LTRACEF("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", (uint32_t)buf, block, count);
+  TRACEF("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", (uint32_t)buf, block, count);
   // TODO, wont add right if buf is a 64bit pointer
   uint32_t *dest = reinterpret_cast<uint32_t*>((vaddr_t)buf);
-  bool ret = dev->real_read_block(block, dest, count);
-  if (!ret) return -1;
+  bool ret;
+  for (int retries = 0; retries < 64; retries++) {
+    ret = dev->real_read_block(block, dest, count);
+    if (ret) break;
+  }
+  if (!ret) {
+    logf("read of sector %d, count %d failed\n", block, count);
+    return -1;
+  }
   return sdhost->get_block_size() * count;
 }
 
