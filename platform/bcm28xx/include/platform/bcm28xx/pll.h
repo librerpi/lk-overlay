@@ -83,6 +83,7 @@ static const uint32_t xtal_freq = CRYSTAL;
 extern unsigned int freq_pllc_core0;
 extern uint64_t freq_plla_per;
 extern uint64_t freq_pllc_per;
+extern uint32_t vpu_clock;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
 void setup_plla(uint64_t freq, int core_div, int per_div);
