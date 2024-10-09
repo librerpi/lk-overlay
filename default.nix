@@ -143,7 +143,7 @@ in lib.fix (self: {
     scp ${self.vc4.rpi3.bootcode}/lk.bin root@router.localnet:/tftproot/open-firmware/bootcode.bin
     exec ${x86_64.uart-manager}/bin/uart-manager
   '';
-  disk_image = pkgs.vmTools.runInLinuxVM (pkgs.runCommand "disk-image" {
+  disk_image = lib.overrideDerivation (pkgs.vmTools.runInLinuxVM (pkgs.runCommand "disk-image" {
     buildInputs = with pkgs; [ utillinux dosfstools e2fsprogs mtools libfaketime ];
     preVM = ''
       mkdir -p $out
@@ -172,5 +172,7 @@ in lib.fix (self: {
     cp -v ${self.vc4.vc4.stage1}/lk.bin fat-dir/bootcode.bin
     cd fat-dir
     faketime "1970-01-01 00:00:00" mcopy -psvm -i /dev/vda1 * ::
-  '');
+  '')) (old: {
+    requiredSystemFeatures = [];
+  });
 })
