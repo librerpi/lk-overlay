@@ -87,7 +87,7 @@ extern "C" {
 #define logf(fmt, ...) { print_timestamp(); printf("[EMMC:%s]: " fmt, __FUNCTION__, ##__VA_ARGS__); }
 #define mfence() __sync_synchronize()
 
-#define LOCAL_TRACE 1
+#define LOCAL_TRACE 0
 
 struct BCM2708SDHost : BlockDevice {
   bool is_sdhc;
@@ -532,6 +532,8 @@ struct BCM2708SDHost : BlockDevice {
 
     SD_CID_PNM_CPY(cid, pnm);
 
+    printf("CSD: 0x%08x%08x%08x%08x\n", csd[3], csd[2], csd[1], csd[0]);
+
     //logf("Detected SD card:\n");
     printf("    Product : %s\n", pnm);
 
@@ -713,7 +715,7 @@ struct BCM2708SDHost *sdhost = 0;
 
 static ssize_t sdhost_read_block_wrap(struct bdev *bdev, void *buf, bnum_t block, uint count) {
   BCM2708SDHost *dev = reinterpret_cast<BCM2708SDHost*>(bdev);
-  TRACEF("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", (uint32_t)buf, block, count);
+  //TRACEF("sdhost_read_block_wrap(..., 0x%x, %d, %d)\n", (uint32_t)buf, block, count);
   // TODO, wont add right if buf is a 64bit pointer
   uint32_t *dest = reinterpret_cast<uint32_t*>((vaddr_t)buf);
   bool ret;
