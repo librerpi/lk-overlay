@@ -46,11 +46,13 @@ static int cmd_sdhost_bench(int argc, const console_cmd_args *argv) {
     uint32_t interval = stop - start;
     float bits = 1024*1024*8;
     float delta = interval;
+    (void)bits;
+    (void)delta;
 #if defined(ARCH_ARM64)
-    uint32_t mbit = bits/delta;
+    //uint32_t mbit = bits/delta;
     printf("%d MHz, \t", ((uint32_t)vpu_clock)/i);
     printf("%d uSec to read 1MB\t", interval);
-    printf("%d mbits/sec\n", mbit);
+    //printf("%d mbits/sec\n", mbit);
 #else
     double mbit = bits/delta;
     printf("%f MHz, \t", ((double)vpu_clock)/i);
