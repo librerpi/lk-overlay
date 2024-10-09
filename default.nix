@@ -1,4 +1,4 @@
-{ risc ? false }:
+{ risc ? false, qemu ? false }:
 
 let
   sources = import ./nix/sources.nix;
@@ -69,12 +69,15 @@ in lib.fix (self: {
       pkgsCross.aarch64-embedded.stdenv.cc
       python
       python3
-      qemu
       imagemagick
       pkgsi686Linux.lua
+      #texlive.combined.scheme-full
+      sox
     ] ++ lib.optionals risc [
       pkgsCross.riscv32-embedded.stdenv.cc
       pkgsCross.riscv64-embedded.stdenv.cc
+    ] ++ lib.optionals qemu [
+      qemu
     ];
     ARCH_x86_TOOLCHAIN_PREFIX = "i686-elf-";
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
