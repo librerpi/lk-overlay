@@ -164,11 +164,15 @@ in lib.fix (self: {
     2: type=83
     EOF
 
-    mkdir ext-dir
-    cp ${self.vc4.vc4.stage2}/lk.elf ext-dir/lk.elf -v
+    mkdir -p ext-dir/boot/firmware/
+    cp ${self.vc4.vc4.stage2}/lk.elf ext-dir/boot/lk.elf -v
+    cat <<EOF > ext-dir/etc/fstab
+    LABEL=root / defaults 0 0
+    LABEL=firmware /boot/firmware defaults 0 0
+    EOF
 
-    faketime "1970-01-01 00:00:00" mkfs.fat /dev/vda1 -i 0x2178694e
-    mkfs.ext2 /dev/vda2 -d ext-dir
+    faketime "1970-01-01 00:00:00" mkfs.fat /dev/vda1 -i 0x2178694e -n firmware
+    mkfs.ext4 /dev/vda2 -d ext-dir -L root
 
     mkdir fat-dir
     cp -v ${self.vc4.vc4.stage1}/lk.bin fat-dir/bootcode.bin
