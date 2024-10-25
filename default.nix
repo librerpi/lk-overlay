@@ -151,6 +151,8 @@ in lib.fix (self: {
       truncate $diskImage -s 64m
     '';
     postVM = ''
+      mkdir -pv $out/nix-support/
+      echo "file sd-image $out/disk-image.img" > $out/nix-support/hydra-build-products
     '';
   } ''
     sfdisk /dev/vda <<EOF
