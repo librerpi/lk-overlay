@@ -164,7 +164,7 @@ in lib.fix (self: {
     2: type=83
     EOF
 
-    mkdir -p ext-dir/boot/firmware/
+    mkdir -p ext-dir/{etc,boot/firmware/}
     cp ${self.vc4.vc4.stage2}/lk.elf ext-dir/boot/lk.elf -v
     cat <<EOF > ext-dir/etc/fstab
     LABEL=root / defaults 0 0
