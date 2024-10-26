@@ -1,5 +1,8 @@
 #include "tusb.h"
 #include <lib/hexdump.h>
+#if WITH_LIB_LWIP
+#include <lib/rpi-usb-nic/nic.h>
+#endif
 #include <platform/bcm28xx/print_timestamp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,9 +40,14 @@ void basic_host_init(void) {
 }
 
 // Invoked when device is mounted (configured)
-void tuh_mount_cb (uint8_t daddr)
-{
-  logf("Device attached, address = %d\r\n", daddr);
+void tuh_mount_cb (uint8_t daddr) {
+  uint16_t vid, pid;
+  tuh_vid_pid_get(daddr, &vid, &pid);
+  logf("Device attached, address = %d, %04x:%04x\r\n", daddr, vid, pid);
+
+#if WITH_LIB_LWIP
+  if ((vid == 0x0424) && (pid == 0xec00)) nic_start(daddr);
+#endif
 
   // Get Device Descriptor
   // TODO: invoking control transfer now has issue with mounting hub with multiple devices attached, fix later

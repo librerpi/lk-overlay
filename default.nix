@@ -64,6 +64,7 @@ in lib.fix (self: {
     buildInputs = with pkgs; [
       pkgsCross.arm-embedded.stdenv.cc
       libpng
+      nodejs
       #pkgsCross.i686-embedded.stdenv.cc
       pkgsCross.vc4.stdenv.cc
       pkgsCross.aarch64-embedded.stdenv.cc
