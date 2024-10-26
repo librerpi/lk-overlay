@@ -7,13 +7,11 @@ MODULES += \
 	platform/bcm28xx/sdhost \
 	platform/bcm28xx/temp \
 	platform/bcm28xx/rpi-ddr2/autoram \
-	#app/fir \
 
 #MODULES += app/shell
 MODULES += platform/bcm28xx/usb-phy
 MODULES += app/vc4-stage1
 MODULES += lib/fs/ext2
-#MODULES += app/bad-apple
 
 CONFIG_DWC2 := 1
 CONFIG_TINYUSB := 1
@@ -49,4 +47,5 @@ WERROR := 0
 # 0x40000 LK_INIT_LEVEL_HEAP
 # 0x90000 LK_INIT_LEVEL_PLATFORM
 # 0x90001 sdhost_init
+# 0x90005 usbphy_init
 # 0x90006 dwc2_init_hook
