@@ -7,8 +7,10 @@ PLATFORM := bcm28xx
 ARCH := arm64
 ARM_CPU := cortex-a53
 HAVE_ARM_TIMER = 1
+ARCH_LDFLAGS += --print-memory-usage
 
 GLOBAL_DEFINES += CRYSTAL=19200000 BCM2837=1
+GLOBAL_DEFINES += WITH_TARGET_LWIPOPTS
 
 #include make/module.mk
 

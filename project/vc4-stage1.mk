@@ -4,7 +4,6 @@ TARGET := rpi3-vpu
 
 MODULES += \
 	platform/bcm28xx/otp \
-	platform/bcm28xx/sdhost \
 	platform/bcm28xx/temp \
 	platform/bcm28xx/rpi-ddr2/autoram \
 
@@ -16,7 +15,13 @@ MODULES += lib/fs/ext2
 CONFIG_DWC2 := 1
 CONFIG_TINYUSB := 1
 CONFIG_MANUAL_USB := 0
-CONFIG_GFX := 1
+CONFIG_GFX := 0
+CONFIG_NET := 1
+CONFIG_SD_BOOT := 1
+
+ifeq ($(CONFIG_SD_BOOT),1)
+  MODULES += platform/bcm28xx/sdhost
+endif
 
 ifeq ($(CONFIG_GFX),1)
   MODULES += lib/gfxconsole
@@ -36,6 +41,12 @@ ifeq ($(CONFIG_MANUAL_USB),1)
   MODULES += lib/tinyusb/manual
 endif
 
+ifeq ($(CONFIG_NET),1)
+  MODULES += lib/lwip
+  MODULES += lib/rpi-usb-nic
+  LWIP_APP_TFTP := 1
+endif
+
 GLOBAL_DEFINES += BOOTCODE=1 NOVM_MAX_ARENAS=2 NOVM_DEFAULT_ARENA=0
 GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
 #GLOBAL_DEFINES += WITH_NO_FP=1
@@ -49,3 +60,7 @@ WERROR := 0
 # 0x90001 sdhost_init
 # 0x90005 usbphy_init
 # 0x90006 dwc2_init_hook
+# 0xa0000 LK_INIT_LEVEL_TARGET
+# 0xb0000 LK_INIT_LEVEL_APPS
+#   an app thread manages the tinyusb polling
+#     callbacks from tinyusb start the ethernet driver

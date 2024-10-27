@@ -701,7 +701,7 @@ struct BCM2708SDHost : BlockDevice {
 	}
 
   BCM2708SDHost() {
-    for (int i=0; i<120; i++) {
+    for (int i=0; i<5; i++) {
       if (restart_controller() == NO_ERROR) {
         logf("eMMC driver sucessfully started!\n");
         return;

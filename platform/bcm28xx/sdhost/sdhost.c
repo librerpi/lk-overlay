@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <platform/bcm28xx/pll.h>
 
+// TODO, read https://forums.raspberrypi.com/viewtopic.php?p=2259573#p2259573
+
 static int cmd_sdhost_init(int argc, const console_cmd_args *argv);
 static int cmd_sdhost_div(int argc, const console_cmd_args *argv);
 static int cmd_sdhost_bench(int argc, const console_cmd_args *argv);

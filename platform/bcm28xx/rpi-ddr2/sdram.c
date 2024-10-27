@@ -47,6 +47,7 @@ const char* size_to_string[] = {
 };
 
 enum RamSize g_RAMSize = kRamSizeUnknown;
+uint32_t dram_clock;
 
 /*
  Registers
@@ -204,6 +205,7 @@ lpddr2_timings_t g_InitSdramParameters = {
   .tXP = 1,
   .tRASmin = 15,
   .tRPpb = 6,
+  // RCD is the delay between activating a row, and being able to read/write to it, 6 clocks at 400mhz == 15ns
   .tRCD = 6,        // 2021-11-29 08:42:11 < zid> trcd = ras to cas delay
   /* SE (ns) */
   .tFAW = 18,
@@ -247,6 +249,8 @@ static void reset_with_timing(lpddr2_timings_t* T) {
   /* 400MHz */
   // (19.2mhz * 83) / 4 == 398.4 mhz
   int divisor = 83;
+  dram_clock = (19200000 * divisor) / 4;
+  printf("%f MHz DDR clock\n", (double)dram_clock/1000/1000);
   *REG32(APHY_CSR_DDR_PLL_VCO_FREQ_CNTRL0) = (1 << 16) | divisor;
   *REG32(APHY_CSR_DDR_PLL_VCO_FREQ_CNTRL1) = 0;
   *REG32(APHY_CSR_DDR_PLL_MDIV_VALUE) = 0;
@@ -410,10 +414,8 @@ static void calibrate_pvt_early(void) {
   uint32_t dq_slew = (st ? 2 : 3);
   logf("cpuid 0x%x and dq_slew %d\n", cpuid, dq_slew);
 
-  /* i don't get it, the spec says do not use this register */
-  write_mr(0xFF, 0, true);
-  /* RL = 6 / WL = 3 */
-  write_mr(LPDDR2_MR_DEVICE_FEATURE_2, 4, true);
+  write_mr(0xFF, 0, true); // i don't get it, the spec says do not use this register
+  write_mr(LPDDR2_MR_DEVICE_FEATURE_2, 4, true); // RL = 6 / WL = 3
 
   *REG32(APHY_CSR_ADDR_PAD_DRV_SLEW_CTRL) = 0x333;
   *REG32(DPHY_CSR_DQ_PAD_DRV_SLEW_CTRL) = (dq_slew << 8) | (dq_slew << 4) | 3;

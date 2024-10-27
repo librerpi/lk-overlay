@@ -18,6 +18,9 @@ CONFIG_DWC2 := 1
 CONFIG_TINYUSB := 1
 CONFIG_MANUAL_USB := 0
 
+CONFIG_NET := 1
+CONFIG_SD_BOOT := 1
+
 ifeq ($(CONFIG_DWC2),1)
   MODULES += platform/bcm28xx/dwc2
   #MODULES += platform/bcm28xx/usb-phy
@@ -31,10 +34,17 @@ ifeq ($(CONFIG_MANUAL_USB),1)
   MODULES += lib/tinyusb/manual
 endif
 
+ifeq ($(CONFIG_NET),1)
+  MODULES += lib/lwip
+  MODULES += lib/rpi-usb-nic
+  LWIP_APP_TFTP := 1
+endif
+
 #GLOBAL_DEFINES += MAILBOX_FB=1
 GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=8192
 GLOBAL_COMPILEFLAGS += -fstack-usage
 
+CFG_TUSB_DEBUG := 1
 
 # memory map details
 # 0 + ~200kb		rpi3-test
@@ -44,3 +54,5 @@ GLOBAL_COMPILEFLAGS += -fstack-usage
 ARCH_LDFLAGS += --print-memory-usage
 
 #GLOBAL_DEFINES += PL011_TX_ONLY
+
+WITH_LINKER_GC ?= 1
