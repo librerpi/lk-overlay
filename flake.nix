@@ -1,5 +1,6 @@
 {
   inputs = {
+    self.submodules = true;
   };
   outputs = { self }:
   {
