@@ -30,12 +30,12 @@ ifeq ($(CONFIG_DWC2),1)
   MODULES += platform/bcm28xx/dwc2
   MODULES += platform/bcm28xx/usb-phy
   MODULES += lib/tinyusb
-  MODULES += lib/rpi-usb-nic
 endif
 
 ifeq ($(CONFIG_NET),1)
   MODULES += lib/lwip
   LWIP_APP_TFTP := 1
+  MODULES += lib/rpi-usb-nic
 endif
 
 
