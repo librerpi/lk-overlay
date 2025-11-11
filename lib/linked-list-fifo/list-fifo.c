@@ -2,10 +2,17 @@
 #include <linked-list-fifo.h>
 
 struct list_node *fifo_pop(fifo_t *fifo) {
+  uint32_t state;
+
   mutex_acquire(&fifo->pop_lock);
+
   event_wait(&fifo->evt);
+
+  spin_lock_irqsave(&fifo->push_lock, state);
   struct list_node *n = list_remove_tail(&fifo->fifo);
   if (list_is_empty(&fifo->fifo)) event_unsignal(&fifo->evt);
+  spin_unlock_irqrestore(&fifo->push_lock, state);
+
   assert(n);
   mutex_release(&fifo->pop_lock);
   return n;
