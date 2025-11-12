@@ -485,6 +485,7 @@ static int nic_start_thread(void *arg) {
   register_write(state, 0x130, BIT(16));
   register_write(state, REG_MAC_CR, BIT(31) | BIT(20) | BIT(19) | BIT(3) | BIT(2));
   register_write(state, 0x10, BIT(2));
+  register_write(state, 0x14, BIT(12)); // bulk-in should NAK when it has nothing
   register_write(state, REG_INT_EP_CTL, BIT(15) | BIT(14)); // irq mask
 
   phy_write(state, 0, BIT(15)); // soft reset
