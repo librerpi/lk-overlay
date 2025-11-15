@@ -978,7 +978,7 @@ static void dwc_host_in(dwc_host_state_t *state, int channel, int addr, int endp
   chan->hcsplt = 0;
   chan->hcint = 0xffff;
   chan->hcdma = virtual_to_dma(buffer);
-  chan->hcintmsk = 0xffff;
+  chan->hcintmsk = 0xffff & ~BIT(4);
   chan->hcchar = HCCHARn_MAX_PACKET_SIZE(max_packet_size) | HCCHARn_ENDPOINT(endpoint) | HCCHARn_ADDR(addr) | HCCHARn_IN | (1<<20) | (type << 18);
 
   //THREAD_LOCK(state2);
