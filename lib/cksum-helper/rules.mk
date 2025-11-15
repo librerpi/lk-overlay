@@ -4,6 +4,8 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_DEPS +=
 
+# MODULES += lib/fs
+
 MODULE_SRCS += \
 	$(LOCAL_DIR)/cksum.c
 

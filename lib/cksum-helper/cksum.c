@@ -20,11 +20,13 @@
 #include <lk/console_cmd.h>
 #endif
 
+#ifdef WITH_LIB_FS
 typedef struct {
   filehandle *fh;
   int offset;
   cbuf_t buf;
 } file_buffer;
+#endif
 
 #ifdef WITH_LIB_MINCRYPT
 static void sha256_init(void *context) {
@@ -54,6 +56,7 @@ const hash_algo_implementation *get_implementation(const char *algo_name) {
     return &sha256_implementation;
   }
 #endif
+  printf("WARNING: cant find algo %s\n", algo_name);
   return 0;
 }
 
@@ -73,6 +76,7 @@ void print_hash_to_string(const uint8_t *hash, int hash_size, char *outbuf) {
 }
 
 void hash_blob(const hash_algo_implementation *algo, void *data, int size, uint8_t *hash) {
+  printf("hashing %p size 0x%x\n", data, size);
   void *context = malloc(algo->context_size);
   algo->init(context);
   algo->update(context, data, size);
@@ -109,6 +113,7 @@ status_t hash_file(const char *path, const hash_algo_implementation *algo, uint8
 
   ret = fs_open_file(path, &fh);
   if (ret != 0) {
+    puts("cant open");
     return ret;
   }
   void *context = malloc(algo->context_size);
@@ -183,6 +188,10 @@ int filebuf_readline(file_buffer *buf, char *buffer, int maxlen) {
 bool verify_hashes(const hash_algo_implementation *algo, const char *prefix, const char *sums_file, int *matches, int *mismatches, int *failure) {
   filehandle *fh;
   status_t ret;
+  if (!algo) {
+    printf("algo not supplied\n");
+    return true;
+  }
   char *pathbuf = malloc(FS_MAX_PATH_LEN);
   void *actual_hash = malloc(algo->hash_size);
   char *actual_hash_str = malloc((algo->hash_size*2)+1);
@@ -255,6 +264,7 @@ static int cmd_hash_file(int argc, const console_cmd_args *argv) {
 }
 #endif
 
+#ifdef WITH_LIB_FS
 static void helper_entry(const struct app_descriptor *app, void *args) {
   test_hash_algo("sha256", "", 0, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   status_t ret;
@@ -273,16 +283,16 @@ static void helper_entry(const struct app_descriptor *app, void *args) {
   if (0) {
     const hash_algo_implementation *algo = get_implementation("sha256");
     void *hash = malloc(algo->hash_size);
-    ret = hash_file("/test/./lk/external/platform/nrfx/mdk/nrf5340_xxaa_network.ld", algo, hash);
+    ret = hash_file("/test/./lk/external/platform/pico/rp2_common/pico_fix/rp2040_usb_device_enumeration/include/pico/fix/rp2040_usb_device_enumeration.h", algo, hash);
     //assert(ret == 0);
   }
   dump_thread(get_current_thread());
   platform_halt(HALT_ACTION_SHUTDOWN, HALT_REASON_UNKNOWN);
 }
 
-APP_START(helper_test)
+APP_START(cksum_helper_test)
   .entry = helper_entry,
   .flags = APP_FLAG_CUSTOM_STACK_SIZE,
   .stack_size = 64 * 1024
 APP_END
-
+#endif
