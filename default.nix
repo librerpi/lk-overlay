@@ -78,7 +78,7 @@ in lib.fix (self: {
       pkgsCross.riscv32-embedded.stdenv.cc
       pkgsCross.riscv64-embedded.stdenv.cc
     ] ++ lib.optionals qemu [
-      qemu
+      pkgs.qemu
     ];
     ARCH_x86_TOOLCHAIN_PREFIX = "i686-elf-";
     ARCH_x86_TOOLCHAIN_INCLUDED = true;
@@ -107,6 +107,9 @@ in lib.fix (self: {
     rpi4.start4 = vc4.callPackage ./lk.nix { project = "rpi4-start4"; };
     stage1-bad-apple = vc4.callPackage ./lk.nix { project = "stage1-bad-apple"; };
     vc4.stage1 = vc4.callPackage ./lk.nix { project = "vc4-stage1"; };
+    vc4.stage1-netonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-netonly"; };
+    vc4.stage1-usbonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-usbonly"; };
+    vc4.stage1-sdonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-sdonly"; };
     vc4.stage2 = vc4.callPackage ./lk.nix {
       project = "vc4-stage2";
       preBuild = ''
