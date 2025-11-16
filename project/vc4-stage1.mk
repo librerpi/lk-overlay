@@ -20,6 +20,7 @@ CONFIG_GFX := 0
 CONFIG_NET ?= 0
 CONFIG_SD_BOOT ?= 1
 TUH_MSC ?= 0
+DEBUG := 0
 
 ifeq ($(CONFIG_SD_BOOT),1)
   MODULES += platform/bcm28xx/sdhost

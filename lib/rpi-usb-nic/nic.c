@@ -17,7 +17,7 @@
 #include <platform/bcm28xx/inter-arch.h>
 #endif
 
-#define LOCAL_TRACE 1
+#define LOCAL_TRACE 0
 
 #define BIT(b) (1 << b)
 
@@ -305,24 +305,24 @@ static void nic_int_cb(tuh_xfer_t *xfer) {
 
   if (interrupt_buffer & BIT(15)) {
     uint16_t phy_irq = phy_read(state, 29);
-    logf("PHY irq: 0x%x\n", phy_irq);
+    LTRACEF("PHY irq: 0x%x\n", phy_irq);
     if (phy_irq & BIT(1)) {
-      puts("  Auto-Negotiation Page Received");
+      LTRACEF("  Auto-Negotiation Page Received");
     }
     if (phy_irq & BIT(3)) {
-      puts("  Auto-Negotiation LP Acknowledge");
+      LTRACEF("  Auto-Negotiation LP Acknowledge");
     }
     if (phy_irq & BIT(4)) {
-      puts("  Link Down");
+      LTRACEF("  Link Down");
     }
     if (phy_irq & BIT(6)) {
-      puts("  Auto-Negotiation complete");
+      LTRACEF("  Auto-Negotiation complete");
       register_read(state, 0x14);
       netif_set_link_up(&state->netif);
       dhcp_start(&state->netif);
     }
     if (phy_irq & BIT(7)) {
-      puts("  ENERGYON generated");
+      LTRACEF("  ENERGYON generated");
     }
     // TODO call netif_set_link_down and netif_set_link_up
   }
@@ -407,7 +407,7 @@ retry3:
 }
 
 static void nic_status_cb(struct netif *netif) {
-  printf("status cb, flags: 0x%x\n", netif->flags);
+  LTRACEF("status cb, flags: 0x%x\n", netif->flags);
   if (netif_is_up(netif)) {
     const struct dhcp *d = netif_dhcp_data(netif);
     if (d) {
