@@ -46,6 +46,8 @@ static struct tftp_context ctx = {
 };
 
 ssize_t tftp_blocking_get(ip_addr_t hostip, const char *path, uint32_t size, uint8_t *buffer) {
+  err_t status;
+
   printf("downloading %s over tftp\n", path);
 
   netboot_state_t state = {
@@ -60,9 +62,12 @@ ssize_t tftp_blocking_get(ip_addr_t hostip, const char *path, uint32_t size, uin
     //  puts("error parsing IP");
     //  return false;
     //}
-  err_t status = tftp_init_client(&ctx);
-  if (status != ERR_OK) printf("init status %d\n", status);
-  assert(status == ERR_OK);
+  static bool init_done = false;
+  if (!init_done) {
+    status = tftp_init_client(&ctx);
+    if (status != ERR_OK) printf("init status %d\n", status);
+    assert(status == ERR_OK);
+  }
 
   thread_sleep(10);
 
