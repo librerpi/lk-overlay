@@ -2,6 +2,9 @@
 
 #include <stdlib.h>
 
+#define LWIP_TCP 1
+#define IP_REASSEMBLY 0
+
 #define TCP_QUEUE_OOSEQ 0
 #define MEM_LIBC_MALLOC 1
 #define MEMP_MEM_MALLOC 1
