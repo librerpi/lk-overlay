@@ -1,5 +1,6 @@
 #include "tusb.h"
 #include "host/usbh_classdriver.h"
+#include <assert.h>
 #include <kernel/thread.h>
 #include <kernel/timer.h>
 #include <lib/hexdump.h>
