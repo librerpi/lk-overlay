@@ -5,7 +5,8 @@ MODULE := $(LOCAL_DIR)
 MODULE_DEPS += lib/elf
 
 ifeq ($(CONFIG_NET),1)
-  MODULE_DEPS += lib/net-utils external/lz4
+  MODULE_DEPS += lib/net-utils
+  # MODULE_DEPS += external/lz4
   # MODULE_DEPS += lib/cksum-helper lib/mincrypt
   MODULE_SRCS += $(LOCAL_DIR)/netboot.c
 endif

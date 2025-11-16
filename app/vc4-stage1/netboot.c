@@ -5,12 +5,15 @@
 #include <lwip/apps/tftp_client.h>
 #include <lwip/dhcp.h>
 #include <lwip/netif.h>
-#include <lz4.h>
 #include <net-utils.h>
 #include <platform/time.h>
 
 #ifdef WITH_LIB_CKSUM_HELPER
 #include <cksum-helper/cksum-helper.h>
+#endif
+
+#ifdef WITH_EXTERNAL_LZ4
+#include <lz4.h>
 #endif
 
 #include "stage1.h"
@@ -49,14 +52,18 @@ typedef enum { mode_tftp
 , mode_http
 #endif
 } bootmode;
-typedef enum { comp_none, comp_lz4 } bootcomp;
+typedef enum { comp_none
+#ifdef WITH_EXTERNAL_LIB_LZ4
+, comp_lz4
+#endif
+} bootcomp;
 
 void try_to_netboot(void) {
   ssize_t ret;
   const int buffer_size = 1024*1024*2;
   uint8_t *buffer = malloc(buffer_size);
   const bootmode mode = mode_tftp;
-  const bootcomp comp = comp_lz4;
+  const bootcomp comp = comp_none;
 
   ip_addr_t hostip;
   if (netif_is_up(last_netif)) {
@@ -72,6 +79,8 @@ void try_to_netboot(void) {
   switch (mode) {
     case mode_tftp:
     {
+      (void)comp;
+#ifdef WITH_EXTERNAL_LIB_LZ4
       if (comp == comp_lz4) {
         size_used = tftp_blocking_get(hostip, "rpi/lk.elf.lz4", buffer_size, buffer);
 
@@ -86,11 +95,14 @@ void try_to_netboot(void) {
         free(buffer);
         buffer = buffer2;
         size_used = ret;
-      } else {
+      } else
+#endif
+      {
         size_used = tftp_blocking_get(hostip, "rpi/lk.elf", buffer_size, buffer);
       }
       break;
     }
+  #
 #ifdef HTTP
     case mode_http:
     {
