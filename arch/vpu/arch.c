@@ -23,7 +23,7 @@ extern uint8_t _ebss;
 uint32_t arch_init_timestamp;
 
 STATIC_COMMAND_START
-STATIC_COMMAND("boot_other_core", "boot the 2nd vpu core", &cmd_boot_other_core)
+//STATIC_COMMAND("boot_other_core", "boot the 2nd vpu core", &cmd_boot_other_core)
 //STATIC_COMMAND("testit", "do some asm tests", &cmd_testit)
 //STATIC_COMMAND("jitter", "jitter test", &cmd_jitter)
 STATIC_COMMAND_END(arch);
@@ -42,11 +42,11 @@ void arch_early_init(void) {
 }
 
 void arch_init(void) {
-  uint32_t r28, sp, cpuid;
-  __asm__ volatile ("mov %0, r28" : "=r"(r28));
-  __asm__ volatile ("mov %0, sp" : "=r"(sp));
-  __asm__ volatile ("version %0" : "=r"(cpuid));
-  dprintf(INFO, "arch_init\nr28: 0x%x\nsp: 0x%x\ncpuid: %x\nST_CLO: %d\n", r28, sp, cpuid, *REG32(ST_CLO));
+  //uint32_t r28, sp, cpuid;
+  //__asm__ volatile ("mov %0, r28" : "=r"(r28));
+  //__asm__ volatile ("mov %0, sp" : "=r"(sp));
+  //__asm__ volatile ("version %0" : "=r"(cpuid));
+  //dprintf(INFO, "arch_init\nr28: 0x%x\nsp: 0x%x\ncpuid: %x\nST_CLO: %d\n", r28, sp, cpuid, *REG32(ST_CLO));
 }
 
 void arch_idle(void) {
