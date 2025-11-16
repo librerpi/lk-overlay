@@ -11,7 +11,7 @@ ifeq ($(CONFIG_NET),1)
 endif
 
 ifeq ($(TUH_MSC),1)
-  MODULE_SRCS += $(LOCAL_DIR)/usbboot.c
+  MODULE_SRCS += $(LOCAL_DIR)/usbboot.c $(LOCAL_DIR)/fsboot.c
 endif
 
 ifeq ($(CONFIG_SD_BOOT),1)
