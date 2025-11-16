@@ -1,17 +1,22 @@
 #include "tusb.h"
 #include "host/usbh_classdriver.h"
+#include <kernel/thread.h>
 #include <kernel/timer.h>
 #include <lib/hexdump.h>
 #include <lib/rpi-usb-nic/nic.h>
 #include <linked-list-fifo.h>
 #include <lk/console_cmd.h>
+#include <lk/trace.h>
 #include <lwip/dhcp.h>
 #include <lwip/netif.h>
 #include <netif/etharp.h>
 #include <platform/bcm28xx/otp.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #if !defined(ARCH_VPU)
 #include <platform/bcm28xx/inter-arch.h>
 #endif
+
+#define LOCAL_TRACE 1
 
 #define BIT(b) (1 << b)
 
@@ -26,6 +31,9 @@
 #define RED     CSI"31m"
 #define GREEN   CSI"32m"
 #define DEFAULT CSI"39m"
+
+#define logf(fmt, ...) { print_timestamp(); printf("[nic:%s:%d]: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__); }
+
 
 typedef struct {
   struct netif netif;
@@ -60,6 +68,8 @@ typedef struct {
   uint32_t tx_bad_frames;
 } tx_stats_t;
 
+uint32_t control_rx_buffer[8] __attribute__((aligned(32)));
+
 static uint32_t interrupt_buffer;
 static timer_t nic_poll;
 //static uint8_t rx_buffer[4096] __attribute__((aligned(16)));
@@ -82,9 +92,7 @@ STATIC_COMMAND("nic_stats", "show hw stat counters", &cmd_stats)
 STATIC_COMMAND_END(nic);
 
 static uint32_t register_read(nic_state_t *state, uint16_t reg) {
-  thread_sleep(100);
   xfer_result_t result = 10;
-  uint32_t read_buf;
   bool status;
   tusb_control_request_t const request = {
     .bmRequestType_bit = {
@@ -101,27 +109,28 @@ static uint32_t register_read(nic_state_t *state, uint16_t reg) {
     .daddr = state->daddr,
     .ep_addr = 0,
     .setup = &request,
-    .buffer = (void*)&read_buf,
+    .buffer = (void*)&control_rx_buffer[0],
     .complete_cb = 0,
     .user_data = (uintptr_t)&result,
   };
 
 retry2:
-  //mutex_acquire(&state->usb_lock);
+  mutex_acquire(&state->usb_lock);
   status = tuh_control_xfer(&xfer);
-  //mutex_release(&state->usb_lock);
+  uint32_t read_result = control_rx_buffer[0];
+  mutex_release(&state->usb_lock);
   if (!status) {
     puts("retrying");
-    thread_sleep(10000);
+    thread_sleep(100);
     goto retry2;
   }
 
   if (((reg != REG_MII_ACCESS) && (reg != 0x118)) || (!status) || (result != XFER_RESULT_SUCCESS)) {
-    printf(GREEN"0x%03x -> 0x%08x, %d %d\n"DEFAULT, reg, read_buf, status, result);
+    LTRACEF(GREEN"0x%03x -> 0x%08x, %d %d\n"DEFAULT, reg, read_result, status, result);
   }
   assert(status);
   assert(result == XFER_RESULT_SUCCESS);
-  return read_buf;
+  return read_result;
 }
 
 static int cmd_dump_regs(int argc, const console_cmd_args *argv) {
@@ -145,7 +154,6 @@ static int cmd_stats(int argc, const console_cmd_args *argv) {
 }
 
 static void register_write(nic_state_t *state, uint16_t reg, uint32_t value) {
-  thread_sleep(100);
   bool status;
   xfer_result_t result = XFER_RESULT_INVALID;
   tusb_control_request_t const request = {
@@ -177,7 +185,7 @@ retry:
     goto retry;
   }
   //mutex_release(&state->usb_lock);
-  printf(GREEN"0x%03x <- 0x%08x, %d %d\n"DEFAULT, reg, value, status, result);
+  LTRACEF(GREEN"0x%03x <- 0x%08x, %d %d\n"DEFAULT, reg, value, status, result);
   assert(status);
   assert(result == XFER_RESULT_SUCCESS);
 }
@@ -192,7 +200,7 @@ static void phy_write(nic_state_t *state, uint8_t reg, uint16_t value) {
   register_write(state, 0x118, value);
   register_write(state, REG_MII_ACCESS, (1<<11) | (reg << 6) | BIT(1) | BIT(0));
   phy_wait_not_busy(state);
-  printf(GREEN"PHY(%d) <- 0x%x\n"DEFAULT, reg, value);
+  LTRACEF(GREEN"PHY(%d) <- 0x%x\n"DEFAULT, reg, value);
 }
 
 static uint16_t phy_read(nic_state_t *state, uint8_t reg) {
@@ -201,7 +209,7 @@ static uint16_t phy_read(nic_state_t *state, uint8_t reg) {
   register_write(state, REG_MII_ACCESS, (1<<11) | (reg << 6) | BIT(0));
   phy_wait_not_busy(state);
   uint16_t ret = register_read(state, 0x118);
-  printf(GREEN"PHY(%d) -> 0x%x\n"DEFAULT, reg, ret);
+  LTRACEF(GREEN"PHY(%d) -> 0x%x\n"DEFAULT, reg, ret);
   return ret;
 }
 
@@ -296,7 +304,7 @@ static void nic_int_cb(tuh_xfer_t *xfer) {
 
   if (interrupt_buffer & BIT(15)) {
     uint16_t phy_irq = phy_read(state, 29);
-    printf("PHY irq: 0x%x\n", phy_irq);
+    logf("PHY irq: 0x%x\n", phy_irq);
     if (phy_irq & BIT(1)) {
       puts("  Auto-Negotiation Page Received");
     }
@@ -354,14 +362,16 @@ static void nic_tx_complete(tuh_xfer_t *xfer) {
 static err_t nic_tx_queue(struct netif *netif, struct pbuf *p) {
   queued_packet_t *qp = malloc(sizeof(queued_packet_t));
   qp->p = p;
-  //printf("tx queued, %p %p %d/%d\n", qp, p, p->len, p->tot_len);
+  //printf("tx queued, pbuf %p %d/%d\n", p, p->len, p->tot_len);
   fifo_push(&ns->tx_queue, &qp->node, true);
   return ERR_OK;
 }
 
 static err_t nic_tx(struct pbuf *p) {
   bool status;
-  //printf("tx attempt, %p %d/%d bytes, %x, caller %p\n", p, p->len, p->tot_len, (uint32_t)ns->tx_buffer, __GET_CALLER());
+  if (p->len != p->tot_len) {
+    printf("tx attempt, pbuf %p %d/%d bytes, %x, caller %p\n", p, p->len, p->tot_len, (uint32_t)ns->tx_buffer, __GET_CALLER());
+  }
   assert(p->len == p->tot_len);
 
   if (ns->tx_busy) return ERR_OK; // TODO, need a tx queue
@@ -409,7 +419,7 @@ static void nic_status_cb(struct netif *netif) {
 }
 
 static void nic_ext_cb(struct netif* netif, netif_nsc_reason_t reason, const netif_ext_callback_args_t* args) {
-  puts("nic new cb");
+  logf("nic new cb\n");
   nic_status_cb(netif);
 }
 
@@ -462,7 +472,7 @@ void nic_start(uint8_t daddr) {
 static int nic_start_thread(void *arg) {
   uintptr_t hack = (uintptr_t)arg;
   uint8_t daddr = (uint8_t)hack;
-  printf("probing NIC at %d\n", daddr);
+  logf("probing NIC at %d\n", daddr);
 
   nic_state_t *state = malloc(sizeof(nic_state_t));
   state->daddr = daddr;
@@ -471,7 +481,7 @@ static int nic_start_thread(void *arg) {
   event_init(&state->rx_running, false, EVENT_FLAG_AUTOUNSIGNAL);
   fifo_init(&state->tx_queue);
 
-  thread_sleep(5000);
+  //thread_sleep(5000);
 
   uint32_t ident = register_read(state, 0);
   if (ident != 0xec000002) {
