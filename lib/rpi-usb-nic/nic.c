@@ -255,6 +255,13 @@ static void rx_cb(tuh_xfer_t *xfer) {
 
   pbuf_header(p, -4);
 
+  uint32_t packet_length = (status_word >> 16) & 0x3fff;
+  if (packet_length < 14 || packet_length > p->tot_len) {
+    pbuf_free(p);
+    event_signal(&ns->rx_running, true);
+    return;
+  }
+
   ns->netif.input(p, &ns->netif);
 
   event_signal(&ns->rx_running, true);
