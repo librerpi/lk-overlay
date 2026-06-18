@@ -8,4 +8,5 @@ in {
     inherit (self.vc4) rpi3 rpi4 vc4 stage1-bad-apple;
   };
   inherit (self) disk_image;
+  inherit (self.x86_64) mkimage;
 }
