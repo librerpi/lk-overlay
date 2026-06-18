@@ -17,7 +17,7 @@ using json = nlohmann::json;
 
 void write_entry(FILE *out, const vector<uint8_t> &buffer, uint32_t magic, uint offset) {
   magic = htonl(magic);
-  uint32_t length = buffer.size();
+  int32_t length = buffer.size();
   uint32_t be_length = htonl(length);
   fseek(out, offset, SEEK_SET);
   int n = fwrite(&magic, 4, 1, out);
@@ -39,7 +39,8 @@ vector<uint8_t> readFile(const string &filename) {
   fseek(handle, 0, SEEK_SET);
 
   output.resize(length);
-  fread(output.data(), length, 1, handle);
+  int n = fread(output.data(), length, 1, handle);
+  assert(n == 1);
   fclose(handle);
 
   return output;
