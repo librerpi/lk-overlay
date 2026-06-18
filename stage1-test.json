@@ -1,0 +1,11 @@
+{
+  "bootcode":"build-vc4-stage1-spi/lk.bin",
+  "files":[
+    {
+      "filename":"build-vc4-stage2/lk.elf",
+      "alignment":1024,
+      "name":"stage2.elf",
+      "magic":"aa55f11f"
+    }
+  ]
+}

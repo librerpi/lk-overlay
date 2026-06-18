@@ -7,7 +7,7 @@ MODULES += \
 	platform/bcm28xx/temp \
 	platform/bcm28xx/rpi-ddr2/autoram \
 
-MODULES += app/shell
+#MODULES += app/shell
 MODULES += platform/bcm28xx/usb-phy
 MODULES += app/vc4-stage1
 
@@ -18,9 +18,9 @@ CONFIG_TINYUSB ?= 0
 CONFIG_MANUAL_USB := 0
 CONFIG_GFX := 0
 CONFIG_NET ?= 0
-CONFIG_SD_BOOT ?= 1
+CONFIG_SD_BOOT ?= 0
 TUH_MSC ?= 0
-DEBUG := 0
+DEBUG := 2
 
 ifeq ($(CONFIG_SD_BOOT),1)
   MODULES += platform/bcm28xx/sdhost

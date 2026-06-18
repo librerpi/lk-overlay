@@ -16,7 +16,7 @@ MODULES += platform/bcm28xx/arm
 #MODULES += app/shell
 #MODULES += app/yuv
 #MODULES += lib/gfxconsole
-MODULES += lib/fs/ext2
+#MODULES += lib/fs/ext2
 #MODULES += platform/bcm28xx/dpi
 #MODULES += dev/audio
 #MODULES += app/vpu-mandelbrot
@@ -24,6 +24,7 @@ MODULES += lib/fs/ext2
 #MODULES += app/chips-challenge
 MODULES += platform/bcm28xx/usb-phy
 MODULES += app/mailbox-property-server
+#MODULES += platform/bcm28xx/vc4-hdmi
 
 CONFIG_DWC2 := 0
 CONFIG_TINYUSB := 0

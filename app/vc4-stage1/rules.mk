@@ -19,6 +19,10 @@ ifeq ($(CONFIG_SD_BOOT),1)
   MODULE_SRCS += $(LOCAL_DIR)/fsboot.c
 endif
 
+ifeq ($(CONFIG_SPI_BOOT),1)
+  MODULE_SRCS += $(LOCAL_DIR)/spi.c
+endif
+
 MODULE_SRCS += \
 	$(LOCAL_DIR)/stage1.c \
 

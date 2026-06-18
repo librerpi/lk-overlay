@@ -5,7 +5,6 @@
 #include <kernel/novm.h>
 #include <kernel/thread.h>
 #include <kernel/wait.h>
-#include <lib/elf.h>
 #include <lib/io.h>
 #include <lk/debug.h>
 #include <lk/list.h>
@@ -184,6 +183,12 @@ static void try_to_boot(const char *device) {
   }
 #endif
 
+#ifdef WITH_DEV_SPI
+  if (strcmp(device, "spi") == 0) {
+    try_to_spi_boot();
+  }
+#endif
+
 #ifdef WITH_LIB_FS
   try_sd_boot(device);
 #endif
@@ -206,6 +211,10 @@ static void stage1_entry(const struct app_descriptor *app, void *args) {
   // sdhost initializes in a blocking mode before threads are ran, so will be available immediately if detected
   // usb initiailizes in a thread and wont show up until stage1_msd_probed() gets called
   add_boot_target("sdhostp1");
+
+#ifdef WITH_DEV_SPI
+  add_boot_target("spi");
+#endif
 
 #ifdef WITH_LIB_LUA
   lua_State *L = lua_newstate(&lua_allocator, NULL);

@@ -21,6 +21,7 @@ let
       nativeBuildInputs = [ x86_64.python x86_64.imagemagick x86_64.qemu ];
       hardeningDisable = [ "format" ];
     };
+    mkimage = self.callPackage ./mkimage {};
     uart-manager = self.stdenv.mkDerivation {
       name = "uart-manager";
       src = sources.rpi-open-firmware + "/uart-manager";
@@ -62,16 +63,19 @@ in lib.fix (self: {
   shell = pkgs.stdenv.mkDerivation {
     name = "shell";
     buildInputs = with pkgs; [
-      pkgsCross.arm-embedded.stdenv.cc
+      flashrom
+      imagemagick
       libpng
+      nlohmann_json
       nodejs
       #pkgsCross.i686-embedded.stdenv.cc
-      pkgsCross.vc4.stdenv.cc
       pkgsCross.aarch64-embedded.stdenv.cc
+      pkgsCross.arm-embedded.stdenv.cc
+      pkgsCross.vc4.stdenv.cc
+      pkgsi686Linux.lua
       python
       python3
-      imagemagick
-      pkgsi686Linux.lua
+      x86_64.mkimage
       #texlive.combined.scheme-full
       sox
     ] ++ lib.optionals risc [
@@ -140,7 +144,7 @@ in lib.fix (self: {
     vc4.bootcode-fast-ntsc = vc4.callPackage ./lk.nix { project = "bootcode-fast-ntsc"; };
   };
   x86_64 = {
-    inherit (x86_64) uart-manager;
+    inherit (x86_64) uart-manager mkimage;
   };
   testcycle = pkgs.writeShellScript "testcycle" ''
     set -e
