@@ -29,5 +29,7 @@ an example eeprom:
 0000f810  6c 66 00 00 00 00 00 00  7f 45 4c 46 01 01 01 00  |lf.......ELF....|
 ```
 at offset 0, is the 55aaf00f for stage1, which is 0xf4fc bytes long
+
 at offset 0xf508, is the 55aafeef for padding, 0x2f0 bytes long
+
 and at offset 0xf810 is a `stage2.elf`, 0x11f967 bytes long, and you can see the start of the ELF header
