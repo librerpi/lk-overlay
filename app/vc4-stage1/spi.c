@@ -7,8 +7,6 @@
 
 #include "stage1.h"
 
-extern uint32_t stage2_offset;
-
 void try_to_spi_boot(void) {
   uint8_t *buffer;
   ssize_t stage2_length = spi_read_file("stage2.elf", &buffer);
