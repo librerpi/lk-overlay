@@ -8,7 +8,7 @@
 void print_timestamp() {
   uint32_t clock_lo = *REG32(ST_CLO);
 
-#if 1
+#if ARCH_VPU
   clock_lo -= arch_init_timestamp;
 #endif
 
