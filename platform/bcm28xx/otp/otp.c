@@ -41,6 +41,7 @@ enum otp_command {
 
 #define OTP_PROG_EN_SEQ { 0xf, 0x4, 0x8, 0xd };
 
+#if LK_DEBUGLEVEL > 0
 static int cmd_otp_pretty(int argc, const console_cmd_args *argv);
 static int cmd_otp_full(int argc, const console_cmd_args *argv);
 static int cmd_otp_write(int argc, const console_cmd_args *argv);
@@ -50,6 +51,7 @@ STATIC_COMMAND("otp_pretty_print", "pretty-print all known otp values", &cmd_otp
 STATIC_COMMAND("otp_dump_all","dump all OTP values", &cmd_otp_full)
 //STATIC_COMMAND("otp_write","write new OTP value", &cmd_otp_write)
 STATIC_COMMAND_END(otp);
+#endif
 
 static inline void otp_delay(void) {
   udelay(1);
