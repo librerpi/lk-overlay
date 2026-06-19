@@ -82,13 +82,13 @@ struct pll_chan_def {
 static const uint32_t xtal_freq = CRYSTAL;
 extern unsigned int freq_pllc_core0;
 extern uint64_t freq_plla_per;
-extern uint64_t freq_pllc_per;
+extern uint32_t freq_pllc_per;
 extern uint32_t vpu_clock;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
-void setup_plla(uint64_t freq, int core_div, int per_div);
-void setup_pllc(uint64_t freq, int core0_div, int per_div);
-void setup_pllh(uint64_t freq, int aux_div, int pix_div);
+void setup_plla(uint32_t freq, int core_div, int per_div);
+void setup_pllc(uint32_t freq, int core0_div, int per_div);
+void setup_pllh(uint32_t freq, int aux_div, int pix_div);
 void switch_vpu_to_src(int src);
 bool clock_set_pwm(int freq, enum peripheral_clock_tap source);
 bool clock_set_vec(int freq, enum peripheral_clock_tap source);
