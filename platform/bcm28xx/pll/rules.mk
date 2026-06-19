@@ -6,4 +6,6 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/pll_read.c \
 	$(LOCAL_DIR)/pll_control.c \
 
+MODULES += fixed-point/
+
 include make/module.mk

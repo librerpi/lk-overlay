@@ -70,13 +70,25 @@
 #define VC4_HDMI_RAM_PACKET_ENABLE              BIT(16)
 #define VC4_HD_VID_CTL_BLANKPIX                 BIT(18)
 
+#define A2W_HDMI_CTL0 0x7e102080
+#define A2W_HDMI_CTL1 0x7e102084
+#define A2W_HDMI_CTL2 0x7e102088
+#define A2W_HDMI_CTL3 0x7e10208c
+
 static void vc4_hdmi_set_timings(void);
 static void vc4_hdmi_phy_init(void);
 static void vc4_hdmi_reset(void);
 
 static void hdmi_init(uint level) {
   power_up_usb();
+  hdmi_enable_power_domain();
   //setup_pllh(1 * 1000 * 1000 * 1000);
+
+  // related to hdmi boost
+  *REG32(A2W_HDMI_CTL3) = PM_PASSWORD | 0x40;
+  *REG32(A2W_HDMI_CTL2) = PM_PASSWORD | 0x18008e;
+  *REG32(A2W_HDMI_CTL1) = PM_PASSWORD | 0x11c00;
+  *REG32(A2W_HDMI_CTL0) = PM_PASSWORD | 0x470238;
 
   clock_set_hsm(MHZ_TO_HZ(125), PERI_PLLC_PER);
   vc4_hdmi_reset();

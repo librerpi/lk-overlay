@@ -1,7 +1,12 @@
 #pragma once
 
+#include <stdlib.h>
 #include <climits>
 #include <math.h>
+#ifdef WITH_OSTREAM
+#include <ostream>
+#endif
+#include <stdint.h>
 
 template<typename storage, int integer, int fraction> class Fixed {
 static_assert(fraction + integer <= sizeof(storage) * CHAR_BIT);
@@ -17,9 +22,9 @@ public:
     if (fraction == 0) {
       s = value;
     } else if (fraction > 0) {
-      s = value << (int)abs(fraction);
+      s = value << (int)fabs(fraction);
     } else {
-      s = value >> (int)abs(fraction);
+      s = value >> (int)fabs(fraction);
     }
   }
 
@@ -69,7 +74,7 @@ public:
   }
 
   template<int drop> Fixed<storage, integer-drop, fraction> dropMSB() {
-    return Fixed<storage, integer-drop, fraction>(s & ((1 << (integer-drop)) - 1), true);
+    return Fixed<storage, integer-drop, fraction>(s & ((1 << ((integer+fraction)-drop)) - 1), true);
   }
 
   template<typename outtype> Fixed<outtype, integer, fraction> expand() {
@@ -90,3 +95,20 @@ public:
 
   storage s;
 };
+
+#ifdef WITH_OSTREAM
+template<typename storage, int integer, int fraction> std::ostream& operator<<(std::ostream &os, Fixed<storage,integer,fraction> &num) {
+  Fixed<uint64_t,integer,fraction> bigger = num.template expand<uint64_t>();
+
+  char buffer[64];
+  snprintf(buffer, 63, "%lu/0x%lx", (int64_t)bigger.getIntger(), (int64_t)bigger.getIntger());
+
+  if (fraction == 0) {
+    return os << "Fixed<storage," << integer << "," << fraction << "> " << (uint64_t)num.s << "/" << buffer;
+  } else if (fraction > 0) {
+    return os << "Fixed<storage," << integer << "," << fraction << "> " << bigger.getFloat() << " (" << num.s << ")";
+  } else {
+    return os << "Fixed<storage," << integer << "," << fraction << "> " << bigger.getFloat() << "/" << buffer << " (" << num.s << ")";
+  }
+}
+#endif

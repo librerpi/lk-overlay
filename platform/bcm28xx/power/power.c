@@ -22,6 +22,21 @@ STATIC_COMMAND("pm_usb_on", "enable usb power domain", &cmd_pm_usb_on)
 STATIC_COMMAND_END(pm);
 
 #ifdef ARCH_VPU
+void hdmi_enable_power_domain(void) {
+  static bool domain_enabled = false;
+  if (domain_enabled) return;
+  puts("bringing HDMI domain online");
+
+  *REG32(PM_HDMI) |= PM_PASSWORD | PM_HDMI_RSTDR;
+  *REG32(PM_HDMI) |= PM_PASSWORD | PM_HDMI_CTRLEN;
+  uint32_t t = *REG32(PM_HDMI);
+  *REG32(PM_HDMI) = PM_PASSWORD | (t & ~PM_HDMI_LDOPD);
+  udelay(100);
+  *REG32(PM_HDMI) = PM_PASSWORD | (*REG32(PM_HDMI) & ~PM_HDMI_RSTDR);
+
+  domain_enabled = true;
+}
+
 void power_up_image(void) {
   puts("image domain starting...");
   //dumpreg(PM_IMAGE);

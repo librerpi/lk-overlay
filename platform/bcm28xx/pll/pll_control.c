@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <lk/bits.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
@@ -9,6 +10,8 @@
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdint.h>
+
+#include <fixed-point/util.h>
 
 #define PLL_MAX_LOCKWAIT 1000
 
@@ -24,7 +27,7 @@ uint64_t freq_plla_core;
 uint64_t freq_plla_per;
 
 unsigned int freq_pllc_core0;
-uint64_t freq_pllc_per;
+uint32_t freq_pllc_per;
 
 uint64_t freq_pllh_aux;
 
@@ -504,23 +507,29 @@ void switch_vpu_to_src(int src) {
 
 // linux source says PLLC has a range of 600mhz to 3ghz
 // above 1.75ghz, the pre-div should be enabled
-void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
-  printf("bringing PLLC up at %lldMHz\n", target_freq/1000/1000);
+void setup_pllc(uint32_t target_freq, int core0_div, int per_div) {
+  printf("bringing PLLC up at %dMHz\n", target_freq/1000/1000);
   int pdiv = 1;
   bool prediv = true;
-  uint64_t xtal_in = xtal_freq;
-  printf("xtal_in = %llu\n", xtal_in);
+  uint32_t xtal_in = xtal_freq;
+  printf("xtal_in = %u\n", xtal_in);
   uint64_t goal_freq = target_freq;
 
   // if over 1.75ghz, enable an extra /2 stage
   if (prediv) goal_freq /= 2;
 
+  uint32_t other_division = computePllDivisor(xtal_in/1000, goal_freq/1000);
+
   printf("goal_freq = %llu\n", goal_freq);
-  uint64_t divisor = (goal_freq<<20) / xtal_in;
+  //uint32_t divisor = (goal_freq<<20) / xtal_in;
+  uint32_t divisor = other_division;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
-  printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("other divisor: 0x%x\n", other_division);
   //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLC_CTRL), *REG32(A2W_PLLC_FRAC));
+
+  assert(other_division == divisor);
 
   const bool core0_enable = true;
   const bool core1_enable = false;
@@ -590,22 +599,25 @@ void setup_pllc(uint64_t target_freq, int core0_div, int per_div) {
 
 // linux source says PLLC has a range of 600mhz to 2.4ghz
 // above 1.75ghz, the pre-div should be enabled
-void setup_plla(uint64_t target_freq, int core_div, int per_div) {
-  printf("bringing PLLA up at %lldMHz\n", target_freq/1000/1000);
+void setup_plla(uint32_t target_freq, int core_div, int per_div) {
+  printf("bringing PLLA up at %dMHz\n", target_freq/1000/1000);
   int pdiv = 1;
   bool prediv = false;
-  uint64_t xtal_in = xtal_freq;
-  printf("xtal_in = %llu\n", xtal_in);
+  uint32_t xtal_in = xtal_freq;
+  printf("xtal_in = %u\n", xtal_in);
   uint64_t goal_freq = target_freq;
 
   // if over 1.75ghz, enable an extra /2 stage
   if (prediv) goal_freq /= 2;
 
+  uint32_t other_division = computePllDivisor(xtal_in/1000, goal_freq/1000);
+
   printf("goal_freq = %llu\n", goal_freq);
-  uint64_t divisor = (goal_freq<<20) / xtal_in;
+  //uint32_t divisor = (goal_freq<<20) / xtal_in;
+  uint32_t divisor = other_division;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
-  printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
   //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLA_CTRL), *REG32(A2W_PLLA_FRAC));
 
   const bool core_enable = false;
@@ -674,24 +686,20 @@ void setup_plla(uint64_t target_freq, int core_div, int per_div) {
   //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
 }
 
-void setup_pllh(uint64_t target_freq, int aux_div, int pix_div) {
-  printf("bringing PLLH up at %lldMHz\n", target_freq/1000/1000);
+void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
+  printf("bringing PLLH up at %dMHz\n", target_freq/1000/1000);
 
-  *REG32(PM_HDMI) = PM_PASSWORD | *REG32(PM_HDMI) | PM_HDMI_RSTDR;
-  *REG32(PM_HDMI) = PM_PASSWORD | *REG32(PM_HDMI) | PM_HDMI_CTRLEN;
-  *REG32(PM_HDMI) = PM_PASSWORD | (*REG32(PM_HDMI) & ~PM_HDMI_LDOPD);
-  udelay(100);
-  *REG32(PM_HDMI) = PM_PASSWORD | (*REG32(PM_HDMI) & ~PM_HDMI_RSTDR);
+  hdmi_enable_power_domain();
 
   int pdiv = 1;
-  uint64_t xtal_in = xtal_freq;
-  printf("xtal_in = %llu\n", xtal_in);
+  uint32_t xtal_in = xtal_freq;
+  printf("xtal_in = %u\n", xtal_in);
   uint64_t goal_freq = target_freq;
   printf("goal_freq = %llu\n", goal_freq);
-  uint64_t divisor = (goal_freq<<20) / xtal_in;
+  uint32_t divisor = (goal_freq<<20) / xtal_in;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
-  printf("divisor 0x%llx -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLL_ANARST_SET;
