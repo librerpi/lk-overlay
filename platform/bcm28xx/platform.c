@@ -426,13 +426,24 @@ static void pi4_pllc(void) {
   vpu_clock_updated(core0_div, vpu_divisor);
 }
 
+#define USB_DCTL      (USB_BASE + 0x0804)
+#define BIT(b) (1 << b)
+
 void platform_early_init(void) {
     platform_init_timestamp = *REG32(ST_CLO);
     uart_init_early();
+    logf("b\n");
+
+    // soft-disconnect, so the usb host doesnt spew errors
+    *REG32(USB_DCTL) = BIT(1);
+
+#ifdef ARCH_ARM64
+  __asm__ volatile("msr daifclr, #4" ::: "memory");
+#endif
 
     intc_init();
 
-    logf("\n");
+    logf("c\n");
 
 #ifdef ARCH_VPU
     uint32_t rsts = *REG32(PM_RSTS);
