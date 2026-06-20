@@ -27,6 +27,7 @@
 #define CM_HSMCTL (CM_BASE + 0x088)
 #define CM_HSMCTL_ENAB_SET                                 0x00000010
 #define CM_HSMCTL_KILL_SET                                 0x00000020
+#define CM_HSMCTL_BUSY_SET                                 0x00000080
 #define CM_HSMDIV (CM_BASE + 0x08c)
 
 #define CM_GPnCTL_MASH_SET      0x00000600
@@ -80,6 +81,7 @@
 #define CM_PLLC_DIGRST_SET                                 0x00000200
 #define CM_PLL_ANARST_SET                                 0x00000100
 #define CM_PLLC_HOLDPER_SET                                0x00000080
+#define CM_PLLC_LOADPER_SET                                0x00000040
 #define CM_PLLC_HOLDCORE2_SET                              0x00000020
 
 #define CM_PLLC_HOLDCORE1_SET                              0x00000008
