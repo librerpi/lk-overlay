@@ -101,10 +101,7 @@ else ifeq ($(TARGET),rpi3)
 
   MODULE_SRCS += $(LOCAL_DIR)/uart.c
 
-  MODULE_DEPS += \
-    app/shell \
-    app/tests \
-    lib/fdt
+  MODULE_DEPS += lib/fdt
 else ifeq ($(TARGET),rpi3-vpu)
   MMIO_BASE_PHYS = 0x7e000000
   MMIO_BASE_VIRT = 0x7e000000
