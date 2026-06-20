@@ -1,3 +1,7 @@
+#if 0
+#define GFX
+#endif
+
 #include <app.h>
 #include <arch.h>
 #include <arch/ops.h>
@@ -17,7 +21,9 @@
 #include <lk/trace.h>
 #include <platform.h>
 #include <platform/bcm28xx/clock.h>
+#ifdef GFX
 #include <platform/bcm28xx/hvs.h>
+#endif
 #include <platform/bcm28xx/inter-arch.h>
 #include <platform/bcm28xx/platform.h>
 #include <platform/bcm28xx/print_timestamp.h>
@@ -27,6 +33,12 @@
 #include <target.h>
 #ifdef WITH_LIB_TINYUSB
 #include <usbhooks.h>
+#endif
+
+#ifdef WITH_LIB_LWIP
+#include <lwip/netif.h>
+#include <lwip/dhcp.h>
+#include <net-utils.h>
 #endif
 
 #if defined(ARCH_ARM)
@@ -49,6 +61,10 @@ struct ranges {
   uint32_t size;
 };
 
+#ifdef WITH_LIB_LWIP
+static struct netif *last_netif = NULL;
+#endif
+
 bool load_kernel(void**, size_t *);
 static bool patch_dtb(uint32_t initrd_size);
 static void execute_linux(void);
@@ -67,6 +83,8 @@ static bool map_physical(uint32_t phys_addr, void **virt_addr, uint32_t size, co
 void *kernel_virtual;
 void *dtb_virtual;
 void *initrd_virtual;
+const char *dtb_name;
+const char *kernel_name;
 
 // TODO, put this logic into its own file and share with stage1
 typedef struct {
@@ -145,8 +163,129 @@ static void maybe_load_initrd(size_t *size) {
   fs_close_file(fh);
 }
 
+static void decide_kernel_name(void) {
+  uint32_t type = (hw_revision >> 4) & 0xff;
+
+  switch (type) {
+  case 0: // 1a
+  case 1: // 1b
+  case 2: // 1a+
+  case 3: // 1b+
+  case 9: // zero
+  case 0xc: // zero-w
+    dtb_name = "rpi1.dtb";
+    kernel_name = "zImage-v6";
+    break;
+  case 4: // 2b
+  case 6: // cm1
+    dtb_name = "rpi2.dtb";
+    kernel_name = "zImage";
+    break;
+  case 8: // 3b
+  case 0xa: // CM3
+  case 0xd: // 3b+
+  case 0xe: // 3a+
+  case 0x10: // CM3+
+  case 0x12: // zero-2-w
+    dtb_name = "rpi3.dtb";
+    kernel_name = "Image-aarch64";
+    break;
+  }
+  printf("dtb: %s, kernel: %s\n", dtb_name, kernel_name);
+}
+
+#ifdef WITH_LIB_LWIP
+static bool network_load_kernel(ip_addr_t hostip) {
+  char namebuffer[64];
+#ifndef TARGET_RPI1
+  if (!map_physical(KERNEL_LOAD_ADDRESS, &kernel_virtual, 32 * MB, "zImage")) {
+    puts("unable to map kernel");
+    return false;
+  }
+#else
+  kernel_virtual = (void*)KERNEL_LOAD_ADDRESS;
+#endif
+  snprintf(namebuffer, 64, "rpi/%s", kernel_name);
+  ssize_t kernel_size = tftp_blocking_get(hostip, namebuffer, 32 * MB, kernel_virtual);
+  printf("got %ld bytes of kernel\n", kernel_size);
+  if (kernel_size < 0) return false;
+
+#ifndef TARGET_RPI1
+  if (!map_physical(DTB_LOAD_ADDRESS, &dtb_virtual, 1 * MB, "raw dtb")) {
+    puts("unable to map dtb");
+    return false;
+  }
+#else
+  dtb_virtual = (void*)DTB_LOAD_ADDRESS;
+#endif
+
+  snprintf(namebuffer, 64, "rpi/%s", dtb_name);
+  puts("getting dtb");
+  ssize_t dtb_size = tftp_blocking_get(hostip, namebuffer, 1*MB, dtb_virtual);
+  printf("got %ld bytes of dtb\n", dtb_size);
+  if (dtb_size < 0) return false;
+
+  return true;
+}
+
+static ssize_t network_maybe_load_initrd(ip_addr_t hostip) {
+  return 0;
+#ifndef TARGET_RPI1
+  if (!map_physical(INITRD_LOAD_ADDRESS, &initrd_virtual, 16 * MB, "initrd")) {
+    puts("unable to map initrd");
+    return -1;
+  }
+#else
+  initrd_virtual = (void*)INITRD_LOAD_ADDRESS;
+#endif
+
+  return tftp_blocking_get(hostip, "rpi/initrd", 16 * MB, initrd_virtual);
+}
+
+static void try_to_netboot(void) {
+  decide_kernel_name();
+  ip_addr_t hostip;
+  if (netif_is_up(last_netif)) {
+    const struct dhcp *d = netif_dhcp_data(last_netif);
+    if (d) {
+      hostip = d->offered_si_addr;
+    } else return;
+  } else return;
+
+  if (!network_load_kernel(hostip)) return;
+
+  ssize_t initrd_size = network_maybe_load_initrd(hostip);
+
+  if (initrd_size < 0) initrd_size = 0;
+
+  if (!patch_dtb(initrd_size)) {
+    return;
+  }
+  thread_sleep(1000);
+#ifdef ARCH_ARM64
+  linux_header_t *header = kernel_virtual;
+  printf("text_offset: 0x%llx\n", header->text_offset);
+  printf("image_size: 0x%llx\n", header->image_size);
+  printf("flags: 0x%llx\n", header->flags);
+  printf("magic: 0x%x\n", header->magic);
+#endif
+  prepare_arm_core();
+  execute_linux();
+  thread_sleep(1000);
+  puts("linux didnt execute, thread exiting");
+}
+#endif
+
 static void try_to_boot(const char *device) {
   logf("trying to boot from %s\n", device);
+
+#ifdef WITH_LIB_LWIP
+  if (strcmp(device, "network") == 0) {
+    try_to_netboot();
+    return;
+  }
+#endif
+
   int ret = fs_mount("/root", "ext2", device);
   if (ret) {
     printf("mount failure: %d\n", ret);
@@ -244,39 +383,8 @@ bool load_kernel(void **buf, size_t *size) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   void *buffer;
   char namebuffer[64];
-  const char *name;
-  uint32_t type = (hw_revision >> 4) & 0xff;
-  const char *kernel_suffix;
 
-  switch (type) {
-  case 0: // 1a
-  case 1: // 1b
-  case 2: // 1a+
-  case 3: // 1b+
-  case 9: // zero
-  case 0xc: // zero-w
-    name = "rpi1.dtb";
-    kernel_suffix = "zImage-v6";
-    break;
-  case 4: // 2b
-  case 6: // cm1
-    name = "rpi2.dtb";
-    kernel_suffix = "zImage-v7";
-    break;
-  case 8: // 3b
-  case 0xa: // CM3
-  case 0xd: // 3b+
-  case 0xe: // 3a+
-  case 0x10: // CM3+
-  case 0x12: // zero-2-w
-    name = "rpi3.dtb";
-    kernel_suffix = "Image-aarch64";
-    break;
-  default:
-    return false;
-  }
-
-  printf("dtb: %s, kernel: %s\n", name, kernel_suffix);
+  decide_kernel_name();
 
 #ifndef TARGET_RPI1
   if (!map_physical(KERNEL_LOAD_ADDRESS, &kernel_virtual, 32 * MB, "zImage")) {
@@ -287,7 +395,7 @@ bool load_kernel(void **buf, size_t *size) {
   kernel_virtual = (void*)KERNEL_LOAD_ADDRESS;
 #endif
 
-  snprintf(namebuffer, 64, "/root/boot/%s", kernel_suffix);
+  snprintf(namebuffer, 64, "/root/boot/%s", kernel_name);
   buffer = read_file(kernel_virtual, 32 * MB, namebuffer);
   if (!buffer) {
     puts("failed to read kernel file");
@@ -303,7 +411,7 @@ bool load_kernel(void **buf, size_t *size) {
   dtb_virtual = (void*)DTB_LOAD_ADDRESS;
 #endif
 
-  snprintf(namebuffer, 64, "/root/boot/%s", name);
+  snprintf(namebuffer, 64, "/root/boot/%s", dtb_name);
   buffer = read_file(dtb_virtual, 1 * MB, namebuffer);
   if (!buffer) {
     puts("failed to read DTB file");
@@ -346,14 +454,19 @@ static bool patch_dtb(uint32_t initrd_size) {
   } else {
     //const char *cmdline = "print-fatal-signals=1 earlyprintk loglevel=7 root=/dev/mmcblk0p2 rootdelay=10 init=/nix/store/9c3jx4prcwabhps473p44vl2c4x9rxhm-nixos-system-nixos-20.09pre-git/init console=tty1 console=ttyAMA0 user_debug=31";
 
+#if 0
     char *cmdline = read_file(NULL, 0, "/root/boot/cmdline.txt");
+#else
+    const char *cmdline = "earlyprintk console=ttyAMA0 root=/dev/mmcblk0p1 rootwait";
+#endif
     if (!cmdline) {
       puts("error reading cmdline.txt");
       return false;
     }
+    //cmdline = strdup("systemConfig=/nix/store/zd8szli5dliy4c93kih9cmsbnb25phdb-nixos-system-pi3-23.11pre-git init=/nix/store/zd8szli5dliy4c93kih9cmsbnb25phdb-nixos-system-pi3-23.11pre-git/init console=tty1 kgdboc=ttyAMA0,115200 drm.debug=0x4 loglevel=7 console=ttyAMA0,115200 earlycon=pl011,0x20201000");
     ret = fdt_setprop_string(v_fdt, chosen, "bootargs", cmdline);
     printf("kernel cmdline is: %s\n", cmdline);
-    free(cmdline);
+    //free(cmdline);
 
     if (initrd_size) {
       uint32_t value = htonl((uint32_t)INITRD_LOAD_ADDRESS);
@@ -522,7 +635,7 @@ static void prepare_arm_core(void) {
   bool need_timer = true; // FIXME, only on pi2/pi3
   bool unlock_coproc = true; // FIXME, only on pi2/pi3
   if (need_timer) {
-    arm_write_cntfrq(1000000);
+    arm_write_cntfrq(19200 * 1000);
   }
   if (unlock_coproc) {
     // NSACR = all copros to non-sec
@@ -545,10 +658,18 @@ static void dump_random_arm_regs(void) {
 #endif
 }
 
+#ifdef GFX
+volatile uint32_t* dlist_memory = REG32(SCALER_LIST_MEMORY);
+#endif
+
 static void loader_entry(const struct app_descriptor *app, void *args) {
   uint32_t sp; asm volatile("mov %0, sp": "=r"(sp)); printf("SP: 0x%x\n", sp);
   if (arch_ints_disabled()) puts("interrupts off??");
+  //__asm__ volatile("msr daifclr, #4" ::: "memory");
 
+  //printf("SCALER_DISPECTRL: 0x%x\n", *REG32(SCALER_DISPECTRL));
+  //dlist_memory[0] = 0x1234;
+  //mb();
   add_boot_target("sdhostp1");
 
   while (true) {
@@ -585,7 +706,28 @@ static void loader_msd_probed(const char *name) {
   }
 }
 
+#ifdef WITH_LIB_LWIP
+NETIF_DECLARE_EXT_CALLBACK(loader_ctx);
+
+static void loader_status(struct netif *netif, netif_nsc_reason_t reason, const netif_ext_callback_args_t *arg) {
+  if (netif_is_up(netif)) {
+    const struct dhcp *d = netif_dhcp_data(netif);
+    if (d) {
+      last_netif = netif;
+      add_boot_target("network");
+    }
+  }
+}
+#endif
+
+static void loader_init(const struct app_descriptor *app) {
+#ifdef WITH_LIB_LWIP
+  netif_add_ext_callback(&loader_ctx, loader_status);
+#endif
+}
+
 APP_START(loader)
+  .init = loader_init,
   .entry = loader_entry,
 APP_END
 
