@@ -30,6 +30,13 @@
 #define HD_MAI_DAT                  (HD_BASE + 0x20)
 #define HD_VID_CTL                  (HD_BASE + 0x38)
 #define HD_CSC_CTL                  (HD_BASE + 0x40)
+#define HD_CSC_CTL_ORDER(order) ((order & 7) << 5)
+#define HD_CSC_CTL_ORDER_RGB 0
+#define HD_CSC_CTL_ORDER_BGR 1
+#define HD_CSC_CTL_ORDER_BRG 2
+#define HD_CSC_CTL_ORDER_GRB 3
+#define HD_CSC_CTL_ORDER_GBR 4
+#define HD_CSC_CTL_ORDER_RBG 5
 #define HD_CSC_12_11                (HD_BASE + 0x44)
 #define HD_CSC_14_13                (HD_BASE + 0x48)
 #define HD_CSC_22_21                (HD_BASE + 0x4c)
@@ -37,7 +44,6 @@
 #define HD_CSC_32_31                (HD_BASE + 0x54)
 #define HD_CSC_34_33                (HD_BASE + 0x58)
 // CSC_CTL bits: ENABLE=bit0, RGB2YCC=bit1, MODE_CUSTOM=3<<2, ORDER_BGR=1<<5
-#define HD_CSC_CTL_VALUE      0x2f
 // frame counter reset
 #define HD_VID_CTL_RST_FRAMEC       BIT(29)
 // underflow enable
@@ -162,7 +168,8 @@ static void hdmi_init(uint level) {
   *REG32(HD_CSC_24_23) = (0x100 << 16) | 0x000;
   *REG32(HD_CSC_32_31) = (0x000 << 16) | 0x6e0;
   *REG32(HD_CSC_34_33) = (0x100 << 16) | 0x000;
-  *REG32(HD_CSC_CTL)   = 0; //HD_CSC_CTL_VALUE;
+#define HD_CSC_CTL_VALUE      0x2f
+  *REG32(HD_CSC_CTL)   = HD_CSC_CTL_ORDER(HD_CSC_CTL_ORDER_BGR); //HD_CSC_CTL_VALUE;
 
   // Match working BCM2835 Raspbian ramdump exactly: ENABLE(bit31) | UNDERFLOW_ENABLE(bit30) = 0xc0000000.
   *REG32(HD_VID_CTL) = HD_VID_CTL_ENABLE | HD_VID_CTL_UFEN;
