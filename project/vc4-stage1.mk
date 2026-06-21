@@ -20,7 +20,7 @@ CONFIG_GFX ?= 0
 CONFIG_NET ?= 0
 CONFIG_SD_BOOT ?= 0
 TUH_MSC ?= 0
-DEBUG := 0
+DEBUG := 2
 
 ifeq ($(CONFIG_SD_BOOT),1)
   MODULES += platform/bcm28xx/sdhost
@@ -33,6 +33,11 @@ endif
 
 ifeq ($(CONFIG_DISK),1)
   MODULES += lib/fs/ext2 lib/partition lib/fs
+endif
+
+ifeq ($(CONFIG_HDMI),1)
+  MODULES += lib/gfxconsole
+  MODULES += platform/bcm28xx/vc4-hdmi
 endif
 
 ifeq ($(CONFIG_GFX),1)
