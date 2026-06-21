@@ -1,5 +1,7 @@
 #pragma once
 
+#include <platform/bcm28xx.h>
+
 #define CM_PASSWORD 0x5a000000
 
 #define CM_VPUCTL               (CM_BASE + 0x008)
@@ -37,7 +39,7 @@
 #define CM_GPnCTL_BUSY_SET      0x00000080
 
 #define CM_PWMCTL (CM_BASE + 0x0a0)
-#define CM_PWMCTL_ENABLE     1<<4
+#define CM_PWMCTL_ENABLE     (1<<4)
 #define CM_PWMCTL_MASH_LSB   9
 #define CM_PWMDIV (CM_BASE + 0x0a4)
 
