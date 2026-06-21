@@ -533,9 +533,11 @@ void setup_pllc(uint32_t target_freq, int core0_div, int per_div) {
 
   const bool core0_enable = true;
   const bool core1_enable = false;
+  const bool per_enable = true;
   // which clocks to keep held when turning it all on
-  const uint32_t holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0);
-  const uint32_t loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0);
+  const uint32_t holdflags = (!core0_enable ? CM_PLLC_HOLDCORE0_SET : 0) | (!core1_enable ? CM_PLLC_HOLDCORE1_SET : 0) | (!per_enable ? CM_PLLC_HOLDPER_SET : 0);
+  // LOAD pulses latch each channel's A2W divider; without it the channel never starts
+  const uint32_t loadflags = (core0_enable ? CM_PLLC_LOADCORE0_SET : 0) | (core1_enable ? CM_PLLC_LOADCORE1_SET : 0) | (per_enable ? CM_PLLC_LOADPER_SET : 0);
 
   *REG32(CM_PLLC) = CM_PASSWORD | CM_PLL_ANARST_SET;
 
@@ -721,18 +723,14 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
   /* hold all */
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
 
-  *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x0;
-  *REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x400000;
-  *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x5;
-  *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
+  // DIG values from BCM2835 Pi Zero working Raspbian ramdump (VCO=1485MHz operating point).
+  *REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x00000045;
+  *REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x00060128;
+  *REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x00134800;
+  *REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | 0x002c0020;
 
   *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv) | A2W_PLL_CTRL_PRSTN_SET;
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
-
-  //*REG32(A2W_PLLH_DIG3) = A2W_PASSWORD | 0x42;
-  //*REG32(A2W_PLLH_DIG2) = A2W_PASSWORD | 0x500401;
-  //*REG32(A2W_PLLH_DIG1) = A2W_PASSWORD | 0x4005;
-  //*REG32(A2W_PLLH_DIG0) = A2W_PASSWORD | div | 0x555000;
 
   *REG32(A2W_PLLH_PIX) = A2W_PASSWORD | pix_div;
   *REG32(A2W_PLLH_AUX) = A2W_PASSWORD | aux_div;
@@ -750,6 +748,11 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
   printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+
+  // Deassert the digital reset so the PIX/AUX channel dividers actually run.
+  // Working firmware leaves CM_PLLH = 0x00; we were leaving DIGRST asserted,
+  // which kept PLLH's channels (the HDMI pixel clock) gated.
+  *REG32(CM_PLLH) = CM_PASSWORD;
 
   freq_pllh_aux = target_freq / aux_div;
 }
@@ -819,7 +822,7 @@ bool clock_set_hsm(int freq, enum peripheral_clock_tap source) {
   int mash = 0;
   printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
   if (divisor_fixed < 0x2000) {
-    puts("divisor too low, abort!");
+    printf("divisor %f too low, abort!\n", (double)desired_divider);
     return false;
   }
   if (divisor_fixed >= 0x1000000) {
@@ -827,7 +830,25 @@ bool clock_set_hsm(int freq, enum peripheral_clock_tap source) {
     return false;
   }
   if (divisor_fixed & 0xfff) mash = 1;
+
+  // Never flip ENABLE and SRC in the same write.
+  // stop the generator and wait for it to actually idle
+  *REG32(CM_HSMCTL) = CM_PASSWORD | (*REG32(CM_HSMCTL) & ~CM_PWMCTL_ENABLE);
+  while (*REG32(CM_HSMCTL) & CM_HSMCTL_BUSY_SET) {}
+  // program divider and select the source (still disabled)
   *REG32(CM_HSMDIV) = CM_PASSWORD | divisor_fixed;
-  *REG32(CM_HSMCTL) = CM_PASSWORD | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
+  *REG32(CM_HSMCTL) = CM_PASSWORD | source | mash<<CM_PWMCTL_MASH_LSB;
+  // enable and wait for the generator to come up
+  *REG32(CM_HSMCTL) = CM_PASSWORD | CM_VPUCTL_GATE_SET | CM_PWMCTL_ENABLE | source | mash<<CM_PWMCTL_MASH_LSB;
+
+  for (int i = 0; i < 100000; i++) {
+    if (*REG32(CM_HSMCTL) & CM_HSMCTL_BUSY_SET) break;
+  }
+  uint32_t hsmctl = *REG32(CM_HSMCTL);
+  printf("CM_HSMCTL: 0x%x (BUSY=%d)\n", hsmctl, !!(hsmctl & CM_HSMCTL_BUSY_SET));
+  if (!(hsmctl & CM_HSMCTL_BUSY_SET)) {
+    puts("HSM clock failed to start -- source not running?");
+    return false;
+  }
   return true;
 }
