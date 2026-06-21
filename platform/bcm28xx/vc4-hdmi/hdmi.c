@@ -18,17 +18,26 @@
 
 #define BIT(n) (1<<n)
 
-#define HD_HDM_CTL                  0x7e80800c
+#define HD_HDM_CTL                  (HD_BASE + 0xc)
 #define HD_HDM_CTL_ENABLE           BIT(0)
 #define HD_HDM_CTL_ENDIAN           BIT(1)
 #define HD_HDM_CTL_SW_RST           BIT(2)
 // bit9 reads 1 in working firmware but is read-only status (doesn't latch on
 // write) -- it reflects the core being up, it does not cause it.
-#define HD_MAI_CTL                  0x7e808014
-#define HD_MAI_THR                  0x7e808018
-#define HD_MAI_FMT                  0x7e80801c
-#define HD_MAI_DAT                  0x7e808020
-#define HDMI_VID_CTL                0x7e808038
+#define HD_MAI_CTL                  (HD_BASE + 0x14)
+#define HD_MAI_THR                  (HD_BASE + 0x18)
+#define HD_MAI_FMT                  (HD_BASE + 0x1c)
+#define HD_MAI_DAT                  (HD_BASE + 0x20)
+#define HD_VID_CTL                  (HD_BASE + 0x38)
+#define HD_CSC_CTL                  (HD_BASE + 0x40)
+#define HD_CSC_12_11                (HD_BASE + 0x44)
+#define HD_CSC_14_13                (HD_BASE + 0x48)
+#define HD_CSC_22_21                (HD_BASE + 0x4c)
+#define HD_CSC_24_23                (HD_BASE + 0x50)
+#define HD_CSC_32_31                (HD_BASE + 0x54)
+#define HD_CSC_34_33                (HD_BASE + 0x58)
+// CSC_CTL bits: ENABLE=bit0, RGB2YCC=bit1, MODE_CUSTOM=3<<2, ORDER_BGR=1<<5
+#define HD_CSC_CTL_VALUE      0x2f
 // frame counter reset
 #define HD_VID_CTL_RST_FRAMEC       BIT(29)
 // underflow enable
@@ -55,15 +64,6 @@
 #define HDMI_HORZA            0x7e9020c4
 #define HDMI_HORZB            0x7e9020c8
 
-#define HDMI_CSC_CTL          0x7e808040
-#define HDMI_CSC_12_11        0x7e808044
-#define HDMI_CSC_14_13        0x7e808048
-#define HDMI_CSC_22_21        0x7e80804c
-#define HDMI_CSC_24_23        0x7e808050
-#define HDMI_CSC_32_31        0x7e808054
-#define HDMI_CSC_34_33        0x7e808058
-// CSC_CTL bits: ENABLE=bit0, RGB2YCC=bit1, MODE_CUSTOM=3<<2, ORDER_BGR=1<<5
-#define HD_CSC_CTL_VALUE      0x2f
 
 #define HDMI_MISC_CONTROL     0x7e9020e4
 
@@ -98,7 +98,6 @@
 static void vc4_hdmi_set_timings(const struct pv_timings *t);
 static void vc4_hdmi_phy_init(void);
 static void vc4_hdmi_reset(void);
-
 
 static void hdmi_init(uint level) {
   power_up_usb();
@@ -157,16 +156,16 @@ static void hdmi_init(uint level) {
   printf("HDMI_FIFO_CTL: 0x%x\n", *REG32(HDMI_FIFO_CTL));
 
   // RGB->YCC CSC matching working firmware (HD_CSC_CTL=0x2f)
-  *REG32(HDMI_CSC_12_11) = (0x000 << 16) | 0x000;
-  *REG32(HDMI_CSC_14_13) = (0x100 << 16) | 0x6e0;
-  *REG32(HDMI_CSC_22_21) = (0x6e0 << 16) | 0x000;
-  *REG32(HDMI_CSC_24_23) = (0x100 << 16) | 0x000;
-  *REG32(HDMI_CSC_32_31) = (0x000 << 16) | 0x6e0;
-  *REG32(HDMI_CSC_34_33) = (0x100 << 16) | 0x000;
-  *REG32(HDMI_CSC_CTL)   = 0; //HD_CSC_CTL_VALUE;
+  *REG32(HD_CSC_12_11) = (0x000 << 16) | 0x000;
+  *REG32(HD_CSC_14_13) = (0x100 << 16) | 0x6e0;
+  *REG32(HD_CSC_22_21) = (0x6e0 << 16) | 0x000;
+  *REG32(HD_CSC_24_23) = (0x100 << 16) | 0x000;
+  *REG32(HD_CSC_32_31) = (0x000 << 16) | 0x6e0;
+  *REG32(HD_CSC_34_33) = (0x100 << 16) | 0x000;
+  *REG32(HD_CSC_CTL)   = 0; //HD_CSC_CTL_VALUE;
 
   // Match working BCM2835 Raspbian ramdump exactly: ENABLE(bit31) | UNDERFLOW_ENABLE(bit30) = 0xc0000000.
-  *REG32(HDMI_VID_CTL) = HD_VID_CTL_ENABLE | HD_VID_CTL_UFEN;
+  *REG32(HD_VID_CTL) = HD_VID_CTL_ENABLE | HD_VID_CTL_UFEN;
   // HDMI mode: set MODE_HDMI and wait for HDMI_ACTIVE to go high.
   *REG32(HDMI_RAM_PACKET_CONFIG) &= ~VC4_HDMI_RAM_PACKET_ENABLE;
   *REG32(HDMI_SCHEDULER_CONTROL) |= VC4_HDMI_SCHEDULER_CONTROL_MODE_HDMI;

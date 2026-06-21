@@ -54,6 +54,7 @@
 #define EMMC_BASE               (BCM_PERIPH_BASE_VIRT + 0x300000)
 #define SMI_BASE                (BCM_PERIPH_BASE_VIRT + 0x600000)
 #define BSC1_BASE               (BCM_PERIPH_BASE_VIRT + 0x804000)
+#define HD_BASE                 (BCM_PERIPH_BASE_VIRT + 0x808000)
 #define USB_BASE                (BCM_PERIPH_BASE_VIRT + 0x980000)
 #define SD_BASE                 (BCM_PERIPH_BASE_VIRT + 0xe00000)
 #define GENET_BASE              (0x7d580000) // TODO, this is before the normal BCM_PERIPH_BASE_VIRT bank
