@@ -65,7 +65,7 @@ unsigned int getPvIrq(int pvnr) {
   }
 }
 
-void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
+void setup_pixelvalve(const struct pv_timings *t, enum clock_source clock_mux, int pvnr) {
   struct pixel_valve *rawpv = getPvAddr(pvnr);
   printf("setup_pixelvalve, pvnr=%d, %dx%d\n", pvnr, t->hactive, t->vactive);
 
@@ -103,11 +103,11 @@ void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
   fifo_len_bytes = fifo_len_bytes - 3 * 6;
 
   int clk = 0;
-  if (t->clock_mux == clk_dpi_smi_hdmi) clk = PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI;
+  if (clock_mux == clk_dpi_smi_hdmi) clk = PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI;
 #ifdef RPI4
   else if (t->clock_mux == clk_vec) clk = 0;
 #else
-  else if (t->clock_mux == clk_vec) clk = PV_CONTROL_CLK_SELECT_VEC;
+  else if (clock_mux == clk_vec) clk = PV_CONTROL_CLK_SELECT_VEC;
 #endif
 
   rawpv->c = PV_CONTROL_EN |

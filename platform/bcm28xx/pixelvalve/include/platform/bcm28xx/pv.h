@@ -12,7 +12,7 @@ struct pv_timings {
   uint16_t hfp, hsync, hbp, hactive;
   uint16_t vfp_even, vsync_even, vbp_even, vactive_even;
   bool interlaced;
-  enum clock_source clock_mux;
+  uint16_t fps;
 };
 
 struct pixel_valve {
@@ -30,7 +30,7 @@ struct pixel_valve {
   volatile uint32_t h_active;
 };
 
-void setup_pixelvalve(const struct pv_timings *timings, int pvnr);
+void setup_pixelvalve(const struct pv_timings *timings, enum clock_source clock_mux, int pvnr);
 void setup_pv_interrupt(int pvnr, int_handler handler, void *arg);
 struct pixel_valve *getPvAddr(int pvnr);
 

@@ -1,5 +1,6 @@
 #include <dev/gpio.h>
 #include <kernel/timer.h>
+#include <lib/video_timing.h>
 #include <lk/console_cmd.h>
 #include <lk/init.h>
 #include <lk/reg.h>
@@ -26,19 +27,6 @@ STATIC_COMMAND_END(dpi);
 #ifndef BACKGROUND
 #define BACKGROUND 0x0
 #endif
-
-static void timings_vga(struct pv_timings *t, int *fps) {
-  t->vfp = 3;
-  t->vsync = 4;
-  t->vbp = 13;
-  t->vactive = 480;
-
-  t->hfp = 60;
-  t->hsync = 64;
-  t->hbp = 80;
-  t->hactive = 640;
-  *fps = 60;
-}
 
 static const struct pv_timings timing_1280_1024 = {
   .vfp = 3,
@@ -94,9 +82,7 @@ int cmd_dpi_start(int argc, const console_cmd_args *argv) {
 
   hvs_configure_channel(0, t->hactive, t->vactive, false);
 
-  int htotal = t->hfp + t->hsync + t->hbp + t->hactive;
-  int vtotal = t->vfp + t->vsync + t->vbp + t->vactive;
-  int total_pixels = htotal * vtotal;
+  uint32_t total_pixels = get_total_pixels(t);
 
   float desired_divider = (float)freq_pllc_per / total_pixels / fps;
 
