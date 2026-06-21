@@ -6,11 +6,6 @@
 #include <platform/bcm28xx/otp.h>
 #include <stdio.h>
 
-#define CM_TSENSCTL   0x7e1010e0
-#define CM_TSENSCTL_ENAB_SET 0x00000010
-#define CM_TSENSCTL_ENAB_CLR 0xffffffef
-#define CM_TSENSCTL_BUSY_SET 0x00000080
-#define CM_TSENSDIV   0x7e1010e4
 #define TS_TSENSCTL   0x7e212000
 #define TS_TSENSSTAT  0x7e212004
 
