@@ -7,7 +7,7 @@
 #include <math.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
-#include <platform/bcm28xx/hexdump.h>
+#include <lib/hexdump.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/udelay.h>
@@ -411,8 +411,8 @@ static void v3d_allocate(void) {
   state.primitiveList[2] = 2;
   makeBinner(&state);
   s->frameA = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
-  s->frameB = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);;
-  MK_UNITY_LAYER(&state.layer, s->frameA, 40, 0, 0);
+  s->frameB = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
+  mk_unity_layer(&state.layer, s->frameA, 40, 0, 0);
   state.layer.name = "v3d";
   s->frameANext = true;
 
@@ -473,29 +473,61 @@ enum handler_return v3d_irq(void *arg) {
 }
 
 float v3d_freq;
+bool v3d_ready = false;
 
 static void v3d_init(const struct app_descriptor *app) {
+  puts("v3d_init: entry");
   const int src = CM_SRC_PLLC_CORE0;
   *REG32(CM_V3DCTL) = CM_PASSWORD;
   *REG32(CM_V3DDIV) = CM_PASSWORD | (0x1 << 12);
   *REG32(CM_V3DCTL) = CM_PASSWORD | src;
   *REG32(CM_V3DCTL) = CM_PASSWORD | src | 0x10;
+  puts("v3d_init: clock configured, clearing ASB master");
 
   *REG32(ASB_V3D_M_CTRL) |= CLR_REQ;
-  while ((*REG32(ASB_V3D_M_CTRL) & CLR_ACK) == 0) {}
+  {
+    int count = 100000;
+    while ((*REG32(ASB_V3D_M_CTRL) & CLR_ACK) == 0) {
+      if (count-- == 0) {
+        printf("TIMEOUT: ASB_V3D_M_CTRL CLR_ACK never set: 0x%x\n", *REG32(ASB_V3D_M_CTRL));
+        return;
+      }
+    }
+  }
   *REG32(ASB_V3D_S_CTRL) |= CLR_REQ;
-  while ((*REG32(ASB_V3D_S_CTRL) & CLR_ACK) == 0) {}
+  {
+    int count = 100000;
+    while ((*REG32(ASB_V3D_S_CTRL) & CLR_ACK) == 0) {
+      if (count-- == 0) {
+        printf("TIMEOUT: ASB_V3D_S_CTRL CLR_ACK never set: 0x%x\n", *REG32(ASB_V3D_S_CTRL));
+        return;
+      }
+    }
+  }
 
   printf("PM_GRAFX: 0x%x\n", *REG32(PM_GRAFX));
+  puts("v3d_init: ASB cleared, starting PM_GRAFX power sequence");
 
   udelay(100);
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) & ~0x40); // disable v3d
   udelay(100);
   puts("enabling power");
-  *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_POWUP_SET); // enable power
-  int count = 1000;
+  // Naive single-shot POWUP-then-wait does not reliably bring POWOK up on
+  // this board: empirically, POWOK only asserts if bits 16-17 are ramped
+  // (1->2->3) while re-pulsing POWUP. v keeps the 0x5a password in its high
+  // byte across every write.
+  uint32_t v = (*REG32(PM_GRAFX) | CM_PASSWORD) & 0xfffcffff;
+  *REG32(PM_GRAFX) = v;
+  v |= PM_GRAFX_POWUP_SET;
+  *REG32(PM_GRAFX) = v;
+  int ramp = 0;
+  int count = 100000;
   while ((*REG32(PM_GRAFX) & PM_GRAFX_POWOK_SET) == 0) { // wait for power ok
-    udelay(1);
+    udelay(3);
+    if (*REG32(PM_GRAFX) & PM_GRAFX_POWOK_SET) break;
+    ramp = ramp < 3 ? ramp + 1 : 3;
+    v = (v & 0xfffcffff) | (ramp << 16); // bits 16-17 = ramp step
+    *REG32(PM_GRAFX) = v;
     if (count-- == 0) {
       printf("timeout bringing PM_GRAFX online: 0x%x\n", *REG32(PM_GRAFX));
       return;
@@ -504,15 +536,41 @@ static void v3d_init(const struct app_descriptor *app) {
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_ISPOW_SET);
   puts("memory repair");
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_MEMREP_SET); // do memory repair
-  while ((*REG32(PM_GRAFX) & PM_GRAFX_MRDONE_SET) == 0) {} // wait for memory repair to complete
+  {
+    int mrdone_count = 100000;
+    while ((*REG32(PM_GRAFX) & PM_GRAFX_MRDONE_SET) == 0) { // wait for memory repair to complete
+      udelay(1);
+      if (mrdone_count-- == 0) {
+        printf("TIMEOUT: PM_GRAFX MRDONE never set: 0x%x\n", *REG32(PM_GRAFX));
+        return;
+      }
+    }
+  }
   puts("no more functional isolation");
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | PM_GRAFX_ISFUNC_SET); // disable functional isolation
   udelay(100);
+  puts("v3d_init: PM_GRAFX power sequence complete, clearing ASB again");
 
   *REG32(ASB_V3D_S_CTRL) &= ~CLR_REQ;
-  while ((*REG32(ASB_V3D_S_CTRL) & CLR_ACK)) {}
+  {
+    int asb_s_clear_count = 100000;
+    while (*REG32(ASB_V3D_S_CTRL) & CLR_ACK) {
+      if (asb_s_clear_count-- == 0) {
+        printf("TIMEOUT: ASB_V3D_S_CTRL CLR_ACK never cleared: 0x%x\n", *REG32(ASB_V3D_S_CTRL));
+        return;
+      }
+    }
+  }
   *REG32(ASB_V3D_M_CTRL) &= ~CLR_REQ;
-  while ((*REG32(ASB_V3D_M_CTRL) & CLR_ACK)) {}
+  {
+    int asb_m_clear_count = 100000;
+    while (*REG32(ASB_V3D_M_CTRL) & CLR_ACK) {
+      if (asb_m_clear_count-- == 0) {
+        printf("TIMEOUT: ASB_V3D_M_CTRL CLR_ACK never cleared: 0x%x\n", *REG32(ASB_V3D_M_CTRL));
+        return;
+      }
+    }
+  }
   udelay(100);
 
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) | 0x40); // enable v3d
@@ -523,7 +581,13 @@ static void v3d_init(const struct app_descriptor *app) {
 
   udelay(1000);
   cmd_v3d_probe(0, 0);
+  if (*REG32(V3D_IDENT0) != 0x2443356) {
+    printf("V3D core not alive (IDENT0=0x%x), skipping render setup\n", *REG32(V3D_IDENT0));
+    return;
+  }
+  puts("v3d_init: about to call v3d_allocate");
   v3d_allocate();
+  puts("v3d_init: v3d_allocate returned, configuring QPUs/interrupts");
 
   *REG32(V3D_SQRSV0) = 0; // enable QPU 0-7
   *REG32(V3D_SQRSV1) = ~0xffff; // enable QPU 8-11
@@ -534,6 +598,8 @@ static void v3d_init(const struct app_descriptor *app) {
   *REG32(V3D_SLCACTL) = ~0;
   register_int_handler(10, v3d_irq, NULL);
   unmask_interrupt(10);
+  v3d_ready = true;
+  puts("v3d_init: complete");
 }
 
 bool shown;

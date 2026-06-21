@@ -21,6 +21,7 @@
 #define V3D_CT1CA  (V3D_BASE + 0x0114)
 
 #define V3D_PCS    (V3D_BASE + 0x0130)
+#define V3D_BFC    (V3D_BASE + 0x0134)
 
 #define V3D_RFC    (V3D_BASE + 0x0138)
 
