@@ -22,15 +22,13 @@
 #define HD_HDM_CTL_ENABLE           BIT(0)
 #define HD_HDM_CTL_ENDIAN           BIT(1)
 #define HD_HDM_CTL_SW_RST           BIT(2)
-// bit9 reads 1 in working firmware but is read-only status (doesn't latch on
-// write) -- it reflects the core being up, it does not cause it.
 #define HD_MAI_CTL                  (HD_BASE + 0x14)
 #define HD_MAI_THR                  (HD_BASE + 0x18)
 #define HD_MAI_FMT                  (HD_BASE + 0x1c)
 #define HD_MAI_DAT                  (HD_BASE + 0x20)
 #define HD_VID_CTL                  (HD_BASE + 0x38)
 #define HD_CSC_CTL                  (HD_BASE + 0x40)
-#define HD_CSC_CTL_ORDER(order) ((order & 7) << 5)
+#define HD_CSC_CTL_ORDER(order)     ((order & 7) << 5)
 #define HD_CSC_CTL_ORDER_RGB 0
 #define HD_CSC_CTL_ORDER_BGR 1
 #define HD_CSC_CTL_ORDER_BRG 2
@@ -43,95 +41,99 @@
 #define HD_CSC_24_23                (HD_BASE + 0x50)
 #define HD_CSC_32_31                (HD_BASE + 0x54)
 #define HD_CSC_34_33                (HD_BASE + 0x58)
-// CSC_CTL bits: ENABLE=bit0, RGB2YCC=bit1, MODE_CUSTOM=3<<2, ORDER_BGR=1<<5
 // frame counter reset
 #define HD_VID_CTL_RST_FRAMEC       BIT(29)
 // underflow enable
 #define HD_VID_CTL_UFEN             BIT(30)
 #define HD_VID_CTL_ENABLE           BIT(31)
 
-#define HDMI_SW_RESET_CNTRL         0x7e902004
-#define HDMI_FIFO_CTL               0x7e90205c
-#define VC4_HDMI_FIFO_CTL_MASTER_SLAVE_N                  BIT(0)
-#define VC4_HDMI_FIFO_CTL_RECENTER                        BIT(6)
-#define VC4_HDMI_FIFO_CTL_RECENTER_DONE                   BIT(14)
-#define VC4_HDMI_FIFO_VALID_WRITE_MASK                    0xefff
+#define HDMI_SW_RESET_CNTRL         (HDMI_BASE + 0x04)
+#define HDMI_FIFO_CTL               (HDMI_BASE + 0x5c)
+#define HDMI_FIFO_CTL_MASTER_SLAVE_N BIT(0)
+#define HDMI_FIFO_CTL_RECENTER       BIT(6)
+#define HDMI_FIFO_CTL_RECENTER_DONE  BIT(14)
+#define HDMI_FIFO_VALID_WRITE_MASK   0xefff
 
-#define HDMI_RAM_PACKET_CONFIG      0x7e9020a0
-#define HDMI_SCHEDULER_CONTROL      0x7e9020c0
-#define VC4_HDMI_SCHEDULER_CONTROL_IGNORE_VSYNC_PREDICTS  BIT(5)
-#define VC4_HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT BIT(15)
-#define HDMI_VERTA0           0x7e9020cc
+#define HDMI_RAM_PACKET_CONFIG      (HDMI_BASE + 0xa0)
+#define HDMI_SCHEDULER_CONTROL      (HDMI_BASE + 0xc0)
+#define HDMI_SCHEDULER_CONTROL_IGNORE_VSYNC_PREDICTS  BIT(5)
+#define HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT BIT(15)
+#define HDMI_VERTA0                 (HDMI_BASE + 0xcc)
 
-#define HDMI_VERTB0           0x7e9020d0
-#define HDMI_VERTA1           0x7e9020d4
-#define HDMI_VERTB1           0x7e9020d8
+#define HDMI_VERTB0                 (HDMI_BASE + 0xd0)
+#define HDMI_VERTA1                 (HDMI_BASE + 0xd4)
+#define HDMI_VERTB1                 (HDMI_BASE + 0xd8)
 
-#define HDMI_HORZA            0x7e9020c4
-#define HDMI_HORZB            0x7e9020c8
+#define HDMI_HORZA                  (HDMI_BASE + 0xc4)
+#define HDMI_HORZB                  (HDMI_BASE + 0xc8)
 
 
-#define HDMI_MISC_CONTROL     0x7e9020e4
+#define HDMI_MISC_CONTROL           (HDMI_BASE + 0xe4)
 
 // TODO, merge
-#define HDMI_TX_PHY_RESET_CTL        0x7e9022c0
-#define HDMI_TX_PHY_TX_PHY_RESET_CTL 0x7e9022c0
+#define HDMI_TX_PHY_RESET_CTL        (HDMI_PHY_BASE + 0xc0)
+#define HDMI_TX_PHY_TX_PHY_RESET_CTL (HDMI_PHY_BASE + 0xc0)
 
-#define VC4_HDMI_SW_RESET_HDMI  BIT(0)
-#define VC4_HDMI_SW_RESET_FORMAT_DETECT   BIT(1)
+#define HDMI_SW_RESET_HDMI  BIT(0)
+#define HDMI_SW_RESET_FORMAT_DETECT  BIT(1)
 
 #define HDMI_SCHEDULER_CONTROL_IGN_VSYNC_PREDS_SET         0x00000020
 #define HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT_SET           0x00008000
 
+#define HDMI_HORZA_HPOS BIT(13)
+#define HDMI_HORZA_VPOS BIT(14)
 
-#define VC4_HDMI_HORZA_HPOS BIT(13)
-#define VC4_HDMI_HORZA_VPOS BIT(14)
+// The HDMI encoder pixel pipeline latency. Its active window must start this
+// many pixels after the pixelvalve's active start or the first pixels of each
+// line show pipeline-fill garbage. See hdmi_set_timings().
+#define HDMI_PIPELINE_DELAY 2
 
-#define VC4_HDMI_MISC_CONTROL_PIXEL_REP_MASK  (3 << 4)
+#define HDMI_MISC_CONTROL_PIXEL_REP_MASK  (3 << 4)
 
-#define VC4_HD_VID_CTL_CLRRGB BIT(23)
-#define VC4_HDMI_SCHEDULER_CONTROL_MODE_HDMI    BIT(0)
-#define VC4_HDMI_SCHEDULER_CONTROL_HDMI_ACTIVE BIT(1)
-#define VC4_HDMI_RAM_PACKET_ENABLE              BIT(16)
-#define VC4_HD_VID_CTL_BLANK_INSERT_EN           BIT(18)
-#define VC4_HD_VID_CTL_BLANKPIX                 BIT(16)
+#define HD_VID_CTL_CLRRGB                   BIT(23)
+#define HDMI_SCHEDULER_CONTROL_MODE_HDMI    BIT(0)
+#define HDMI_SCHEDULER_CONTROL_HDMI_ACTIVE  BIT(1)
+#define HDMI_RAM_PACKET_ENABLE              BIT(16)
+#define HD_VID_CTL_BLANK_INSERT_EN          BIT(18)
+#define HD_VID_CTL_BLANKPIX                 BIT(16)
 
 #define A2W_HDMI_CTL0 0x7e102080
 #define A2W_HDMI_CTL1 0x7e102084
 #define A2W_HDMI_CTL2 0x7e102088
 #define A2W_HDMI_CTL3 0x7e10208c
 
-static void vc4_hdmi_set_timings(const struct pv_timings *t);
-static void vc4_hdmi_phy_init(void);
-static void vc4_hdmi_reset(void);
+static void hdmi_set_timings(const struct pv_timings *t);
+static void hdmi_phy_init(void);
+static void hdmi_reset(void);
+static void hdmi_recenter_fifo(void);
 
 static void hdmi_init(uint level) {
   power_up_usb();
   hdmi_enable_power_domain();
 
   const struct pv_timings *active_timing = &pv_720p60;
+  //print_timing_debug(active_timing);
 
   uint32_t pixel_clock = get_pixel_clock(active_timing);
 
   // Bring up PLLH so the HDMI pixel clock (PLLH_PIX) is live BEFORE we touch the
   // core. Stock firmware always programs the pixel clock during HDMI bring-up
   // (hdmi_open -> hdmi_set_pixel_clock), and platform.c only does this on the
-  // 19.2MHz xtal path -- so do it here to make HDMI bring-up self-contained.
-  // VCO=1485MHz (ndiv=77, matching working BCM2835 Pi Zero), pix_div=10->148.5MHz, aux_div=5->297MHz.
+  // 19.2MHz xtal path, so do it here to make HDMI bring-up self-contained.
+  // VCO = pixel_clock*10; aux_div=5 -> PLLH_AUX = pixel_clock*2; HSM = /2 = pixel_clock.
   setup_pllh(pixel_clock * 10, 5, 1);
 
-  if (!clock_set_hsm(74250 * 1000, PERI_PLLH_AUX)) {
+  if (!clock_set_hsm(pixel_clock, PERI_PLLH_AUX)) {
     logf("HSM clock did not start, aborting HDMI bringup\n");
     return;
   }
-  vc4_hdmi_reset();
+
+  hdmi_reset();
 
   *REG32(HDMI_SCHEDULER_CONTROL) |= HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT_SET | HDMI_SCHEDULER_CONTROL_IGN_VSYNC_PREDS_SET;
 
-  vc4_hdmi_phy_init(); // handles TX PHY reset + config + bit24 commit pulse
+  hdmi_phy_init(); // handles TX PHY reset + config + bit24 commit pulse
 
-  // Write A2W HDMI PHY boost/impedance regs after PHY reset, matching
-  // start.elf order (hdmi_set_pixel_clock runs after HD_HDM_CTL reset).
   *REG32(A2W_HDMI_CTL3) = PM_PASSWORD | 0x40;
   *REG32(A2W_HDMI_CTL2) = PM_PASSWORD | 0x180086;
   *REG32(A2W_HDMI_CTL1) = PM_PASSWORD | 0x10c00;
@@ -139,26 +141,24 @@ static void hdmi_init(uint level) {
 
   // PV2 pixel clock: source CM_DPICTL from PLLH_AUX (src=7, 324MHz) / 3 = 108MHz.
   // PLLH_AUX = 648MHz / aux_div=2 = 324MHz; 324/3 = 108MHz pixel clock.
-  // CM_DPICTL is NOT used for HDMI on BCM2835 -- PV2 CLK_SELECT=DPI_SMI_HDMI
+  // CM_DPICTL is NOT used for HDMI on BCM2835, PV2 CLK_SELECT=DPI_SMI_HDMI
   // routes to HSM, not CM_DPICTL. Confirmed: working firmware has CM_DPICTL=0.
-
   setup_pixelvalve(active_timing, clk_dpi_smi_hdmi,2);
 
-  // HVS channel 1 drives pv2 which feeds HDMI (and VEC). Configure it and
-  // start with a solid background so the monitor sees a valid signal.
   hvs_initialize();
+
   mutex_acquire(&channels[1].lock);
   hvs_configure_channel(1, active_timing->hactive, active_timing->vactive, false);
   hvs_set_background_color(1, 0x00000000); // black background
   hvs_update_dlist(1);
   mutex_release(&channels[1].lock);
 
-  *REG32(HDMI_SCHEDULER_CONTROL) = *REG32(HDMI_SCHEDULER_CONTROL) | VC4_HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT | VC4_HDMI_SCHEDULER_CONTROL_IGNORE_VSYNC_PREDICTS;
+  *REG32(HDMI_SCHEDULER_CONTROL) = *REG32(HDMI_SCHEDULER_CONTROL) | HDMI_SCHEDULER_CONTROL_MANUAL_FORMAT | HDMI_SCHEDULER_CONTROL_IGNORE_VSYNC_PREDICTS;
 
-  vc4_hdmi_set_timings(active_timing);
+  hdmi_set_timings(active_timing);
 
   printf("HDMI_FIFO_CTL: 0x%x\n", *REG32(HDMI_FIFO_CTL));
-  *REG32(HDMI_FIFO_CTL) = VC4_HDMI_FIFO_CTL_MASTER_SLAVE_N;
+  *REG32(HDMI_FIFO_CTL) = HDMI_FIFO_CTL_MASTER_SLAVE_N;
   printf("HDMI_FIFO_CTL: 0x%x\n", *REG32(HDMI_FIFO_CTL));
 
   // RGB->YCC CSC matching working firmware (HD_CSC_CTL=0x2f)
@@ -168,33 +168,38 @@ static void hdmi_init(uint level) {
   *REG32(HD_CSC_24_23) = (0x100 << 16) | 0x000;
   *REG32(HD_CSC_32_31) = (0x000 << 16) | 0x6e0;
   *REG32(HD_CSC_34_33) = (0x100 << 16) | 0x000;
-#define HD_CSC_CTL_VALUE      0x2f
-  *REG32(HD_CSC_CTL)   = HD_CSC_CTL_ORDER(HD_CSC_CTL_ORDER_BGR); //HD_CSC_CTL_VALUE;
+  *REG32(HD_CSC_CTL)   = HD_CSC_CTL_ORDER(HD_CSC_CTL_ORDER_BGR);
 
   // Match working BCM2835 Raspbian ramdump exactly: ENABLE(bit31) | UNDERFLOW_ENABLE(bit30) = 0xc0000000.
   *REG32(HD_VID_CTL) = HD_VID_CTL_ENABLE | HD_VID_CTL_UFEN;
   // HDMI mode: set MODE_HDMI and wait for HDMI_ACTIVE to go high.
-  *REG32(HDMI_RAM_PACKET_CONFIG) &= ~VC4_HDMI_RAM_PACKET_ENABLE;
-  *REG32(HDMI_SCHEDULER_CONTROL) |= VC4_HDMI_SCHEDULER_CONTROL_MODE_HDMI;
-  while (!(*REG32(HDMI_SCHEDULER_CONTROL) & VC4_HDMI_SCHEDULER_CONTROL_HDMI_ACTIVE)) {};
-  *REG32(HDMI_RAM_PACKET_CONFIG) = VC4_HDMI_RAM_PACKET_ENABLE;
+  *REG32(HDMI_RAM_PACKET_CONFIG) &= ~HDMI_RAM_PACKET_ENABLE;
+  *REG32(HDMI_SCHEDULER_CONTROL) |= HDMI_SCHEDULER_CONTROL_MODE_HDMI;
+  while (!(*REG32(HDMI_SCHEDULER_CONTROL) & HDMI_SCHEDULER_CONTROL_HDMI_ACTIVE)) {};
+  *REG32(HDMI_RAM_PACKET_CONFIG) = HDMI_RAM_PACKET_ENABLE;
 
-  uint32_t drift = *REG32(HDMI_FIFO_CTL);
-  drift &= VC4_HDMI_FIFO_VALID_WRITE_MASK;
-  *REG32(HDMI_FIFO_CTL) = drift & ~VC4_HDMI_FIFO_CTL_RECENTER;
-  *REG32(HDMI_FIFO_CTL) = drift | VC4_HDMI_FIFO_CTL_RECENTER;
-
-  udelay(1000);
-  *REG32(HDMI_FIFO_CTL) = drift & ~VC4_HDMI_FIFO_CTL_RECENTER;
-  *REG32(HDMI_FIFO_CTL) = drift | VC4_HDMI_FIFO_CTL_RECENTER;
-
-  printf("HDMI_FIFO_CTL: 0x%x\n", *REG32(HDMI_FIFO_CTL));
-  puts("waiting for recenter");
-  //while (*REG32(HDMI_FIFO_CTL) & VC4_HDMI_FIFO_CTL_RECENTER_DONE) {}
-  puts("done");
+  hdmi_recenter_fifo();
 }
 
-static void vc4_hdmi_reset(void) {
+static void hdmi_recenter_fifo(void) {
+  uint32_t drift = *REG32(HDMI_FIFO_CTL);
+  drift &= HDMI_FIFO_VALID_WRITE_MASK;
+  *REG32(HDMI_FIFO_CTL) = drift & ~HDMI_FIFO_CTL_RECENTER;
+  *REG32(HDMI_FIFO_CTL) = drift | HDMI_FIFO_CTL_RECENTER;
+
+  udelay(1000);
+  *REG32(HDMI_FIFO_CTL) = drift & ~HDMI_FIFO_CTL_RECENTER;
+  *REG32(HDMI_FIFO_CTL) = drift | HDMI_FIFO_CTL_RECENTER;
+
+  // Kernel waits until RECENTER_DONE asserts after the second pulse. Skipping
+  // this leaves the HDMI video FIFO settled up to one pixel off.
+  for (int i = 0; i < 100000; i++) {
+    if (*REG32(HDMI_FIFO_CTL) & HDMI_FIFO_CTL_RECENTER_DONE) break;
+    udelay(1);
+  }
+}
+
+static void hdmi_reset(void) {
   // a small delay between each control is needed or it stalls somewhere.
   // tested by logging where the stall is only to find the stall goes poof with logs.
   // so we delay instead.
@@ -205,12 +210,12 @@ static void vc4_hdmi_reset(void) {
   udelay(100);
   *REG32(HD_HDM_CTL) = HD_HDM_CTL_ENABLE;
   udelay(100);
-  *REG32(HDMI_SW_RESET_CNTRL) = VC4_HDMI_SW_RESET_HDMI | VC4_HDMI_SW_RESET_FORMAT_DETECT;
+  *REG32(HDMI_SW_RESET_CNTRL) = HDMI_SW_RESET_HDMI | HDMI_SW_RESET_FORMAT_DETECT;
   udelay(100);
   *REG32(HDMI_SW_RESET_CNTRL) = 0;
 }
 
-static void vc4_hdmi_set_timings(const struct pv_timings *t) {
+static void hdmi_set_timings(const struct pv_timings *t) {
   logf("\n");
 
   int pixel_rep = 1;
@@ -221,9 +226,10 @@ static void vc4_hdmi_set_timings(const struct pv_timings *t) {
   int hsync = t->hsync;
   int hbp = t->hbp;
 
-  uint32_t horza = VC4_HDMI_HORZA_VPOS | VC4_HDMI_HORZA_HPOS | hactive;
+  uint32_t horza = HDMI_HORZA_VPOS | HDMI_HORZA_HPOS | hactive;
 
-  uint32_t horzb = (hbp << 20) | (hsync << 10) | (hfp);
+  int hdmi_active_shift = 2;
+  uint32_t horzb = ((hbp + hdmi_active_shift) << 20) | (hsync << 10) | (hfp - hdmi_active_shift);
 
   printf("HORZA: 0x%x\n", horza);
   printf("HORZB: 0x%x\n", horzb);
@@ -240,9 +246,6 @@ static void vc4_hdmi_set_timings(const struct pv_timings *t) {
 
   uint32_t vertb0 = vertb; // even frame (no offset)
 
-  printf("VERTA: 0x%x\n", verta);
-  printf("VERTB: 0x%x\n", vertb);
-
   *REG32(HDMI_HORZA) = horza;
   *REG32(HDMI_HORZB) = horzb;
 
@@ -254,46 +257,45 @@ static void vc4_hdmi_set_timings(const struct pv_timings *t) {
 
   // pixel replication control
   uint32_t misc = *REG32(HDMI_MISC_CONTROL);
-  misc &= ~VC4_HDMI_MISC_CONTROL_PIXEL_REP_MASK;
+  misc &= ~HDMI_MISC_CONTROL_PIXEL_REP_MASK;
   misc |= (pixel_rep - 1) << 4;
   *REG32(HDMI_MISC_CONTROL) = misc;
 }
 
-static void vc4_hdmi_phy_init(void) {
+static void hdmi_phy_init(void) {
   logf("\n");
 
   // TX PHY register values from working BCM2835 firmware dump (1920x1080@60).
   // Linux relies on start.elf to configure these; we must do it explicitly.
-  *REG32(0x7e9022c4) = 0x8e000000;
-  *REG32(0x7e9022c8) = 0x0404a808;
-  *REG32(0x7e9022cc) = 0x00a63004;
-  *REG32(0x7e9022d0) = 0x2ff80112;
-  *REG32(0x7e9022d4) = 0x0000001f;
-  *REG32(0x7e9022d8) = 0x0000000f;
-  *REG32(0x7e9022dc) = 0x00003c00;
-  *REG32(0x7e9022e0) = 0xffff0000;
+  *REG32(HDMI_PHY_BASE + 0xc4) = 0x8e000000;
+  *REG32(HDMI_PHY_BASE + 0xc8) = 0x0404a808;
+  *REG32(HDMI_PHY_BASE + 0xcc) = 0x00a63004;
+  *REG32(HDMI_PHY_BASE + 0xd0) = 0x2ff80112;
+  *REG32(HDMI_PHY_BASE + 0xd4) = 0x0000001f;
+  *REG32(HDMI_PHY_BASE + 0xd8) = 0x0000000f;
+  *REG32(HDMI_PHY_BASE + 0xdc) = 0x00003c00;
+  *REG32(HDMI_PHY_BASE + 0xe0) = 0xffff0000;
 
-  // Assert TX PHY reset, then perform the bit24 "commit" pulse on 0x7e9022c4
+  // Assert TX PHY reset, then perform the bit24 "commit" pulse on HDMI_PHY_BASE + 0xc4
   // matching the sequence in start.elf hdmi_open after hdmi_set_pixel_clock.
   // The firmware clears bit25 (briefly gates the PHY), pulses bit24 (commits
   // config to analog), then deasserts reset.
   *REG32(HDMI_TX_PHY_RESET_CTL) = 0xf << 16;
-  uint32_t r = *REG32(0x7e9022c4);
+  uint32_t r = *REG32(HDMI_PHY_BASE + 0xc4);
   r &= ~BIT(25);
-  *REG32(0x7e9022c4) = r;
-  r = *REG32(0x7e9022c4);
+  *REG32(HDMI_PHY_BASE + 0xc4) = r;
+  r = *REG32(HDMI_PHY_BASE + 0xc4);
   r |= BIT(24);
-  *REG32(0x7e9022c4) = r;
-  r = *REG32(0x7e9022c4);
+  *REG32(HDMI_PHY_BASE + 0xc4) = r;
+  r = *REG32(HDMI_PHY_BASE + 0xc4);
   r &= ~BIT(24);
-  *REG32(0x7e9022c4) = r;
+  *REG32(HDMI_PHY_BASE + 0xc4) = r;
   // Restore bit25 and deassert reset. Working BCM2835 ramdump shows 0x8e000000 (bit25=1).
-  r = *REG32(0x7e9022c4);
+  r = *REG32(HDMI_PHY_BASE + 0xc4);
   r |= BIT(25);
-  *REG32(0x7e9022c4) = r;
+  *REG32(HDMI_PHY_BASE + 0xc4) = r;
   *REG32(HDMI_TX_PHY_RESET_CTL) = 0;
-  logf("TX PHY c4=0x%x c8=0x%x cc=0x%x e0=0x%x\n",
-         *REG32(0x7e9022c4), *REG32(0x7e9022c8), *REG32(0x7e9022cc), *REG32(0x7e9022e0));
+  logf("TX PHY c4=0x%x c8=0x%x cc=0x%x e0=0x%x\n", *REG32(HDMI_PHY_BASE + 0xc4), *REG32(HDMI_PHY_BASE + 0xc8), *REG32(HDMI_PHY_BASE + 0xcc), *REG32(HDMI_PHY_BASE + 0xe0));
 }
 
 LK_INIT_HOOK(hdmi, &hdmi_init, LK_INIT_LEVEL_PLATFORM+10);

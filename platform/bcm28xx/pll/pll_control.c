@@ -695,14 +695,14 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
 
   int pdiv = 1;
   uint32_t xtal_in = xtal_freq;
-  printf("xtal_in = %u\n", xtal_in);
+  printf("xtal_in = %u, ", xtal_in);
   uint64_t goal_freq = target_freq;
   printf("goal_freq = %llu\n", goal_freq);
   uint32_t divisor = (goal_freq<<20) / xtal_in;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
-  printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  //printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLL_ANARST_SET;
 
@@ -710,8 +710,8 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
 
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
   *REG32(A2W_PLLH_CTRL) = A2W_PASSWORD | div | PDIV(pdiv);
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
-  printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLH_FRAC), frac);
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  //printf("frac set to 0x%x, wanted 0x%x\n", *REG32(A2W_PLLH_FRAC), frac);
 
   *REG32(A2W_PLLH_ANA3) = A2W_PASSWORD | 0x0;
   *REG32(A2W_PLLH_ANA2) = A2W_PASSWORD | 0x0;
@@ -745,9 +745,9 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
 
   puts("waiting for lock");
   while (!BIT_SET(*REG32(CM_LOCK), CM_LOCK_FLOCKH_BIT)) {}
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
   *REG32(A2W_PLLH_FRAC) = A2W_PASSWORD | frac;
-  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 
   // Deassert the digital reset so the PIX/AUX channel dividers actually run.
   // Working firmware leaves CM_PLLH = 0x00; we were leaving DIGRST asserted,

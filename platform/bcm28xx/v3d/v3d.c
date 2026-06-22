@@ -2,12 +2,12 @@
 #include <assert.h>
 #include <kernel/event.h>
 #include <lib/gfx.h>
+#include <lib/hexdump.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
 #include <math.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
-#include <lib/hexdump.h>
 #include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/udelay.h>
@@ -87,8 +87,38 @@ static int cmd_v3d_probe(int argc, const console_cmd_args *argv) {
   return 0;
 }
 
+void trackDownAddr(uint32_t addr) {
+  const v3d_client_state *s = &state;
+  if ((addr >= s->binner) && (addr <= (s->binner + s->binnerSize))) {
+    printf("0x%x is %d bytes into the binner control list\n", addr, addr - (uint32_t)s->binner);
+  } else if ((addr >= s->renderer) && (addr <= (s->renderer + s->renderSize))) {
+    printf("0x%x is %d bytes into the render control list\n", addr, addr - (uint32_t)s->renderer);
+  } else if ((addr >= s->tileAllocation) && (addr <= (s->tileAllocation + s->tileAllocationSize))) {
+    printf("0x%x is %d bytes into the tile allocation region\n", addr, addr - (uint32_t)s->tileAllocation);
+    uint32_t slotSize = getTileAllocationSize(s->tileAllocationEntrySize);
+    for(uint32_t y = 0; y < s->tileheight; y++) {
+      for(uint32_t x = 0; x < s->tilewidth; x++) {
+        uint32_t subList = (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize);
+        if ((addr >= subList) && (addr <= (subList + slotSize))) {
+          printf("0x%x is %d bytes into render list for tile %d,%d\n", addr, addr - subList, y, x);
+          uint8_t *t = subList;
+          for (int i=0; i<slotSize; i++) {
+            if (&t[i] == addr) {
+              printf("<%02x> ", t[i]);
+            } else {
+              printf("%02x ", t[i]);
+            }
+          }
+          puts("");
+        }
+      }
+    }
+  } else {
+    printf("0x%x not found within checked allocations\n", addr);
+  }
+}
+
 int cmd_v3d_probe2(int argc, const console_cmd_args *argv) {
-  v3d_client_state *s = &state;
   uint32_t t;
 #define x(x) { t = *REG32(x); printf(#x ": 0x%x\n", t); }
   x(V3D_IDENT0);
@@ -104,11 +134,13 @@ int cmd_v3d_probe2(int argc, const console_cmd_args *argv) {
   x(V3D_INTCTL);
   x(V3D_INTENA);
   x(V3D_INTDIS);
-  printf("V3D_CT0CS: 0x%x\n", *REG32(V3D_CT0CS));
-  printf("V3D_CT0CA: 0x%x\n", *REG32(V3D_CT0CA));
-  printf("V3D_CT0EA: 0x%x\n", *REG32(V3D_CT0EA));
+  x(V3D_CT0CS);
+  x(V3D_CT0CA);
+  trackDownAddr(t);
+  x(V3D_CT0EA);
   x(V3D_CT1CS);
   x(V3D_CT1CA);
+  trackDownAddr(t);
   x(V3D_CT1EA);
   x(V3D_PCS);
   x(V3D_RFC);
@@ -124,21 +156,8 @@ int cmd_v3d_probe2(int argc, const console_cmd_args *argv) {
   x(V3D_ERRSTAT);
 
   printf("last_state: %d\n", last_state);
-
-  //hexdump_ram(state.tileAllocationAligned - 32, (uint32_t)state.tileAllocationAligned - 32, 0x200);
-  if (0) {
-    uint32_t slotSize = getTileAllocationSize(s->tileAllocationEntrySize);
-    for (uint32_t y=0; y < state.tileheight; y++) {
-      for (uint32_t x=0; x < state.tilewidth; x++) {
-        uint32_t slot = (uint32_t)(((uint32_t)state.tileAllocation) + (y * state.tilewidth + x) * slotSize);
-        printf("tile x:%d y:%d\n", x, y);
-        hexdump_ram((void*)slot, slot, slotSize);
-      }
-    }
-  }
   return 0;
 }
-
 
 uint32_t shaderCode[] __attribute__((aligned(32))) = {
   0x958e0dbf, 0xd1724823, /* mov r0, vary; mov r3.8d, 1.0 */
@@ -175,11 +194,11 @@ static inline void addfloat(uint8_t **list, float f) {
 
 void makeShaderRecord(v3d_client_state *s) {
   // NV shader state record
-  uint8_t *shaderRecord = memalign(16, 0x20);
+  uint8_t *shaderRecord = memalign(32, 0x20);
   uint8_t *p = shaderRecord;
   addbyte(&p, 0x01);                    // flags
   addbyte(&p, 6*4);                     // vertex data stride, in bytes
-  addbyte(&p, 0xcc);                    // num uniforms (not used)
+  addbyte(&p, 0x0);                     // num uniforms (not used)
   addbyte(&p, 3);                       // num varyings
   addword(&p, (uint32_t)s->shaderCode); // Fragment shader code, must be aligned to ???
   addword(&p, (uint32_t)s->uniforms);   // Fragment shader uniforms
@@ -189,7 +208,7 @@ void makeShaderRecord(v3d_client_state *s) {
 }
 
 void makeBinner(v3d_client_state *s) {
-  uint8_t *binner = malloc(0x80);
+  uint8_t *binner = memalign(128, 0x80);
   uint8_t *p = binner;
   // Configuration stuff
   // Tile Binning Configuration.
@@ -265,7 +284,7 @@ void makeBinner(v3d_client_state *s) {
 
 void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
   if (allocate) {
-    uint8_t *render = malloc(0x2000);
+    uint8_t *render = memalign(128, 0x2000);
     s->renderer = render;
   }
   uint8_t *p = s->renderer;
@@ -274,8 +293,8 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
   // Clear color
   addbyte(&p, 114);
   // 0xAARRGGBB
-  addword(&p, 0x00000000); // transparent Black
-  addword(&p, 0x00000000); // 32 bit clear colours need to be repeated twice
+  addword(&p, 0xff0000ff); // transparent Black
+  addword(&p, 0xff0000ff); // 32 bit clear colours need to be repeated twice
   addword(&p, 0); // clear zs and clear vg mask
   addbyte(&p, 0); // clear stencil
 
@@ -314,9 +333,11 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
       addbyte(&p, x); // column
       addbyte(&p, y); // row
 
+      uint32_t subList = (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize);
+      printf("at %p, rendering tile (%dx%x) via 0x%x\n", p, y, x, subList);
       // Call Tile sublist
       addbyte(&p, 17);
-      addword(&p, (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize)); // 2d array of $slotSize byte objects
+      addword(&p, subList); // 2d array of $slotSize byte objects
 
       // Last tile needs a special store instruction
       if ((x == (s->tilewidth-1)) && (y == (s->tileheight-1))) {
@@ -329,6 +350,7 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
     }
   }
   s->renderSize = p - (uint8_t*)s->renderer;
+  printf("render thread begins at %p, size %d\n", s->renderer, s->renderSize);
   assert(s->renderSize < 0x2000);
 }
 
@@ -340,7 +362,7 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
 
   int w = 200;
   int h = 200;
-  int xoff = width/2;
+  int xoff = (width/2);
   int yoff = height/2;
   int16_t x = (sin(angle) * w) + xoff;
   int16_t y = (cos(angle) * h) + yoff;
@@ -393,19 +415,19 @@ static void v3d_allocate(void) {
   s->tileAllocationEntrySize = 0;
   state.tileAllocationSize = 0x8000;
   state.tileAllocation = memalign(256, state.tileAllocationSize);
-  state.width = 720;
+  state.width = 640;
   state.height = 480;
   state.tilewidth = DIV_CIEL(state.width, 64);
   state.tileheight = DIV_CIEL(state.height, 64);
   printf("%d x %d (pixels)\n", state.width, state.height);
   printf("%d x %d (tiles)\n", state.tilewidth, state.tileheight);
-  state.tileState = memalign(16, 48 * state.tilewidth * state.tileheight);
+  state.tileState = memalign(32, 48 * state.tilewidth * state.tileheight);
   state.shaderCode = shaderCode;
-  state.uniforms = malloc(0x10);
-  state.vertexData = malloc(0x60);
+  state.uniforms = memalign(256, 0x10);
+  state.vertexData = memalign(256, 0x60);
   makeShaderRecord(s);
   printf("shader record %p\n", state.shaderRecord);
-  state.primitiveList = malloc(3);
+  state.primitiveList = memalign(128, 3);
   state.primitiveList[0] = 0;
   state.primitiveList[1] = 1;
   state.primitiveList[2] = 2;
@@ -452,10 +474,13 @@ enum handler_return v3d_irq(void *arg) {
   uint32_t control_end = *REG32(ST_CLO);
   uint32_t status = *REG32(V3D_INTCTL);
   *REG32(V3D_INTCTL) = ~0;
-  //printf("V3D_INTCTL: 0x%x\n", status);
   uint32_t deltat = control_end - control_start;
-  //printf("delta-t: %d\n", control_end - control_start);
-  if (status & 2) { // binner finished
+  //printf("v3d_irq: status=0x%x\n", status);
+  if (status & BV(2)) {
+    puts("binner out of memory");
+  }
+  if (status & BV(1)) { // binner finished
+    //puts("binner finished");
     binner_time = deltat;
     if (render_pending) {
       render_pending = false;
@@ -512,10 +537,6 @@ static void v3d_init(const struct app_descriptor *app) {
   *REG32(PM_GRAFX) = CM_PASSWORD | (*REG32(PM_GRAFX) & ~0x40); // disable v3d
   udelay(100);
   puts("enabling power");
-  // Naive single-shot POWUP-then-wait does not reliably bring POWOK up on
-  // this board: empirically, POWOK only asserts if bits 16-17 are ramped
-  // (1->2->3) while re-pulsing POWUP. v keeps the 0x5a password in its high
-  // byte across every write.
   uint32_t v = (*REG32(PM_GRAFX) | CM_PASSWORD) & 0xfffcffff;
   *REG32(PM_GRAFX) = v;
   v |= PM_GRAFX_POWUP_SET;
@@ -579,7 +600,7 @@ static void v3d_init(const struct app_descriptor *app) {
 
   event_init(&frame_done_event, false, EVENT_FLAG_AUTOUNSIGNAL);
 
-  udelay(1000);
+  udelay(2000);
   cmd_v3d_probe(0, 0);
   if (*REG32(V3D_IDENT0) != 0x2443356) {
     printf("V3D core not alive (IDENT0=0x%x), skipping render setup\n", *REG32(V3D_IDENT0));
@@ -606,29 +627,36 @@ bool shown;
 int rotation = 0;
 
 static int cmd_v3d(int argc, const console_cmd_args *argv) {
+  if (!v3d_ready) {
+    printf("v3d not initialized, refusing to run (avoids hard hang on uninitialized event)\n");
+    return -1;
+  }
   gfx_surface *next = state.frameANext ? state.frameA : state.frameB;
 
   // change which buffer we render into
   makeRenderer(next->ptr, &state, false);
-  // update the xy coords
+  // update the xy coords for the rotating triangle
   makeVertexData(state.vertexData, state.width, state.height, rotation++);
 
   render_pending_addr = (uint32_t)state.renderer;
   render_pending_size = (uint32_t)((state.renderer + state.renderSize));
   render_pending = true;
 
-  //printf("running job that spans %p to %p\n", state.binner, state.binner + state.binnerSize);
   *REG32(V3D_CT0CS) = 0x8000; // reset control thread
   *REG32(V3D_CT0CA) = (uint32_t)state.binner;
   control_start = *REG32(ST_CLO);
   *REG32(V3D_CT0EA) = (uint32_t)((state.binner + state.binnerSize) - 1);
-  //printf("V3D_CT0CS: 0x%x\n", *REG32(V3D_CT0CS));
-  //bzero(state.surface->ptr, state.surface->len);
-  //puts("waiting");
+
+  uint32_t bfc_before = *REG32(V3D_BFC);
+  uint32_t rfc_before = *REG32(V3D_RFC);
+
   last_state = 6;
   event_wait(&frame_done_event);
   last_state = 7;
-  //printf("binning took %d uSec(%f) and rendering took %d uSec(%f) @ %f MHz\n", binner_time, binner_time * v3d_freq, render_time, render_time * v3d_freq, v3d_freq);
+
+  //printf("frame %d: BFC %u->%u RFC %u->%u CT1CA=0x%x layer.fb->ptr=%p\n",
+  //       rotation - 1, bfc_before, *REG32(V3D_BFC), rfc_before, *REG32(V3D_RFC),
+  //       *REG32(V3D_CT1CA), next->ptr);
 
   int channel = 1;
   mutex_acquire(&channels[channel].lock);

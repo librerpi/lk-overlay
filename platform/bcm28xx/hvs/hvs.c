@@ -23,6 +23,8 @@
 #include <string.h>
 #include <strings.h>
 
+// #define TIMESTAMP_TIMINGS
+
 #ifdef RPI4
 volatile uint32_t* dlist_memory = REG32(SCALER5_LIST_MEMORY);
 #else
@@ -687,7 +689,7 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
 
   channels[channel].dlist_target = 0;
   if (true) {
-    puts("setting up pv interrupt");
+    //puts("setting up pv interrupt");
     int pvnr = 2;
     if (channel == 0) pvnr = 0;
     if (channel == 1) pvnr = 2;
@@ -696,7 +698,7 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
     rawpv->int_enable = 0;
     rawpv->int_status = 0xff;
     setup_pv_interrupt(pvnr, pv_irq, (void*)pvnr);
-    rawpv->int_enable = PV_INTEN_VFP_START; // | 0x3f;
+    rawpv->int_enable = PV_INTEN_VFP_START | 0x3f;
     //hvs_setup_irq();
     //puts("done");
   }
@@ -870,12 +872,12 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   const gfx_format fmt = GFX_FORMAT_RGB_332;
 #elif PRIMARY_HVS_CHANNEL == 1
   puts("default FB on VEC");
-  const int w = 720 - 120;
-  const int h = 480 - 80;
+  const int w = 1280;
+  const int h = 720;
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #elif PRIMARY_HVS_CHANNEL == 0
-  const int w = 1280-2;
-  const int h = 1024-2;
+  const int w = 1280;
+  const int h = 720;
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #endif
   if (!gfx_console) {
@@ -887,7 +889,7 @@ __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
     // make visible on HVS1
     int channel = 1;
     console_layer[channel] = malloc(sizeof(hvs_layer));
-    mk_unity_layer(console_layer[channel], gfx_console, 50, 50, 30);
+    mk_unity_layer(console_layer[channel], gfx_console, 50, 0, 0);
     hvs_allocate_premade(console_layer[channel], 7);
     hvs_regen_noscale_noviewport(console_layer[channel]);
     console_layer[channel]->name = strdup("console");
@@ -957,7 +959,6 @@ void hvs_update_dlist(int channel) {
       } else
 #endif
       {
-        puts("legacy layer");
         hvs_add_plane_scaled(layer);
       }
     }

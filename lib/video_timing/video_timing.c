@@ -6,6 +6,7 @@ void print_timing_debug(const struct pv_timings *t) {
   int vtotal = t->vfp + t->vsync + t->vbp + t->vactive;
   int total_pixels = htotal * vtotal;
   int pclk = total_pixels * t->fps;
+  printf("pclk %d MHz, ", pclk/1000/1000);
   printf("hsync rate: %d Hz, ", pclk / htotal);
   printf("vsync rate: %d Hz, ", pclk / total_pixels);
   printf("htotal: %d, vtotal: %d\n", htotal, vtotal);

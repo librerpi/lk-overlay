@@ -253,7 +253,7 @@ static void vpu_clock_updated(int core0_div, int vpu_divisor) {
 
   dprintf(INFO, "VPU now at %dmhz(%d), ", vpu/1000/1000, vpu_clock);
   dprintf(INFO, "PLLC_CORE0 at %dmhz, ", pllc_core0/1000/1000);
-  dprintf(INFO, "PLLC_PER at %lldMHz, ", freq_pllc_per / 1000 / 1000);
+  dprintf(INFO, "PLLC_PER at %dMHz, ", freq_pllc_per / 1000 / 1000);
   dprintf(INFO, "PLLC at %dmhz\n", pllc / 1000 / 1000);
   vpu_clock = vpu/1000/1000;
 }
@@ -435,7 +435,7 @@ void platform_early_init(void) {
     logf("b\n");
 
     // soft-disconnect, so the usb host doesnt spew errors
-    *REG32(USB_DCTL) = BIT(1);
+    //*REG32(USB_DCTL) = BIT(1);
 
 #ifdef ARCH_ARM64
   __asm__ volatile("msr daifclr, #4" ::: "memory");
