@@ -228,11 +228,12 @@ static void hdmi_set_timings(const struct pv_timings *t) {
 
   uint32_t horza = HDMI_HORZA_VPOS | HDMI_HORZA_HPOS | hactive;
 
-  int hdmi_active_shift = 2;
-  uint32_t horzb = ((hbp + hdmi_active_shift) << 20) | (hsync << 10) | (hfp - hdmi_active_shift);
-
-  printf("HORZA: 0x%x\n", horza);
-  printf("HORZB: 0x%x\n", horzb);
+  // The HDMI encoder's video pipeline takes ~2 pixels to prime, so if its active
+  // window starts exactly at the PV's active start, the first 1-2 pixels of each
+  // line are pipeline-fill garbage (a faint strip down the left edge). Shift the
+  // encoder window right by HDMI_PIPELINE_DELAY (HBP+, HFP-, line total
+  // unchanged) so it samples past the garbage. Verified on BCM2835 480p60, 720p60, and 1920p60
+  uint32_t horzb = ((hbp + HDMI_PIPELINE_DELAY) << 20) | (hsync << 10) | (hfp - HDMI_PIPELINE_DELAY);
 
   // Vertical timing
   int vactive = t->vactive;
