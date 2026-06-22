@@ -86,7 +86,6 @@ static int cmd_v3d_probe(int argc, const console_cmd_args *argv) {
   printf("CM_V3DDIV:      0x%x\n", *REG32(CM_V3DDIV));
   return 0;
 }
-
 void trackDownAddr(uint32_t addr) {
   const v3d_client_state *s = &state;
   if ((addr >= s->binner) && (addr <= (s->binner + s->binnerSize))) {
@@ -198,7 +197,7 @@ void makeShaderRecord(v3d_client_state *s) {
   uint8_t *p = shaderRecord;
   addbyte(&p, 0x01);                    // flags
   addbyte(&p, 6*4);                     // vertex data stride, in bytes
-  addbyte(&p, 0x0);                     // num uniforms (not used)
+  addbyte(&p, 0);                       // num uniforms (not used)
   addbyte(&p, 3);                       // num varyings
   addword(&p, (uint32_t)s->shaderCode); // Fragment shader code, must be aligned to ???
   addword(&p, (uint32_t)s->uniforms);   // Fragment shader uniforms
@@ -290,38 +289,20 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
   uint8_t *p = s->renderer;
   // Render control list
 
-  // Clear color
-  addbyte(&p, 114);
-  // 0xAARRGGBB
-  addword(&p, 0xff0000ff); // transparent Black
-  addword(&p, 0xff0000ff); // 32 bit clear colours need to be repeated twice
-  addword(&p, 0); // clear zs and clear vg mask
-  addbyte(&p, 0); // clear stencil
-
   // Tile Rendering Mode Configuration
-  // linear rgba8888 == VC_IMAGE_RGBA32
-  // t-format rgba8888 = VC_IMAGE_TF_RGBA32
   addbyte(&p, 113);
-  addword(&p, (uint32_t)outputFrame);	//  0->31 framebuffer addresss
+  addword(&p, (uint32_t)outputFrame);	//  0->31 framebuffer address
   addshort(&p, s->width);	// 32->47 width
   addshort(&p, s->height);	// 48->63 height
-  addbyte(&p, 0x4);		// 64 multisample mpe
-                                  // 65 tilebuffer depth
-                                  // 66->67 framebuffer mode (t-format rgba8888)
-                                  // 68->69 decimate mode
-                                  // 70->71 memory format
+  addbyte(&p, 0x4);		// multisample mode
   addbyte(&p, 0x00); // vg mask, coverage mode, early-z update, early-z cov, double-buffer
 
-  // Do a store of the first tile to force the tile buffer to be cleared
-  // Tile Coordinates
-  addbyte(&p, 115);
-  addbyte(&p, 0);
-  addbyte(&p, 0);
-
-  // Store Tile Buffer General
-  addbyte(&p, 28);
-  addshort(&p, 0); // Store nothing (just clear)
-  addword(&p, 0); // no address is needed
+  // Clear Colors
+  addbyte(&p, 114);
+  addword(&p, 0xff000000); // opaque Black (RGBA: R=0xff, G=0, B=0, A=0)
+  addword(&p, 0xff000000); // 32-bit clear colours repeated for even/odd pixels
+  addword(&p, 0); // clear Z/stencil/VG mask
+  addbyte(&p, 0); // clear stencil
 
   uint32_t slotSize = getTileAllocationSize(s->tileAllocationEntrySize);
 
@@ -333,11 +314,9 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
       addbyte(&p, x); // column
       addbyte(&p, y); // row
 
-      uint32_t subList = (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize);
-      printf("at %p, rendering tile (%dx%x) via 0x%x\n", p, y, x, subList);
       // Call Tile sublist
       addbyte(&p, 17);
-      addword(&p, subList); // 2d array of $slotSize byte objects
+      addword(&p, (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize)); // 2d array of $slotSize byte objects
 
       // Last tile needs a special store instruction
       if ((x == (s->tilewidth-1)) && (y == (s->tileheight-1))) {
@@ -350,7 +329,6 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
     }
   }
   s->renderSize = p - (uint8_t*)s->renderer;
-  printf("render thread begins at %p, size %d\n", s->renderer, s->renderSize);
   assert(s->renderSize < 0x2000);
 }
 
@@ -363,7 +341,7 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
   int w = 200;
   int h = 200;
   int xoff = (width/2);
-  int yoff = height/2;
+  int yoff = (height/2);
   int16_t x = (sin(angle) * w) + xoff;
   int16_t y = (cos(angle) * h) + yoff;
   //printf("point %d %d %d\n",x,y,degrees);
@@ -415,8 +393,8 @@ static void v3d_allocate(void) {
   s->tileAllocationEntrySize = 0;
   state.tileAllocationSize = 0x8000;
   state.tileAllocation = memalign(256, state.tileAllocationSize);
-  state.width = 640;
-  state.height = 480;
+  state.width = 1280;
+  state.height = 720;
   state.tilewidth = DIV_CIEL(state.width, 64);
   state.tileheight = DIV_CIEL(state.height, 64);
   printf("%d x %d (pixels)\n", state.width, state.height);
@@ -427,7 +405,7 @@ static void v3d_allocate(void) {
   state.vertexData = memalign(256, 0x60);
   makeShaderRecord(s);
   printf("shader record %p\n", state.shaderRecord);
-  state.primitiveList = memalign(128, 3);
+  state.primitiveList = memalign(128, 16);
   state.primitiveList[0] = 0;
   state.primitiveList[1] = 1;
   state.primitiveList[2] = 2;
@@ -600,7 +578,7 @@ static void v3d_init(const struct app_descriptor *app) {
 
   event_init(&frame_done_event, false, EVENT_FLAG_AUTOUNSIGNAL);
 
-  udelay(2000);
+  udelay(1000);
   cmd_v3d_probe(0, 0);
   if (*REG32(V3D_IDENT0) != 0x2443356) {
     printf("V3D core not alive (IDENT0=0x%x), skipping render setup\n", *REG32(V3D_IDENT0));
@@ -647,16 +625,9 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
   control_start = *REG32(ST_CLO);
   *REG32(V3D_CT0EA) = (uint32_t)((state.binner + state.binnerSize) - 1);
 
-  uint32_t bfc_before = *REG32(V3D_BFC);
-  uint32_t rfc_before = *REG32(V3D_RFC);
-
   last_state = 6;
   event_wait(&frame_done_event);
   last_state = 7;
-
-  //printf("frame %d: BFC %u->%u RFC %u->%u CT1CA=0x%x layer.fb->ptr=%p\n",
-  //       rotation - 1, bfc_before, *REG32(V3D_BFC), rfc_before, *REG32(V3D_RFC),
-  //       *REG32(V3D_CT1CA), next->ptr);
 
   int channel = 1;
   mutex_acquire(&channels[channel].lock);
