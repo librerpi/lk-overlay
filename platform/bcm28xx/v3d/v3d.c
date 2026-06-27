@@ -15,6 +15,7 @@
 #include <platform/interrupts.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 
 #define ASB_V3D_S_CTRL 0x7e00a008
@@ -223,7 +224,7 @@ void makeBinner(v3d_client_state *s) {
         (s->tileAllocationEntrySize << 3) |        // 115-116 tile allocation initial block size
         (s->tileAllocationEntrySize << 5));        // 117-118 tile allocation block size
   printf("112 tile binning configuration, tile allocation at %p+0x%x", s->tileAllocation, s->tileAllocationSize);
-  printf(", size (in tiles) %dx%x\n", s->tilewidth, s->tileheight);
+  printf(", size (in tiles) %dx%d\n", s->tilewidth, s->tileheight);
   printf("tile state: %p\n", s->tileState);
 
   // Start tile binning.
@@ -400,7 +401,13 @@ static void v3d_allocate(void) {
   printf("%d x %d (pixels)\n", state.width, state.height);
   printf("%d x %d (tiles)\n", state.tilewidth, state.tileheight);
   state.tileState = memalign(32, 48 * state.tilewidth * state.tileheight);
+  // when booting from SPI flash, the v3d cant load shaders from the 8 alias, copy it to the C alias
+#if 0
   state.shaderCode = shaderCode;
+#else
+  state.shaderCode = memalign(32, sizeof(shaderCode));
+  memcpy(state.shaderCode, shaderCode, sizeof(shaderCode));
+#endif
   state.uniforms = memalign(256, 0x10);
   state.vertexData = memalign(256, 0x60);
   makeShaderRecord(s);
@@ -459,6 +466,7 @@ enum handler_return v3d_irq(void *arg) {
   }
   if (status & BV(1)) { // binner finished
     //puts("binner finished");
+    last_state = 8;
     binner_time = deltat;
     if (render_pending) {
       render_pending = false;
