@@ -339,8 +339,11 @@ static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees
 
   double angle = degrees / (180.0/M_PI);
 
-  int w = 200;
-  int h = 200;
+  // the radius of the circle is 35% the screen size
+  // but 1280x720 is a 16:9 ratio, and squishing it to 4:3 messes up the aspect ratio
+  // stretching the height +33% fixes the ratio
+  int w = (float)width * 0.35;
+  int h = (float)height * 0.35 * 1.33;
   int xoff = (width/2);
   int yoff = (height/2);
   int16_t x = (sin(angle) * w) + xoff;
@@ -641,6 +644,8 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
   mutex_acquire(&channels[channel].lock);
   state.layer.fb = next;
   state.frameANext = !state.frameANext;
+  hvs_allocate_premade(&state.layer, 7);
+  hvs_regen_noscale_noviewport(&state.layer);
   if (!shown) {
     hvs_dlist_add(channel, &state.layer);
     shown = true;
