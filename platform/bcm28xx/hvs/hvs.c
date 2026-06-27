@@ -953,7 +953,7 @@ void hvs_update_dlist(int channel) {
           dlist_memory[display_slot++] = layer->premade_dlist[i];
         }
       } else
-#if 0
+#if 1
       if ((layer->w == layer->viewport_w) && (layer->h == layer->viewport_h)) { // unity scale
         hvs_add_plane(layer, layer->x, layer->y, false);
       } else
