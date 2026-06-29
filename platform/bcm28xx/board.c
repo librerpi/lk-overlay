@@ -90,4 +90,7 @@ void board_init(void) {
     timer_initialize(&blinker);
     timer_set_periodic(&blinker, 1000, blink_led, NULL);
   }
+  if (current_board->hotplug_detect) {
+    gpio_register_irq(current_board->hotplug_detect);
+  }
 }

@@ -2,6 +2,7 @@
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/pl011.h>
+#include <platform/bcm28xx/gpio.h>
 
 #define MANUAL_UART
 

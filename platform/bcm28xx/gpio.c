@@ -7,13 +7,14 @@
  */
 #include <dev/gpio.h>
 #include <errno.h>
-#include <platform/bcm28xx.h>
-#include <lk/reg.h>
 #include <lk/console_cmd.h>
 #include <lk/debug.h>
-#include <string.h>
+#include <lk/reg.h>
+#include <platform/bcm28xx.h>
 #include <platform/bcm28xx/gpio.h>
 #include <platform/bcm28xx/udelay.h>
+#include <platform/interrupts.h>
+#include <string.h>
 
 #define NUM_PINS     54
 #define BITS_PER_REG 32
@@ -190,4 +191,36 @@ static int cmd_gpio_test(int argc, const console_cmd_args *argv) {
     printf("UP %d %08x\n", gpio_get(pins[i]), *REG32(GPIO_GPLEV0));
   }
   return 0;
+}
+
+static enum handler_return gpio_irq(void *unused) {
+  volatile uint32_t *gpeds = GPIO_GPEDS0;
+  uint32_t gplev[2];
+  gplev[0] = *REG32(GPIO_GPLEV0);
+  gplev[1] = *REG32(GPIO_GPLEV1);
+  for (int i=0; i<54; i++) {
+    int bank = i/32;
+    int bit = 1 << (i % 32);
+    if (gpeds[bank] & bit) {
+      printf("GPIO irq on pin %d, level %s\n", i, levels[!!(gplev[bank] & bit)]);
+      gpeds[bank] = bit;
+    }
+  }
+  return INT_NO_RESCHEDULE;
+}
+
+void gpio_register_irq(int nr) {
+  int bank = nr / 32;
+  int bit = 1 << (nr % 32);
+  volatile uint32_t *gpren = GPIO_GPREN0;
+  volatile uint32_t *gpfen = GPIO_GPFEN0;
+  gpren[bank] |= bit;
+  gpfen[bank] |= bit;
+
+  register_int_handler(50, gpio_irq, NULL);
+  register_int_handler(52, gpio_irq, NULL);
+  unmask_interrupt(49);
+  unmask_interrupt(50);
+  unmask_interrupt(51);
+  unmask_interrupt(52);
 }
