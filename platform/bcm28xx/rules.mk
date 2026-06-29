@@ -64,6 +64,8 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/print_timestamp.c \
 	#$(LOCAL_DIR)/i2c.c \
 
+MODULE_SRCS += $(LOCAL_DIR)/board.c
+
 
 ifeq ($(TARGET),rpi1)
   KERNEL_BASE = 0x00000000 # FIXME, should be 0x80000000, but no-mmu requires 0

@@ -20,6 +20,7 @@
 #include <platform.h>
 #include <platform/bcm28xx.h>
 #include <platform/bcm28xx/a2w.h>
+#include <platform/bcm28xx/board.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
@@ -650,46 +651,7 @@ void platform_init(void) {
   //hdmi_init();
 
 #ifdef ARCH_VPU
-  uint32_t revision = otp_read(30);
-  uint32_t type = (revision >> 4) & 0xff;
-  int lan_run = 0;
-  int ethclk_pin = 0;
-  switch (type) {
-  case 4: // 2B
-    lan_run = 31;
-    ethclk_pin = 44;
-    break;
-  case 8: // 3B
-    lan_run = 29;
-    ethclk_pin = 42;
-    break;
-  case 0xd: // 3B+
-    lan_run = 30;
-    ethclk_pin = 42;
-    break;
-  }
-  if (lan_run > 0) {
-    gpio_config(lan_run, kBCM2708PinmuxOut);
-    gpio_set(lan_run, 0);
-
-    if (ethclk_pin > 0) {
-      // GP1 routed to GPIO42 to drive ethernet/usb chip
-      *REG32(CM_GP1CTL) = CM_PASSWORD | CM_GPnCTL_KILL_SET;
-      while (*REG32(CM_GP1CTL) & CM_GPnCTL_BUSY_SET) {};
-
-      uint32_t divisor = freq_pllc_per / (25000000/0x1000);
-
-      *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0;
-      *REG32(CM_GP1DIV) = CM_PASSWORD | divisor; // divisor * 0x1000
-      *REG32(CM_GP1CTL) = CM_PASSWORD | (2 << CM_GPnCTL_MASH_LSB) | CM_SRC_PLLC_CORE0 | CM_GPnCTL_ENAB_SET;
-
-      gpio_config(ethclk_pin, kBCM2708Pinmux_ALT0);
-    }
-
-    udelay(10*1000);
-
-    gpio_set(lan_run, 1);
-  }
+  board_init();
 #endif
 }
 
