@@ -1,4 +1,5 @@
 #include <dev/gpio.h>
+#include <kernel/timer.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/board.h>
 #include <platform/bcm28xx/cm.h>
@@ -24,7 +25,20 @@ static const board_pins_t pi3bplus = {
   // expander pin 3(LAN_RUN) goes to pin 12 (nRESET) on the LAN9514
 };
 
+static const board_pins_t pi02w = {
+  .hotplug_detect = 28,
+  .status = 29,
+};
+
 const board_pins_t *current_board;
+timer_t blinker;
+
+static enum handler_return blink_led(struct timer *unused, unsigned int unused2, void *unused3) {
+  static int last = 0;
+  gpio_set(current_board->status, last);
+  last = !last;
+  return INT_NO_RESCHEDULE;
+}
 
 void board_init(void) {
   uint32_t revision = otp_read(30);
@@ -39,6 +53,9 @@ void board_init(void) {
     break;
   case 0xd: // 3B+
     current_board = &pi3bplus;
+    break;
+  case 0x12: // pi02w
+    current_board = &pi02w;
     break;
   default:
     break;
@@ -66,5 +83,11 @@ void board_init(void) {
     udelay(10*1000);
 
     gpio_set(lan_run, 1);
+  }
+
+  if (current_board->status) {
+    gpio_config(current_board->status, kBCM2708PinmuxOut);
+    timer_initialize(&blinker);
+    timer_set_periodic(&blinker, 1000, blink_led, NULL);
   }
 }
