@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <kernel/event.h>
 #include <lib/gfx.h>
+#include <lib/font.h>
 #include <lib/hexdump.h>
 #include <lk/console_cmd.h>
 #include <lk/reg.h>
@@ -37,6 +38,9 @@
 
 uint32_t control_start;
 uint32_t last_state;
+bool shown;
+float rotation = 0;
+float rotation_speed = 0.5;
 
 static int getTileAllocationSize(int n) {
   return 1 << (5 + n);
@@ -44,11 +48,13 @@ static int getTileAllocationSize(int n) {
 
 static int cmd_v3d_probe(int argc, const console_cmd_args *argv);
 static int cmd_v3d(int argc, const console_cmd_args *argv);
+static int cmd_speed(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("v3d_probe", "probe for v3d hw", &cmd_v3d_probe)
 STATIC_COMMAND("v3d_probe2", "probe for v3d hw", &cmd_v3d_probe2)
 STATIC_COMMAND("v3d", "do a full frame render", &cmd_v3d)
+STATIC_COMMAND("speed", "set v3d spin speeed", &cmd_speed)
 STATIC_COMMAND_END(v3d);
 
 typedef struct {
@@ -75,7 +81,7 @@ typedef struct {
   uint8_t tileAllocationEntrySize;
 } v3d_client_state;
 
-v3d_client_state state;
+static v3d_client_state state;
 
 #define DIV_CIEL(x,y) ( ((x)+(y-1)) / y)
 
@@ -87,6 +93,16 @@ static int cmd_v3d_probe(int argc, const console_cmd_args *argv) {
   printf("CM_V3DDIV:      0x%x\n", *REG32(CM_V3DDIV));
   return 0;
 }
+
+static int cmd_speed(int argc, const console_cmd_args *argv) {
+  if (argc != 2) {
+    printf("usage: speed <n>\n");
+    return 0;
+  }
+  rotation_speed = atof(argv[1].str);
+  return 0;
+}
+
 void trackDownAddr(uint32_t addr) {
   const v3d_client_state *s = &state;
   if ((addr >= s->binner) && (addr <= (s->binner + s->binnerSize))) {
@@ -300,8 +316,8 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
 
   // Clear Colors
   addbyte(&p, 114);
-  addword(&p, 0xff000000); // opaque Black (RGBA: R=0xff, G=0, B=0, A=0)
-  addword(&p, 0xff000000); // 32-bit clear colours repeated for even/odd pixels
+  addword(&p, 0x00000000); // transparent Black (RGBA: R=0x00, G=0, B=0, A=0)
+  addword(&p, 0x00000000); // 32-bit clear colours repeated for even/odd pixels
   addword(&p, 0); // clear Z/stencil/VG mask
   addbyte(&p, 0); // clear stencil
 
@@ -333,17 +349,22 @@ void makeRenderer(void *outputFrame, v3d_client_state *s, bool allocate) {
   assert(s->renderSize < 0x2000);
 }
 
-static void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees) {
+static void makeVertexData(uint8_t *vertexvirt,int width,int height, float degrees) {
   //MemoryReference *vertexData = allocator->Allocate(0x60);
   uint8_t *p = vertexvirt;
 
   double angle = degrees / (180.0/M_PI);
 
+#if 1
   // the radius of the circle is 35% the screen size
   // but 1280x720 is a 16:9 ratio, and squishing it to 4:3 messes up the aspect ratio
   // stretching the height +33% fixes the ratio
+  int w = (float)width * 0.30;
+  int h = (float)height * 0.30 * 1.50;
+#else
   int w = (float)width * 0.35;
-  int h = (float)height * 0.35 * 1.33;
+  int h = (float)height * 0.35;
+#endif
   int xoff = (width/2);
   int yoff = (height/2);
   int16_t x = (sin(angle) * w) + xoff;
@@ -397,8 +418,15 @@ static void v3d_allocate(void) {
   s->tileAllocationEntrySize = 0;
   state.tileAllocationSize = 0x8000;
   state.tileAllocation = memalign(256, state.tileAllocationSize);
-  state.width = 1280;
-  state.height = 720;
+
+  state.width = 640;
+  state.height = 480;
+
+  if (channels[PRIMARY_HVS_CHANNEL].width) {
+    state.width = channels[PRIMARY_HVS_CHANNEL].width;
+    state.height = channels[PRIMARY_HVS_CHANNEL].height;
+  }
+
   state.tilewidth = DIV_CIEL(state.width, 64);
   state.tileheight = DIV_CIEL(state.height, 64);
   printf("%d x %d (pixels)\n", state.width, state.height);
@@ -422,7 +450,7 @@ static void v3d_allocate(void) {
   makeBinner(&state);
   s->frameA = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
   s->frameB = gfx_create_surface(NULL, state.width, state.height, state.width, GFX_FORMAT_ARGB_8888);
-  mk_unity_layer(&state.layer, s->frameA, 40, 0, 0);
+  mk_unity_layer(&state.layer, s->frameA, 52, 0, 0);
   state.layer.name = "v3d";
   s->frameANext = true;
 
@@ -612,9 +640,6 @@ static void v3d_init(const struct app_descriptor *app) {
   puts("v3d_init: complete");
 }
 
-bool shown;
-int rotation = 0;
-
 static int cmd_v3d(int argc, const console_cmd_args *argv) {
   if (!v3d_ready) {
     printf("v3d not initialized, refusing to run (avoids hard hang on uninitialized event)\n");
@@ -624,8 +649,11 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
 
   // change which buffer we render into
   makeRenderer(next->ptr, &state, false);
+
+  rotation += rotation_speed;
+
   // update the xy coords for the rotating triangle
-  makeVertexData(state.vertexData, state.width, state.height, rotation++);
+  makeVertexData(state.vertexData, state.width, state.height, rotation);
 
   render_pending_addr = (uint32_t)state.renderer;
   render_pending_size = (uint32_t)((state.renderer + state.renderSize));
@@ -640,11 +668,22 @@ static int cmd_v3d(int argc, const console_cmd_args *argv) {
   event_wait(&frame_done_event);
   last_state = 7;
 
+  char buffer[128];
+  snprintf(buffer, 127, "angle %d\n", (uint32_t)rotation);
+  const char *c;
+  int x=640/2;
+  for (c = buffer; *c; c++) {
+    font_draw_char(next, *c, x, 480/2, 0xffffffff);
+    x += FONT_X;
+  }
+
   int channel = 1;
   mutex_acquire(&channels[channel].lock);
   state.layer.fb = next;
   state.frameANext = !state.frameANext;
-  hvs_allocate_premade(&state.layer, 7);
+  if (!shown) {
+    hvs_allocate_premade(&state.layer, 7);
+  }
   hvs_regen_noscale_noviewport(&state.layer);
   if (!shown) {
     hvs_dlist_add(channel, &state.layer);
