@@ -130,7 +130,7 @@ void animate_alpha(uint32_t stat) {
   }
 }
 
-#if 0
+#if 1
 void animate_chroma_hscale(uint32_t stat) {
   img->chroma_hscale = (substate/10)+1;
   if (state_advance()) {
@@ -146,7 +146,7 @@ const animation_t animations[] = {
   { animate_x, 256 },
   { animate_y, 256 },
   { animate_alpha, 256 },
-  //{ animate_chroma_hscale, 2000 },
+  { animate_chroma_hscale, 2000 },
 };
 const int state_count = sizeof(animations) / sizeof(animations[0]);
 
@@ -178,7 +178,7 @@ static void draw_grid(void) {
   }
   mk_unity_layer(grid_layer, gfx_grid, 60, 100, 100);
   hvs_allocate_premade(grid_layer, 7);
-  hvs_regen_noscale_noviewport_noalpha(grid_layer);
+  hvs_regen_noscale_viewport_noalpha(grid_layer);
   grid_layer->name = strdup("grid");
   mutex_acquire(&channels[channel].lock);
   hvs_dlist_add(channel, grid_layer);
@@ -236,7 +236,7 @@ void hvs_dlist_update_yuv(hvs_layer *s, yuv_image_2plane *i) {
   d[14] = 600;
   // scaling parameters UV
   //d[14] = gen_ppf(100, 100); // ???
-  d[15] = gen_ppf(100, 200); // chroma H scale
+  d[15] = gen_ppf(100, i->chroma_hscale); // chroma H scale
   d[16] = gen_ppf(100, 200); // chroma V scale
   d[17] = 0xDEADBEEF;
   // scaling parameters Y
@@ -252,11 +252,18 @@ void hvs_dlist_update_yuv(hvs_layer *s, yuv_image_2plane *i) {
 }
 
 yuv_image_2plane *yuv_allocate(unsigned int width, unsigned int height, int chroma_hscale, int chroma_vscale) {
+  printf("yuv_allocate(%d, %d, %d, %d)\n", width, height, chroma_hscale, chroma_vscale);
   yuv_image_2plane *i = malloc(sizeof(yuv_image_2plane));
   i->luma_stride = width;
   i->chroma_stride = (width / chroma_hscale) * 2;
-  i->luma = malloc(height * i->luma_stride);
-  i->chroma = malloc((height / chroma_vscale) * i->chroma_stride);
+
+  i->luma_size = height * i->luma_stride;
+  i->chroma_size = (height / chroma_vscale) * i->chroma_stride;
+
+  i->luma = malloc(i->luma_size);
+  i->chroma = malloc(i->chroma_size);
+
+  printf("YUV image allocated, luma %p, chroma %p\n", i->luma, i->chroma);
   i->chroma_hscale = chroma_hscale * 100;
   i->chroma_vscale = chroma_vscale * 100;
   return i;
@@ -352,8 +359,8 @@ void create_yuv_colorbars(void) {
 
   sprite.name = strdup("YUV");
 
-  memset(img->chroma, 128, h * img->chroma_stride);
-  memset(img->luma, 0, h * img->luma_stride);
+  memset(img->chroma, 128, img->chroma_size);
+  memset(img->luma, 0, img->luma_size);
 
   int slice = w/7;
   fillrect(img, slice*0, 0, slice, h, 180, 128, 128);
@@ -368,8 +375,8 @@ void create_yuv_colorbars(void) {
 static void yuv_entry(const struct app_descriptor *app, void *args) {
   draw_grid();
 
-  //create_yuv_colorbars();
-  create_yuv_sweep();
+  create_yuv_colorbars();
+  //create_yuv_sweep();
 
   hvs_dlist_update_yuv(&sprite, img);
 
