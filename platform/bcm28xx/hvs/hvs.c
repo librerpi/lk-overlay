@@ -315,7 +315,7 @@ static void write_tpz(unsigned int source, unsigned int dest) {
 }
 
 static void write_ppf(unsigned int source, unsigned int dest) {
-  uint32_t scale = (1<<16) * source / dest;
+  uint32_t scale = ((1<<16) * source / dest) & 0xffff;
   if (hvs_debug) printf("PPF 0x%x\n", scale);
   dlist_memory[display_slot++] = SCALER_PPF_AGC |
     (scale << 8) | (0 << 0);
@@ -356,7 +356,7 @@ static void hvs_add_plane_scaled(hvs_layer *layer) {
 
   if (layer->fb) {
     if (input_width > screen_width) xmode = TPZ;
-    else if (input_width < screen_width) xmode = PPF;
+    else if (input_width < screen_width) xmode = PPF; // upscaling
     else xmode = TPZ;
 
     if (input_height > screen_height) ymode = TPZ;
@@ -661,7 +661,9 @@ static enum handler_return pv_irq(void *arg) {
     //*REG32(SD_IDL) = 0;
     //uint64_t idle_percent = ((uint64_t)idle * 100) / ((uint64_t)total);
     //printf("sdram usage: %d %d, %lld\n", idle, total, idle_percent);
-    //printf("HSYNC:%5d HBP:%d HACT:%d HFP:%d VSYNC:%5d VBP:%5d VFPS:%d FRAME:%d\n", t - vsync, t-hbp, t-hact, t-hfp, t-vsync, t-vbp, t-vfps, t-last_vfps);
+#ifdef TIMESTAMP_TIMINGS
+    printf("HSYNC:%5d HBP:%d HACT:%d HFP:%d VSYNC:%5d VBP:%5d VFPS:%d FRAME:%d\n", t - vsync, t-hbp, t-hact, t-hfp, t-vsync, t-vbp, t-vfps, t-last_vfps);
+#endif
     //hvs_set_background_color(1, 0xffffff);
   }
   if (stat & PV_INTEN_VFP_END) {
@@ -866,20 +868,26 @@ void hvs_get_framebuffer_pos(int channel, framebuffer_pos *pos) {
 
 __WEAK status_t display_get_framebuffer(struct display_framebuffer *fb) {
   //return ERR_NOT_SUPPORTED;
+#if 0
 #ifdef TINY_FRAMEBUFFER
   const int w = 475;
   const int h = 120;
   const gfx_format fmt = GFX_FORMAT_RGB_332;
 #elif PRIMARY_HVS_CHANNEL == 1
   puts("default FB on VEC");
-  const int w = 1280;
-  const int h = 720;
+  const int w = 640;
+  const int h = 480;
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #elif PRIMARY_HVS_CHANNEL == 0
   const int w = 1280;
   const int h = 720;
   const gfx_format fmt = GFX_FORMAT_ARGB_8888;
 #endif
+#endif
+  const int w = channels[PRIMARY_HVS_CHANNEL].width;
+  const int h = channels[PRIMARY_HVS_CHANNEL].height;
+  const gfx_format fmt = GFX_FORMAT_ARGB_8888;
+
   if (!gfx_console) {
     printf("creating %dx%d framebuffer %d for text console\n", w, h, fmt);
     gfx_console = gfx_create_surface(NULL, w, h, w, fmt);
