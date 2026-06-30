@@ -95,7 +95,9 @@ typedef struct {
 
 typedef struct {
   uint8_t *luma;
+  uint32_t luma_size;
   uint8_t *chroma;
+  uint32_t chroma_size;
   unsigned int luma_stride;
   unsigned int chroma_stride;
   unsigned int chroma_hscale;
@@ -296,6 +298,8 @@ static inline void mk_unity_layer(hvs_layer *l, gfx_surface *fb, int layer, unsi
 
   l->premade_dlist = NULL;
   l->dlist_length = 0;
+
+  l->alpha_mode = alpha_mode_pipeline;
 }
 
 static inline void hvs_allocate_premade(hvs_layer *l, int words) {
