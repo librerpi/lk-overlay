@@ -7,6 +7,7 @@ MODULES += \
 	platform/bcm28xx/pixelvalve \
 
 MODULES += lib/video_timing
+MODULES += lib/ddcv2
 
 
 MODULE_SRCS += \

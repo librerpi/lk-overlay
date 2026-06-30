@@ -20,7 +20,7 @@ void edid_pretty_print(const edid_t *e) {
   }
 
   for (int i=0; i<4; i++) {
-    detailed_timing_t *d = &e->detailed_timings[i];
+    const detailed_timing_t *d = &e->detailed_timings[i];
     if (d->pixel_clock == 0) {
       monitor_descriptor_t *m = &e->detailed_timings[i];
       printf("  monitor descriptor 0x%x\n", m->descriptor_type);
@@ -103,4 +103,36 @@ bool edid_check_checksum(const edid_t *e) {
     sum += u8[i];
   }
   return sum == 0;
+}
+
+bool edid_get_prefered(const edid_t *e, struct pv_timings *t) {
+  const detailed_timing_t *d = &e->detailed_timings[0];
+  int hactive = d->hactive_lo | ((d->hextra & 0xf0) << 4);
+  int hblank = d->hblank_lo | ((d->hextra & 0x0f) << 8);
+  int vactive = d->vactive_lo | ((d->vextra & 0xf0) << 4);
+  int vblank = d->vblank_lo | ((d->vextra & 0x0f) << 8);
+  int hfp = d->hfp_offset_lo | ((d->blank_extra & 0xc0) << 2);
+  int hsync = d->hsync_offset_lo | ((d->blank_extra & 0x30) << 4);
+  int vfp = ((d->vblank_extra & 0xf0) >> 4) | ((d->blank_extra & 0x0c) << 2);
+  int vsync = (d->vblank_extra & 0x0f) | ((d->blank_extra & 0x03) << 4);
+
+  // TODO, save a copy
+  struct pv_timings t2 = {
+    .hactive = hactive,
+    .hfp = hfp,
+    .hsync = hsync,
+    .hbp = hblank - hfp - hsync,
+    .vactive = vactive,
+    .vfp = vfp,
+    .vsync = vsync,
+    .vbp = vblank - vfp - vsync,
+    .interlaced = false,
+    .fps = 60, // TODO
+    .pixel_clock = d->pixel_clock * 10000,
+  };
+  print_timing_debug(&t2);
+  if (t) *t = t2;
+
+  // TODO, check if the prefered timing actually exists
+  return true;
 }

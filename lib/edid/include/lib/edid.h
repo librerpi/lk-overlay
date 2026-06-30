@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <platform/bcm28xx/pv.h>
 
 typedef struct {
   uint16_t pixel_clock;
@@ -56,3 +57,4 @@ typedef struct {
 
 void edid_pretty_print(const edid_t *e);
 bool edid_check_checksum(const edid_t *e);
+bool edid_get_prefered(const edid_t *e, struct pv_timings *t);

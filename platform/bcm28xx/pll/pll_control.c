@@ -688,8 +688,10 @@ void setup_plla(uint32_t target_freq, int core_div, int per_div) {
   //printf("CORE0: %d Khz\n", freq_pllc_core0 / 1000);
 }
 
-void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
-  printf("bringing PLLH up at %dMHz\n", target_freq/1000/1000);
+void setup_pllh(uint64_t target_freq, int aux_div, int pix_div) {
+  printf("bringing PLLH up at %dMHz\n", (uint32_t)(target_freq/1000/1000));
+
+  bool prediv = true; // TODO
 
   hdmi_enable_power_domain();
 
@@ -698,11 +700,15 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
   printf("xtal_in = %u, ", xtal_in);
   uint64_t goal_freq = target_freq;
   printf("goal_freq = %llu\n", goal_freq);
+
+  // if over 1.75ghz, enable an extra /2 stage
+  if (prediv) goal_freq /= 2;
+
   uint32_t divisor = (goal_freq<<20) / xtal_in;
   int div = divisor >> 20;
   int frac = divisor & 0xfffff;
-  //printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
-  //printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
+  printf("divisor 0x%x -> %d+(%d/2^20)\n", divisor, div, frac);
+  printf("ctrl: 0x%x\nfrac: 0x%x\n", *REG32(A2W_PLLH_CTRL), *REG32(A2W_PLLH_FRAC));
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLL_ANARST_SET;
 
@@ -715,7 +721,7 @@ void setup_pllh(uint32_t target_freq, int aux_div, int pix_div) {
 
   *REG32(A2W_PLLH_ANA3) = A2W_PASSWORD | 0x0;
   *REG32(A2W_PLLH_ANA2) = A2W_PASSWORD | 0x0;
-  *REG32(A2W_PLLH_ANA1) = A2W_PASSWORD | /*PLLH_ANA1_DOUBLE |*/ (6 << 1);
+  *REG32(A2W_PLLH_ANA1) = A2W_PASSWORD | (prediv ? PLLH_ANA1_DOUBLE : 0) | (6 << 1);
   *REG32(A2W_PLLH_ANA0) = A2W_PASSWORD | (2 << 19) | (2 << 22);
 
   *REG32(CM_PLLH) = CM_PASSWORD | CM_PLLH_DIGRST_SET;
@@ -821,6 +827,7 @@ bool clock_set_hsm(int freq, enum peripheral_clock_tap source) {
   int divisor_fixed = desired_divider * 4096;
   int mash = 0;
   printf("ref: %d, target: %d, divisor(f): %f, divisor(fixed): 0x%x\n", reference, freq, (double)desired_divider, divisor_fixed);
+  divisor_fixed = 0x3000;
   if (divisor_fixed < 0x2000) {
     printf("divisor %f too low, abort!\n", (double)desired_divider);
     return false;
@@ -829,6 +836,7 @@ bool clock_set_hsm(int freq, enum peripheral_clock_tap source) {
     puts("divisor too high, abort!");
     return false;
   }
+  divisor_fixed = 0x1000;
   if (divisor_fixed & 0xfff) mash = 1;
 
   // Never flip ENABLE and SRC in the same write.

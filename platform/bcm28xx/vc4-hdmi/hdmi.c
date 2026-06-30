@@ -1,16 +1,17 @@
 #include <app.h>
 #include <kernel/mutex.h>
+#include <lib/ddcv2.h>
 #include <lib/video_timing.h>
 #include <lk/init.h>
 #include <lk/reg.h>
 #include <platform/bcm28xx/cm.h>
+#include <platform/bcm28xx/hvs.h>
 #include <platform/bcm28xx/pll.h>
 #include <platform/bcm28xx/power.h>
-#include <platform/bcm28xx/hvs.h>
+#include <platform/bcm28xx/print_timestamp.h>
 #include <platform/bcm28xx/pv.h>
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
-#include <platform/bcm28xx/print_timestamp.h>
 
 #define logf(fmt, ...) { print_timestamp(); printf("[hdmi:%s:%d]: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__); }
 
@@ -107,21 +108,33 @@ static void hdmi_phy_init(void);
 static void hdmi_reset(void);
 static void hdmi_recenter_fifo(void);
 
+static struct pv_timings prefered_timings;
+
 static void hdmi_init(uint level) {
+  const struct pv_timings *active_timing;
+
   power_up_usb();
   hdmi_enable_power_domain();
 
-  const struct pv_timings *active_timing = &pv_720p60;
-  //print_timing_debug(active_timing);
+  if (probe_ddcv2(&prefered_timings)) {
+    active_timing = &prefered_timings;
+  } else {
+    active_timing = &pv_720p60;
+  }
 
-  uint32_t pixel_clock = get_pixel_clock(active_timing);
+  print_timing_debug(active_timing);
+
+  uint64_t pixel_clock = get_pixel_clock(active_timing);
 
   // Bring up PLLH so the HDMI pixel clock (PLLH_PIX) is live BEFORE we touch the
   // core. Stock firmware always programs the pixel clock during HDMI bring-up
   // (hdmi_open -> hdmi_set_pixel_clock), and platform.c only does this on the
   // 19.2MHz xtal path, so do it here to make HDMI bring-up self-contained.
   // VCO = pixel_clock*10; aux_div=5 -> PLLH_AUX = pixel_clock*2; HSM = /2 = pixel_clock.
-  setup_pllh(pixel_clock * 10, 5, 1);
+
+  // TODO auto-select pix_div
+  int pix_div = 2;
+  setup_pllh(pixel_clock * 10 * pix_div, 8, pix_div);
 
   if (!clock_set_hsm(pixel_clock, PERI_PLLH_AUX)) {
     logf("HSM clock did not start, aborting HDMI bringup\n");

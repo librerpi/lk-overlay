@@ -187,13 +187,11 @@ end:
   return ret;
 }
 
+#if 0
 static void i2c_init(uint level) {
-  int ret = 0;
-
-  printf("%d %d\n", sizeof(detailed_timing_t), sizeof(edid_t));
   printf(GREEN"probing i2c\n"DEFAULT);
-
   i2c_detect(2, 0, 0x78);
 }
 
 LK_INIT_HOOK(i2c, i2c_init, LK_INIT_LEVEL_PLATFORM + 20);
+#endif
