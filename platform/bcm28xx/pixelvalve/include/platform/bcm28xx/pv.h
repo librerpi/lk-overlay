@@ -13,6 +13,7 @@ struct pv_timings {
   uint16_t vfp_even, vsync_even, vbp_even, vactive_even;
   bool interlaced;
   uint16_t fps;
+  uint32_t pixel_clock;
 };
 
 struct pixel_valve {
