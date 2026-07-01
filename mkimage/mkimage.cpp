@@ -29,10 +29,17 @@ void write_entry(FILE *out, const vector<uint8_t> &buffer, uint32_t magic, uint 
   fflush(out);
 }
 
-vector<uint8_t> readFile(const string &filename) {
+vector<uint8_t> readFile(const string &filename, const vector<string> &includePath) {
   vector<uint8_t> output;
-  FILE *handle = fopen(filename.c_str(), "r");
-  assert(handle);
+  FILE *handle;
+  for (const auto &dir : includePath) {
+    handle = fopen((dir + string("/") + filename).c_str(), "r");
+    if (handle) break;
+  }
+  if (!handle) {
+    fprintf(stderr, "error, cant find %s\n", filename.c_str());
+    exit(1);
+  }
 
   fseek(handle, 0, SEEK_END);
   uint32_t length = ftell(handle);
@@ -53,8 +60,24 @@ vector<uint8_t> hash_buffer(const vector<uint8_t> &buffer) {
 }
 
 int main(int argc, char **argv) {
-  assert(argc == 2);
-  vector<uint8_t> configJsonVec = readFile(argv[1]);
+  int opt;
+  vector<string> includePath;
+  includePath.push_back(".");
+  string jsonPath;
+  while ((opt = getopt(argc, argv, "-I:")) != -1) {
+    switch (opt) {
+    case 1:
+      jsonPath = optarg;
+      break;
+    case 'I':
+      printf("will search %s\n", optarg);
+      includePath.push_back(optarg);
+      break;
+    }
+  }
+
+
+  vector<uint8_t> configJsonVec = readFile(jsonPath, includePath);
   configJsonVec.push_back(0);
   string configJsonStr = (char*)configJsonVec.data();
   json config = json::parse(configJsonStr);
@@ -74,7 +97,7 @@ int main(int argc, char **argv) {
   {
     json bootcode = config["bootcode"];
     if (bootcode.is_string()) {
-      vector<uint8_t> stage1_blob = readFile(bootcode);
+      vector<uint8_t> stage1_blob = readFile(bootcode, includePath);
       assert(offset == 0);
       write_entry(out, stage1_blob, 0x55aaf00f, offset);
       offset = ROUNDUP(offset + 8 + stage1_blob.size(), 8);
@@ -102,7 +125,7 @@ int main(int argc, char **argv) {
         write_entry(out, padding, 0x55aafeef, offset);
         offset = offset_goal;
       }
-      vector<uint8_t> buffer = readFile(filename);
+      vector<uint8_t> buffer = readFile(filename, includePath);
       if (magic == 0xaa55f11f) { // file with name
         string name = elm["name"];
         assert(name.size() < 16);
