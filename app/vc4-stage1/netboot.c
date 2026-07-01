@@ -1,7 +1,7 @@
 #include <arch.h>
 #include <assert.h>
 #include <lib/elf.h>
-#include <lwip/apps/http_client.h>
+//#include <lwip/apps/http_client.h>
 #include <lwip/apps/tftp_client.h>
 #include <lwip/dhcp.h>
 #include <lwip/netif.h>
