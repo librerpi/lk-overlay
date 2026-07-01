@@ -64,6 +64,8 @@ in lib.fix (self: {
     name = "shell";
     buildInputs = with pkgs; [
       flashrom
+      bison
+      flex
       imagemagick
       libpng
       nlohmann_json
@@ -115,6 +117,7 @@ in lib.fix (self: {
     vc4.stage1-usbonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-usbonly"; };
     vc4.stage1-sdonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-sdonly"; };
     vc4.stage1-spi = vc4.callPackage ./lk.nix { project = "vc4-stage1-spi"; };
+    vc4.stage2-spi = vc4.callPackage ./lk.nix { project = "vc4-stage2-spi"; };
     vc4.stage2 = vc4.callPackage ./lk.nix {
       project = "vc4-stage2";
       preBuild = ''

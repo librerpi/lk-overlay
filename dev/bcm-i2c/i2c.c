@@ -14,7 +14,7 @@
 #define GREEN   CSI"32m"
 #define DEFAULT CSI"39m"
 
-#define LOCAL_TRACE 1
+#define LOCAL_TRACE 0
 
 typedef struct {
   volatile uint32_t control;

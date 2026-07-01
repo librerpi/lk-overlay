@@ -64,6 +64,7 @@ ssize_t tftp_blocking_get(ip_addr_t hostip, const char *path, uint32_t size, uin
     //}
   static bool init_done = false;
   if (!init_done) {
+    init_done = true;
     status = tftp_init_client(&ctx);
     if (status != ERR_OK) printf("init status %d\n", status);
     assert(status == ERR_OK);

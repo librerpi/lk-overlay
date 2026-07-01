@@ -135,7 +135,7 @@ void try_to_netboot(void) {
   }
   void *entry = load_and_run_elf(stage2_elf);
   free(buffer);
-  if (false) {
+  if (true) {
     arch_chain_load(entry, 0, 0, 0, 0);
   }
   return;

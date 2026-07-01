@@ -126,6 +126,8 @@ int main(int argc, char **argv) {
     }
   }
 
+  printf("total space used in SPI image: %d KB\n", offset >> 10);
+
 #if 0
   uint32_t stage2_offset = ROUNDUP(8 + length, 8);
 

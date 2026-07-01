@@ -20,7 +20,7 @@ CONFIG_GFX ?= 0
 CONFIG_NET ?= 0
 CONFIG_SD_BOOT ?= 0
 TUH_MSC ?= 0
-DEBUG := 2
+DEBUG := 1
 
 ifeq ($(CONFIG_SD_BOOT),1)
   MODULES += platform/bcm28xx/sdhost
@@ -36,12 +36,13 @@ ifeq ($(CONFIG_DISK),1)
 endif
 
 ifeq ($(CONFIG_HDMI),1)
-  MODULES += lib/gfxconsole
+  # MODULES += lib/gfxconsole
+#  MODULES += lib/fasterconsole
   MODULES += platform/bcm28xx/vc4-hdmi
 endif
 
 ifeq ($(CONFIG_GFX),1)
-  MODULES += lib/gfxconsole
+  #MODULES += lib/gfxconsole
   MODULES += platform/bcm28xx/vec
   PLLA_FREQ_MHZ := 432
 endif

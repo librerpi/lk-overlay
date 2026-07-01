@@ -24,12 +24,16 @@ MODULES += platform/bcm28xx/arm
 #MODULES += app/chips-challenge
 MODULES += platform/bcm28xx/usb-phy
 MODULES += app/mailbox-property-server
-#MODULES += platform/bcm28xx/vc4-hdmi
 
 CONFIG_DWC2 := 0
 CONFIG_TINYUSB := 0
 CONFIG_MANUAL_USB := 0
-CONFIG_VEC := 1
+CONFIG_VEC := 0
+
+ifeq (1,1)
+  MODULES += platform/bcm28xx/vc4-hdmi
+  GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
+endif
 
 ifeq ($(CONFIG_VEC),1)
   MODULES += platform/bcm28xx/vec

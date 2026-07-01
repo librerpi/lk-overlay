@@ -1,6 +1,7 @@
 #include <app.h>
 #include <assert.h>
 #include <dev/gpio.h>
+#include <dev/spi.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
 #include <libfdt.h>
@@ -11,7 +12,9 @@
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/cm.h>
 #include <platform/bcm28xx/gpio.h>
+#ifdef WITH_LIB_GFX
 #include <platform/bcm28xx/hvs.h>
+#endif
 #include <platform/bcm28xx/inter-arch.h>
 #include <platform/bcm28xx/otp.h>
 #include <platform/bcm28xx/pll.h>
@@ -47,11 +50,13 @@ static const armstub_t *chosenArmstub;
 bool aarch64 = false;
 
 timer_t arm_check;
-uint32_t w = 620;
-uint32_t h = 420;
 
+#ifdef WITH_LIB_GFX
+uint32_t w = 1280;
+uint32_t h = 1024;
 // place arm framebuffer 96mb into ram
 static const uint32_t fb_phys_addr = 96 * 1024 * 1024;
+#endif
 
 void mapBusToArm(uint32_t busAddr, uint32_t armAddr);
 static void setupClock(void);
@@ -85,6 +90,7 @@ static enum handler_return arm_checker(struct timer *unused1, unsigned int unuse
 }
 
 
+#ifdef WITH_LIB_GFX
 static void setup_framebuffer(void) {
   int channel = 1;
 
@@ -106,8 +112,20 @@ static void setup_framebuffer(void) {
   hvs_update_dlist(channel);
   mutex_release(&channels[channel].lock);
 }
+#endif
 
 #define checkerr if (ret < 0) { printf("%s():%d error %d %s\n", __FUNCTION__, __LINE__, ret, fdt_strerror(ret)); return NULL; }
+
+struct mem_entry {
+  uint32_t address;
+  uint32_t size;
+};
+
+struct ranges {
+  uint32_t child;
+  uint32_t parent;
+  uint32_t size;
+};
 
 static void *setupInterArchDtb(void) {
   size_t buffer_size = 1 * 1024 * 1024;
@@ -122,29 +140,88 @@ static void *setupInterArchDtb(void) {
   checkerr;
   //printf("b %d\n", fdt_size_dt_struct(v_fdt));
 
-  ret = fdt_begin_node(v_fdt, "root");
+  ret = fdt_begin_node(v_fdt, "");
   checkerr;
   //printf("c %d\n", fdt_size_dt_struct(v_fdt));
 
+  fdt_property_u32(v_fdt, "#address-cells", 1);
+  fdt_property_u32(v_fdt, "#size-cells", 1);
 
+  {
+    fdt_begin_node(v_fdt, "memory");
+    fdt_property_string(v_fdt, "device_type", "memory");
+    struct mem_entry memmap[] = {
+      { .address = htonl(0), .size = htonl(128 * MB) },
+      //{ .address = htonl(112 * MB), .size = htonl(400 * MB) },
+    };
+    fdt_property(v_fdt, "reg", (void*) memmap, sizeof(memmap));
+    fdt_end_node(v_fdt);
+  }
+
+#ifdef WITH_LIB_GFX
   {
     ret = fdt_begin_node(v_fdt, "framebuffer");
     checkerr;
     //printf("c2 %d\n", fdt_size_dt_struct(v_fdt));
 
+    fdt_property_string(v_fdt, "compatible", "simple-framebuffer");
+
+    struct mem_entry reg = {
+      .address = htonl(fb_phys_addr),
+      .size = htonl(16 << 20),
+    };
+
+    fdt_property(v_fdt, "reg", &reg, sizeof(reg));
+
     fdt_property_u32(v_fdt, "width", w);
+    fdt_property_u32(v_fdt, "stride", w * 4);
     fdt_property_u32(v_fdt, "height", h);
-    fdt_property_u32(v_fdt, "reg", fb_phys_addr);
+    //fdt_property_u32(v_fdt, "reg", fb_phys_addr);
+    fdt_property_string(v_fdt, "format", "a8r8g8b8");
 
     ret = fdt_end_node(v_fdt);
     checkerr;
+  }
+#endif
+
+  {
+    fdt_begin_node(v_fdt, "soc");
+    fdt_property_string(v_fdt, "compatible", "simple-bus");
+    struct ranges ranges[] = {
+      { .child = htonl(0x7e000000), .parent = htonl(0x3f000000), .size = htonl(16 << 20) },
+      { .child = htonl(0x40000000), .parent = htonl(0x40000000), .size = htonl(0x1000) },
+    };
+    fdt_property(v_fdt, "ranges", (void*)ranges, sizeof(ranges));
+
+    struct ranges dma_ranges[] = {
+      { .child = htonl(0xc0000000), .parent = 0, .size = htonl(0x3f000000) },
+    };
+    fdt_property(v_fdt, "dma-ranges", (void*)dma_ranges, sizeof(dma_ranges));
+
+    {
+      fdt_begin_node(v_fdt, "serial@7e201000");
+      const char comp[] = "brcm,bcm2835-pl011\0arm,pl011\0arm,primecell";
+      fdt_property(v_fdt, "compatible", comp, sizeof(comp));
+      struct mem_entry reg = { .address = htonl(0x7e201000), .size = htonl(0x200) };
+      fdt_property(v_fdt, "reg", &reg, sizeof(reg));
+      fdt_property_u32(v_fdt, "arm,primecell-periphid", 0x241011);
+      fdt_end_node(v_fdt);
+    }
+
+    fdt_end_node(v_fdt);
+  }
+
+  {
+    fdt_begin_node(v_fdt, "chosen");
+    fdt_property_string(v_fdt, "stdout-path", "/soc/serial@7e201000");
+    fdt_end_node(v_fdt);
   }
 
   {
     ret = fdt_begin_node(v_fdt, "timestamps");
     checkerr;
 
-    fdt_property_u32(v_fdt, "3stage2_arch_init", arch_init_timestamp);
+    //fdt_property_u32(v_fdt, "3stage2_arch_init", arch_init_timestamp);
     fdt_property_u32(v_fdt, "4stage2_arm_start", *REG32(ST_CLO));
 
     ret = fdt_end_node(v_fdt);
@@ -217,6 +294,7 @@ static void enable_usb_host(void) {
   }
 }
 
+#if ARM_EMBEDDED
 static void choose_arm_payload(void) {
   uint32_t revision = otp_read(30);
   uint32_t processor = (revision >> 12) & 0xf;
@@ -230,6 +308,23 @@ static void choose_arm_payload(void) {
     puts("enabling aarch64");
   }
 }
+#endif
+
+#if ARM_SPI
+static void choose_arm_payload(void) {
+  uint8_t *buffer;
+  ssize_t loader_size = spi_read_file("arm_loader.bin", &buffer);
+  printf("arm loader is %ld bytes long and is now at %p\n", loader_size, buffer);
+
+  if (loader_size <= 0) {
+    panic("cant load arm loader");
+  }
+  arm_payload *spi_payload = malloc(sizeof(arm_payload));
+  spi_payload->payload_addr = buffer;
+  spi_payload->payload_size = loader_size;
+  chosenPayload = spi_payload;
+}
+#endif
 
 static void choose_armstub(uint32_t bits) {
   uint32_t revision = otp_read(30);
@@ -330,10 +425,10 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
 
   if (jtag) {
     gpio_config(22, kBCM2708Pinmux_ALT4);// TRST
-    gpio_config(5, kBCM2708Pinmux_ALT5); // TDO
-    gpio_config(13, kBCM2708Pinmux_ALT5); // TCK
+    gpio_config(24, kBCM2708Pinmux_ALT4); // TDO
+    gpio_config(25, kBCM2708Pinmux_ALT4); // TCK
     gpio_config(26, kBCM2708Pinmux_ALT4); // TDI
-    gpio_config(12, kBCM2708Pinmux_ALT5); // TMS
+    gpio_config(27, kBCM2708Pinmux_ALT4); // TMS
   }
 
   timer_initialize(&arm_check);
@@ -353,10 +448,16 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   patch_arm_payload();
 #endif
 
+#ifdef WITH_LIB_GFX
   // first pass, map everything to the framebuffer, to act as a default
   for (int i=0; i<1024 ; i += 16) {
     mapBusToArm(0xc0000000 | fb_phys_addr, i * 1024 * 1024);
   }
+#else
+  for (int i=0; i<1024 ; i += 16) {
+    mapBusToArm(0xc0000000, i * 1024 * 1024);
+  }
+#endif
 
   // second pass, map the lower 64mb as plain ram
   for (int i=0; i<64 ; i += 16) {
@@ -375,15 +476,19 @@ static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
   logf("MEMORY: 0x20000000 + 0x1000000 (16mb): mmio\n");
   logf("MEMORY: 0x3f000000 + 0x1000000 (16mb): mmio\n");
 
+#ifdef WITH_LIB_GFX
   // add framebuffer
   mapBusToArm(0xc0000000 | fb_phys_addr, fb_phys_addr);
   logf("MEMORY: 0x%x + 0x1000000 (16mb): framebuffer\n", fb_phys_addr);
+#endif
 
   logf("armid 0x%x, C0 0x%x\n", *REG32(ARM_ID), *REG32(ARM_CONTROL0));
 
+#ifdef WITH_LIB_GFX
   setup_framebuffer();
+#endif
   enable_usb_host();
-  cmd_hvs_dump_dlist(0, NULL);
+  //cmd_hvs_dump_dlist(0, NULL);
 
   if (jtag) {
     *REG32(ARM_CONTROL0) |= ARM_C0_JTAGGPIO;
@@ -540,4 +645,4 @@ void bridgeStart(bool cycleBrespBits) {
   logf("bridge init done, PM_PROC is now: 0x%X!\n", *REG32(PM_PROC));
 }
 
-LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 10);
+LK_INIT_HOOK(arm, &arm_init, LK_INIT_LEVEL_PLATFORM + 15);

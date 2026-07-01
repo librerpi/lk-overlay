@@ -18,12 +18,12 @@ bool probe_ddcv2(struct pv_timings *prefered_timings) {
 
   ret = smbus_read(2, 0x50, 0, buf, 128);
   if (ret != 0) return false;
-  hexdump_ram(buf, 0, 128);
+  //hexdump_ram(buf, 0, 128);
 
   edid_t *e = buf;
   if (!edid_check_checksum(e)) return false;
 
-  edid_pretty_print(e);
+  //edid_pretty_print(e);
 
   return edid_get_prefered(e, prefered_timings);
 }

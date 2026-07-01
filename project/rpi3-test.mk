@@ -7,18 +7,18 @@ MODULES += \
     app/inter-arch
 
 MODULES += app/linux-bootloader
-# MODULES += app/shell
+MODULES += app/shell
 # MODULES += app/tests
 # MODULES += lib/debugcommands
 # MODULES += app/stringtests
 
-CONFIG_DWC2 := 0
-CONFIG_TINYUSB := 0
+CONFIG_DWC2 := 1
+CONFIG_TINYUSB := 1
 CONFIG_MANUAL_USB := 0
 
-CONFIG_NET := 0
+CONFIG_NET := 1
 CONFIG_SD_BOOT := 0
-CONFIG_GFX ?= 0
+CONFIG_GFX ?= 1
 
 ifeq ($(CONFIG_GFX),1)
   MODULES += lib/gfx
@@ -49,7 +49,7 @@ GLOBAL_DEFINES += CUSTOM_DEFAULT_STACK_SIZE=8192
 GLOBAL_COMPILEFLAGS += -fstack-usage
 
 CFG_TUSB_DEBUG := 1
-DEBUG := 1
+DEBUG := 2
 
 # memory map details
 # 0 + ~200kb		rpi3-test
