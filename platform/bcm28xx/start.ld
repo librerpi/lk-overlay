@@ -25,6 +25,13 @@ SECTIONS {
     _etext = .;
   } >ram =0
 
+  .text.bootloader_state : {
+    KEEP(*(.bootloader_state))
+  }
+  .text.firmware_rev : {
+    KEEP(*(.firmware_rev))
+  }
+
   .rodata : {
     . = ALIGN(4);
     _frodata = .;

@@ -13,3 +13,5 @@ MODULES += \
 	platform/bcm28xx/vec \
 	platform/bcm28xx/hvs-dance \
 	#platform/bcm28xx/dpi \
+
+GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
