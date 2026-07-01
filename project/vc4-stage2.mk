@@ -29,6 +29,7 @@ CONFIG_DWC2 := 0
 CONFIG_TINYUSB := 0
 CONFIG_MANUAL_USB := 0
 CONFIG_VEC := 0
+CONFIG_ARM_LOCATION ?= embedded
 
 ifeq (1,1)
   MODULES += platform/bcm28xx/vc4-hdmi

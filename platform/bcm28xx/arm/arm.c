@@ -1,7 +1,6 @@
 #include <app.h>
 #include <assert.h>
 #include <dev/gpio.h>
-#include <dev/spi.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
 #include <libfdt.h>
@@ -24,6 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if ARM_SPI
+#include <dev/spi.h>
+#endif
 
 #ifndef MB
   #define MB (1024*1024)
