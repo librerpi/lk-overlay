@@ -1,14 +1,14 @@
 #pragma once
 
 typedef struct {
-  uint32_t magic;
+  uint64_t magic;
   uint32_t header_size;
   uint32_t dtb_base;
   uint32_t mmio_base;
   uint32_t end_of_ram;
 } inter_core_header;
 
-#define INTER_ARCH_MAGIC 0xa8ca6706
+#define INTER_ARCH_MAGIC 0xa8ca67068216ddbbULL
 
 extern uint32_t fb_addr;
 // width/height of framebuffer

@@ -374,7 +374,7 @@ static void rechecksum_arm(void) {
 #endif
 
 static inter_core_header *find_header(uint32_t *start, uint32_t size) {
-  for (uint32_t *i = start; i < (start + size); i += 4) { // increment by 16 bytes
+  for (uint64_t *i = start; i < (start + size); i += 2) { // increment by 16 bytes
     if (*i == INTER_ARCH_MAGIC) return (inter_core_header*)i;
   }
   return NULL;
