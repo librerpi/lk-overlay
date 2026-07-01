@@ -32,9 +32,14 @@ void write_entry(FILE *out, const vector<uint8_t> &buffer, uint32_t magic, uint 
 vector<uint8_t> readFile(const string &filename, const vector<string> &includePath) {
   vector<uint8_t> output;
   FILE *handle;
-  for (const auto &dir : includePath) {
-    handle = fopen((dir + string("/") + filename).c_str(), "r");
-    if (handle) break;
+  const char *fname = filename.c_str();
+  if (fname[0] == '/') { // absolute path
+    handle = fopen(filename.c_str(), "r");
+  } else {
+    for (const auto &dir : includePath) {
+      handle = fopen((dir + string("/") + filename).c_str(), "r");
+      if (handle) break;
+    }
   }
   if (!handle) {
     fprintf(stderr, "error, cant find %s\n", filename.c_str());
