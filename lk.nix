@@ -1,5 +1,13 @@
-{ stdenv, project, which, imagemagick, python, preBuild ? "", extraAttrs ? {} }:
+{ stdenv, project, which, imagemagick, python, preBuild ? "", extraAttrs ? {}, fetchFromGitHub }:
 
+let
+  lwip = fetchFromGitHub {
+    owner = "lwip-tcpip";
+    repo = "lwip";
+    rev = "73fcf72792a926a4e0ac8b656b29bff70552d927";
+    hash = "sha256-ImeKwXtErpYO0vWu8w9VJhuDR2eJzKdfowYTKuRKkvs=";
+  };
+in
 stdenv.mkDerivation ({
   name = "littlekernel-${project}";
   src = builtins.path {
@@ -7,6 +15,10 @@ stdenv.mkDerivation ({
     path = ./.;
     name = "lk-src";
   };
+  postUnpack = ''
+    rm -rf $sourceRoot/lk/external/lib/lwip/upstream
+    cp -r ${lwip} $sourceRoot/lk/external/lib/lwip/upstream
+  '';
   inherit preBuild;
   makeFlags = [ "PROJECT=${project}" ];
   hardeningDisable = [ "format" ];
