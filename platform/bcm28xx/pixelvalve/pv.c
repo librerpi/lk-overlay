@@ -105,7 +105,7 @@ void setup_pixelvalve(const struct pv_timings *t, enum clock_source clock_mux, i
   int clk = 0;
   if (clock_mux == clk_dpi_smi_hdmi) clk = PV_CONTROL_CLK_SELECT_DPI_SMI_HDMI;
 #ifdef RPI4
-  else if (t->clock_mux == clk_vec) clk = 0;
+  else if (clock_mux == clk_vec) clk = 0;
 #else
   else if (clock_mux == clk_vec) clk = PV_CONTROL_CLK_SELECT_VEC;
 #endif
