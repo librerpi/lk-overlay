@@ -106,7 +106,6 @@ static void vec_init(uint level) {
   *REG32(VEC_DAC_MISC) = VEC_DAC_MISC_VID_ACT | VEC_DAC_MISC_DAC_RST_N;
   *REG32(VEC_CFG) = VEC_CFG_VEC_EN;
   struct pv_timings t;
-  t.clock_mux = clk_vec;
   bool ntsc_mode = true;
   if (ntsc_mode) {
     t.vfp = 3;
@@ -127,9 +126,9 @@ static void vec_init(uint level) {
     t.hactive = 720;
   }
 #ifdef RPI4
-  setup_pixelvalve(&t, 3);
+  setup_pixelvalve(&t, clk_vec, 3);
 #else
-  setup_pixelvalve(&t, 2);
+  setup_pixelvalve(&t, clk_vec, 2);
 #endif
 
   uint32_t t0 = *REG32(ST_CLO);
