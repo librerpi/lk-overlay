@@ -436,7 +436,7 @@ void platform_early_init(void) {
     logf("b\n");
 
     // soft-disconnect, so the usb host doesnt spew errors
-    //*REG32(USB_DCTL) = BIT(1);
+    *REG32(USB_DCTL) = BIT(1);
 
 #ifdef ARCH_ARM64
   __asm__ volatile("msr daifclr, #4" ::: "memory");
