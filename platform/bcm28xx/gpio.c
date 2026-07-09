@@ -194,7 +194,7 @@ static int cmd_gpio_test(int argc, const console_cmd_args *argv) {
 }
 
 static enum handler_return gpio_irq(void *unused) {
-  volatile uint32_t *gpeds = GPIO_GPEDS0;
+  volatile uint32_t *gpeds = (volatile uint32_t*)GPIO_GPEDS0;
   uint32_t gplev[2];
   gplev[0] = *REG32(GPIO_GPLEV0);
   gplev[1] = *REG32(GPIO_GPLEV1);
@@ -212,8 +212,8 @@ static enum handler_return gpio_irq(void *unused) {
 void gpio_register_irq(int nr) {
   int bank = nr / 32;
   int bit = 1 << (nr % 32);
-  volatile uint32_t *gpren = GPIO_GPREN0;
-  volatile uint32_t *gpfen = GPIO_GPFEN0;
+  volatile uint32_t *gpren = (volatile uint32_t*)GPIO_GPREN0;
+  volatile uint32_t *gpfen = (volatile uint32_t*)GPIO_GPFEN0;
   gpren[bank] |= bit;
   gpfen[bank] |= bit;
 

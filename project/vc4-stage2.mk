@@ -30,8 +30,9 @@ CONFIG_TINYUSB := 0
 CONFIG_MANUAL_USB := 0
 CONFIG_VEC := 0
 CONFIG_ARM_LOCATION ?= embedded
+CONFIG_HDMI ?= 0
 
-ifeq (1,1)
+ifeq ($(CONFIG_HDMI),1)
   MODULES += platform/bcm28xx/vc4-hdmi
   GLOBAL_DEFINES += PRIMARY_HVS_CHANNEL=1
 endif

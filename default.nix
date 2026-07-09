@@ -118,6 +118,8 @@ in lib.fix (self: {
     vc4.stage1-sdonly = vc4.callPackage ./lk.nix { project = "vc4-stage1-sdonly"; };
     vc4.stage1-spi = vc4.callPackage ./lk.nix { project = "vc4-stage1-spi"; };
     vc4.stage2-spi = vc4.callPackage ./lk.nix { project = "vc4-stage2-spi"; };
+    vc4.stage1-sdusb = vc4.callPackage ./lk.nix { project = "vc4-stage1-sdusb"; };
+    vc4.stage2-sdusb = vc4.callPackage ./lk.nix { project = "vc4-stage2-sdusb"; };
     vc4.stage2 = vc4.callPackage ./lk.nix {
       project = "vc4-stage2";
       preBuild = ''
