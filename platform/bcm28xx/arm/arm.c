@@ -1,6 +1,8 @@
 #include <app.h>
 #include <assert.h>
 #include <dev/gpio.h>
+#include <kernel/event.h>
+#include <kernel/mutex.h>
 #include <kernel/timer.h>
 #include <lib/cksum.h>
 #include <libfdt.h>
@@ -43,6 +45,11 @@ typedef struct {
   uint32_t stub_processor;
   uint32_t stub_bits;
 } armstub_t;
+
+typedef struct {
+  struct list_node node;
+  const char *name;
+} pending_device_t;
 
 extern const arm_payload arm_payload_array[3];
 static const arm_payload *chosenPayload;
@@ -329,6 +336,41 @@ static void choose_arm_payload(void) {
 }
 #endif
 
+#if ARM_DISK
+static event_t pending_devices_nonempty = EVENT_INITIAL_VALUE(pending_devices_nonempty, false, 0);
+
+static struct list_node pending_devices = LIST_INITIAL_VALUE(pending_devices);
+
+static mutex_t pending_device_lock = MUTEX_INITIAL_VALUE(pending_device_lock);
+
+static void add_boot_target(const char *device) {
+  mutex_acquire(&pending_device_lock);
+  logf("considering %s as boot target\n", device);
+  pending_device_t *pd = malloc(sizeof(pending_device_t));
+  pd->name = device;
+  list_add_tail(&pending_devices, &pd->node);
+  event_signal(&pending_devices_nonempty, true);
+  mutex_release(&pending_device_lock);
+}
+
+static void choose_arm_payload(void) {
+  add_boot_target("sdhostp1");
+  puts("waiting for arm payload to be found");
+  while (true) {
+    event_wait(&pending_devices_nonempty);
+
+    mutex_acquire(&pending_device_lock);
+    pending_device_t *pd = list_remove_head_type(&pending_devices, pending_device_t, node);
+    if (list_is_empty(&pending_devices)) event_unsignal(&pending_devices_nonempty);
+    mutex_release(&pending_device_lock);
+
+    bool found = try_to_boot(pd->name);
+    free(pd);
+    if (found) break;
+  }
+}
+#endif
+
 static void choose_armstub(uint32_t bits) {
   uint32_t revision = otp_read(30);
   uint32_t processor = (revision >> 12) & 0xf;
@@ -418,7 +460,7 @@ static void cam1_enable(void) {
 }
 
 static void __attribute__(( optimize("-O1"))) arm_init(uint level) {
-  bool jtag = false;
+  bool jtag = true;
 
 #if ARMSTUB == 1
   choose_armstub(32);
@@ -641,7 +683,7 @@ void bridgeStart(bool cycleBrespBits) {
     *REG32(PM_PROC) |= PM_PASSWORD | ~PM_PROC_ARMRSTN_CLR;
   }
 
-  //udelay(6 * 1000 * 1000);
+  udelay(1 * 1000 * 1000);
   //puts("");
 
   //rechecksum_arm();

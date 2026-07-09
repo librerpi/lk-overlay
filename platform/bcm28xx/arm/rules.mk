@@ -21,4 +21,8 @@ ifeq ($(CONFIG_ARM_LOCATION),embedded)
   MODULE_SRCS += $(LOCAL_DIR)/payload.S
 endif
 
+ifeq ($(CONFIG_ARM_LOCATION),disk)
+  MODULE_DEFINES += ARM_EMBEDDED=0 ARM_SPI=0 ARM_DISK=1
+endif
+
 include make/module.mk
