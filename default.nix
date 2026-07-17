@@ -3,8 +3,8 @@
 let
   sources = import ./nix/sources.nix;
   pkgs = import (builtins.fetchTarball {
-    url = "https://github.com/input-output-hk/nixpkgs/archive/0ee0489d42e.tar.gz";
-    sha256 = "1ldlg2nm8fcxszc29rngw2893z8ci4bpa3m0i6kfwjadfrcrfa42";
+    url = "https://github.com/cleverca22/nixpkgs/archive/ce4c65a127ce4d29b469672ec06cb60ca776156b.tar.gz";
+    sha256 = "0lmhzbbqvrbnbd57mz47kzkckhgyijwvxlfszvxvl3rvyaw6z5yz";
   }) { system = "x86_64-linux"; };
   lib = pkgs.lib;
   rpi-tools = pkgs.fetchFromGitHub {

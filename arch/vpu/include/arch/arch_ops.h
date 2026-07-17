@@ -26,20 +26,23 @@ int vc4_atomic_add(volatile int *ptr, int val);
 //  return vc4_atomic_add(ptr, val);
 //}
 
-// todo, use global register instead
-// register struct thread *current __asm__("r29");
+register struct thread *current __asm__("r29");
 
 static inline struct thread *arch_get_current_thread(void) {
+  return current;
+#if 0
   struct thread *thread_reg;
   __asm__ volatile("mov %0, r29" : "=r"(thread_reg));
   return thread_reg;
+#endif
 }
 
 static inline void arch_set_current_thread(struct thread *t) {
   // Error: operand out of range (-65 not between -64 and 63)
   // gcc is off by one, on the reach of a pc-relative jump like `b.s .L17`
   // this nop pushes it over gcc's idea of the limit, and makes it switch technique
-  __asm__ volatile ("mov r29, %0 \n nop" : : "r"(t));
+  //__asm__ volatile ("mov r29, %0 \n nop" : : "r"(t));
+  current = t;
 }
 
 static inline ulong arch_cycle_count(void) { return 0; }
