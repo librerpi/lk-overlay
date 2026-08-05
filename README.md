@@ -7,7 +7,7 @@ Everything is licensed under the GPLv2 or later unless stated otherwise
 ```
 [clever@system76:~/apps/rpi]$ git clone --recurse-submodules git@github.com:librerpi/lk-overlay.git
 [clever@system76:~/apps/rpi]$ cd lk-overlay/
-[clever@system76:~/apps/rpi/lk-overlay]$ nix-shell -A shell
+[clever@system76:~/apps/rpi/lk-overlay]$ nix-shell
 [nix-shell:~/apps/rpi/lk-overlay]$ make PROJECT=rpi3-bootcode
 [nix-shell:~/apps/rpi/lk-overlay]$ ls -lh build-rpi3-bootcode/lk.bin
 -rwxr-xr-x 1 clever users 113K Mar 31 23:27 build-rpi3-bootcode/lk.bin
