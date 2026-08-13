@@ -20,7 +20,7 @@ bool probe_ddcv2(struct pv_timings *prefered_timings) {
   if (ret != 0) return false;
   //hexdump_ram(buf, 0, 128);
 
-  edid_t *e = buf;
+  edid_t *e = (edid_t *)buf;
   if (!edid_check_checksum(e)) return false;
 
   //edid_pretty_print(e);

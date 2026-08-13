@@ -1,11 +1,10 @@
 MEMORY {
   ram (rwx) : ORIGIN = 0x80000000, LENGTH = 128K
 }
-GROUP(-lgcc)
 SECTIONS {
+  . = ORIGIN(ram);
   _start = .;
   .vectorTable : {
-    . = 0x0;
     KEEP(*(.data.vectorTable))
   }
   .text : {
@@ -23,11 +22,30 @@ SECTIONS {
     _erodata = .;
   }
 
+  lk_init : {
+    __start_lk_init = .;
+    KEEP(*(lk_init))
+    __stop_lk_init = .;
+  } > ram
+
   commands : {
     PROVIDE(__start_commands = .);
     KEEP(*(commands))
     PROVIDE(__stop_commands = .);
   } >ram
+
+  /*
+   * Without this, --gc-sections drops the `apps` input section (nothing
+   * references the descriptors) and __start_apps/__stop_apps stay
+   * weak-undefined at 0, so apps_init() iterates over an empty range and never
+   * starts the shell. Boot then reaches "initializing apps" and idles
+   * forever.
+   */
+  apps : {
+    PROVIDE(__start_apps = .);
+    KEEP(*(apps))
+    PROVIDE(__stop_apps = .);
+  } > ram
 
   fs_impl : {
     PROVIDE(__start_fs_impl = .);
@@ -67,6 +85,6 @@ SECTIONS {
     _ebss = .;
     _end = .;
   }
-  _fstack = ORIGIN(ram) + LENGTH(ram) - 4;
+  _fstack = ORIGIN(ram) + LENGTH(ram);
 }
-/* ASSERT((_end - _start) <= LENGTH(ram), "bss wont fit within L2") */
+ASSERT((_end - _start) <= LENGTH(ram), "bss wont fit within L2")

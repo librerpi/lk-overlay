@@ -1,8 +1,7 @@
 #pragma once
 
 #include <stdlib.h>
-#include <climits>
-#include <math.h>
+#include <limits.h>
 #ifdef WITH_OSTREAM
 #include <ostream>
 #endif
@@ -22,9 +21,9 @@ public:
     if (fraction == 0) {
       s = value;
     } else if (fraction > 0) {
-      s = value << (int)fabs(fraction);
+      s = value << (fraction < 0 ? -fraction : fraction);
     } else {
-      s = value >> (int)fabs(fraction);
+      s = value >> (fraction < 0 ? -fraction : fraction);
     }
   }
 

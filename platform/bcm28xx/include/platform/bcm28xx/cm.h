@@ -11,6 +11,12 @@
 #define CM_VPUDIV               (CM_BASE + 0x00c)
 #define CM_PERIICTL             (CM_BASE + 0x020)
 #define CM_PERIIDIV             (CM_BASE + 0x024)
+#define CM_VCECTL               (CM_BASE + 0x028)
+#define CM_VCECTL_ENAB_SET                                 0x00000010
+#define CM_VCECTL_KILL_SET                                 0x00000020
+#define CM_VCECTL_BUSY_SET                                 0x00000080
+#define CM_VCEDIV               (CM_BASE + 0x02c)
+
 #define CM_DPICTL               (CM_BASE + 0x068)
 #define CM_DPICTL_KILL_SET 0x20
 #define CM_DPICTL_BUSY_SET 0x80

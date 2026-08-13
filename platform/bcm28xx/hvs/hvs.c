@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 // #define TIMESTAMP_TIMINGS
 
@@ -518,7 +517,7 @@ static void upload_scaling_kernel(void) {
   }
 }
 
-void hvs_initialize() {
+void hvs_initialize(void) {
   static bool initialized = false;
   if (initialized) return;
   initialized = true;
@@ -562,7 +561,7 @@ void hvs_initialize() {
   *REG32(SCALER_DISPEOLN) = 0x40000000;
 }
 
-void hvs_setup_irq() {
+void hvs_setup_irq(void) {
   register_int_handler(33, hvs_irq, NULL);
   unmask_interrupt(33);
 }

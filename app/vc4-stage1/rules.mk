@@ -20,6 +20,7 @@ ifeq ($(CONFIG_SD_BOOT),1)
 endif
 
 ifeq ($(CONFIG_SPI_BOOT),1)
+  MODULE_DEPS += dev/spi
   MODULE_SRCS += $(LOCAL_DIR)/spi.c
 endif
 

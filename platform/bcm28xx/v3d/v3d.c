@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #define ASB_V3D_S_CTRL 0x7e00a008
 #define ASB_V3D_M_CTRL 0x7e00a00c
@@ -117,7 +116,7 @@ void trackDownAddr(uint32_t addr) {
         uint32_t subList = (uint32_t)(s->tileAllocation + (y * s->tilewidth + x) * slotSize);
         if ((addr >= subList) && (addr <= (subList + slotSize))) {
           printf("0x%x is %d bytes into render list for tile %d,%d\n", addr, addr - subList, y, x);
-          uint8_t *t = subList;
+          uint8_t *t = (uint8_t *)subList;
           for (int i=0; i<slotSize; i++) {
             if (&t[i] == addr) {
               printf("<%02x> ", t[i]);

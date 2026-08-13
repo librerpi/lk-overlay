@@ -22,7 +22,7 @@ void edid_pretty_print(const edid_t *e) {
   for (int i=0; i<4; i++) {
     const detailed_timing_t *d = &e->detailed_timings[i];
     if (d->pixel_clock == 0) {
-      monitor_descriptor_t *m = &e->detailed_timings[i];
+      monitor_descriptor_t *m = (monitor_descriptor_t *)&e->detailed_timings[i];
       printf("  monitor descriptor 0x%x\n", m->descriptor_type);
       switch (m->descriptor_type) {
       case 0xfc:

@@ -238,7 +238,7 @@ static pmm_arena_t arena = {
 };
 #endif
 
-__WEAK uint32_t get_uart_base_freq() {
+__WEAK uint32_t get_uart_base_freq(void) {
   return 48 * 1000 * 1000;
 }
 
@@ -362,7 +362,7 @@ static void platform_setup_pllc(float pllc_mhz) {
 // TODO, these claims are likely a combination of both VPU and CORE0 clocks?
 // if CM_VPU is below 116mhz, the HVS cant support 1280x1024 at all
 // if CM_VPU is below 116-350mhz, the HVS has trouble with v-scaling
-static void old_switch_vpu_to_pllc() {
+static void old_switch_vpu_to_pllc(void) {
   switch_vpu_to_src(CM_SRC_OSC);
   *REG32(CM_VPUDIV) = CM_PASSWORD | (1 << 12);
 
@@ -435,8 +435,10 @@ void platform_early_init(void) {
     uart_init_early();
     logf("b\n");
 
+#if defined(RPI4) || defined(RPI3)
     // soft-disconnect, so the usb host doesnt spew errors
     *REG32(USB_DCTL) = BIT(1);
+#endif
 
 #ifdef ARCH_ARM64
   __asm__ volatile("msr daifclr, #4" ::: "memory");
@@ -484,7 +486,6 @@ void platform_early_init(void) {
 
     if (xtal_freq == 19200000) {
       old_switch_vpu_to_pllc();
-      //setup_plla(1000 * 1000 * 1000, 10, 10);
       setup_plla(PLLA_FREQ_MHZ * 1000 * 1000, PLLA_CORE_DIV, PLLA_PER_DIV);
       setup_pllh(108 * 6 * 1000 * 1000, 2, 6);
     } else {

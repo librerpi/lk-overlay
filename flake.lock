@@ -1,22 +1,95 @@
 {
   "nodes": {
-    "nixpkgs": {
+    "lk-src": {
+      "flake": false,
       "locked": {
-        "lastModified": 1781607440,
-        "narHash": "sha256-rxO+uc/KFbSJp+pgyXRuAX6QlG9hJdnt0BXpEQRXY+U=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "3e41b24abd260e8f71dbe2f5737d24122f972158",
+        "lastModified": 1781765140,
+        "narHash": "sha256-mRztvFoHZmM9ld+A/bhGSu0ovB22WZItiFUK/UzYawE=",
+        "owner": "librerpi",
+        "repo": "lk",
+        "rev": "3aa75cf8dcdf5694da549311a0a8cb456a8e8228",
         "type": "github"
       },
       "original": {
-        "id": "nixpkgs",
-        "type": "indirect"
+        "owner": "librerpi",
+        "repo": "lk",
+        "rev": "3aa75cf8dcdf5694da549311a0a8cb456a8e8228",
+        "type": "github"
+      }
+    },
+    "llvm-project": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786655511,
+        "narHash": "sha256-C3VRKQI9HGtxAXEx5SYgiCdnl2aeipaJZz2LmSMi4Zc=",
+        "owner": "Vali0004",
+        "repo": "llvm-project-rpi",
+        "rev": "ac1c292ed8861d341a5b0241f30ea01a073bf890",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Vali0004",
+        "ref": "main",
+        "repo": "llvm-project-rpi",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1786599213,
+        "narHash": "sha256-yNJd40f11EzXBjSByCB7IPpeFFAdeoSKKM67dGkfFoU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "0e251e24a4f24e036a084b6b4b2d2491af4167f4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
       }
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "lk-src": "lk-src",
+        "llvm-project": "llvm-project",
+        "nixpkgs": "nixpkgs",
+        "rpi-open-firmware": "rpi-open-firmware",
+        "tinyusb-src": "tinyusb-src"
+      }
+    },
+    "rpi-open-firmware": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1756037846,
+        "narHash": "sha256-SdpF6o++iMXpeqiBwaqENBJubmidAIoiIe7F5Dwtg54=",
+        "owner": "librerpi",
+        "repo": "rpi-open-firmware",
+        "rev": "2725d9447c4305731f8d78f5effcbd70abff8d58",
+        "type": "github"
+      },
+      "original": {
+        "owner": "librerpi",
+        "repo": "rpi-open-firmware",
+        "type": "github"
+      }
+    },
+    "tinyusb-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1691424647,
+        "narHash": "sha256-aNNt2+oGYNgkEHLHfSChl3cCtz+Mairg03S06syIy7g=",
+        "owner": "hathach",
+        "repo": "tinyusb",
+        "rev": "51a0889b75fc2da6675530d68f3ae765c44849f4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hathach",
+        "repo": "tinyusb",
+        "rev": "51a0889b75fc2da6675530d68f3ae765c44849f4",
+        "type": "github"
       }
     }
   },

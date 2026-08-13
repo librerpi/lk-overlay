@@ -120,14 +120,14 @@ static enum RamSize lpddr2_size(uint32_t mr) {
  * Guts
  *****************************************************************************/
 
-ALWAYS_INLINE inline void clkman_update_begin(void) {
+ALWAYS_INLINE void clkman_update_begin(void) {
   *REG32(CM_SDCCTL) |= CM_PASSWORD | CM_SDCCTL_UPDATE_SET;
   SCLKU_DEBUG(logf("waiting for ACCPT (%X) ...\n", *REG32(CM_SDCCTL)));
   for (;;) if (*REG32(CM_SDCCTL) & CM_SDCCTL_ACCPT_SET) break;
   SCLKU_DEBUG(logf("ACCPT received! (%X)\n", *REG32(CM_SDCCTL)));
 }
 
-ALWAYS_INLINE inline void clkman_update_end(void) {
+ALWAYS_INLINE void clkman_update_end(void) {
   *REG32(CM_SDCCTL) = CM_PASSWORD | (*REG32(CM_SDCCTL) & CM_SDCCTL_UPDATE_CLR);
   SCLKU_DEBUG(logf("waiting for ACCPT clear (%X) ...\n", *REG32(CM_SDCCTL)));
   for (;;) if ((*REG32(CM_SDCCTL) & CM_SDCCTL_ACCPT_SET) == 0) break;
@@ -517,7 +517,7 @@ static void selftest(void) {
 
 #undef RT_ASSERT
 
-void sdram_init() {
+void sdram_init(void) {
   uint32_t vendor_id, bc;
 
   logf("(0) SD_CS = 0x%X\n", *REG32(SD_CS));

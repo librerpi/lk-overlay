@@ -5,7 +5,7 @@
 #include <platform/bcm28xx/print_timestamp.h>
 #include <stdio.h>
 
-void print_timestamp() {
+void print_timestamp(void) {
   uint32_t clock_lo = *REG32(ST_CLO);
 
 #if ARCH_VPU

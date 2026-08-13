@@ -7,7 +7,7 @@ MODULES += \
 	platform/bcm28xx/temp \
 	platform/bcm28xx/rpi-ddr2/autoram \
 
-#MODULES += app/shell
+MODULES += app/shell
 MODULES += platform/bcm28xx/usb-phy
 MODULES += app/vc4-stage1
 

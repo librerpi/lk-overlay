@@ -10,7 +10,7 @@
 
 uint32_t mandel_asm(void *buffer, uint32_t ustart, uint32_t vstart, uint32_t delta, uint32_t width, uint32_t height);
 
-static uint32_t vpu_clock;
+uint32_t vpu_clock;
 
 #define SHIFT (22u)
 #define MUL (1 << SHIFT)

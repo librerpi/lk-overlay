@@ -25,7 +25,7 @@ uint32_t get_vpu_per_freq(void) {
   return clk_get_freq(CM_VPUDIV, CM_VPUCTL);
 }
 
-uint32_t get_uart_base_freq() {
+uint32_t get_uart_base_freq(void) {
   return measure_clock(28);
   //return clk_get_freq(CM_UARTDIV, CM_UARTCTL);
 }

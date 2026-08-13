@@ -2,10 +2,8 @@
  * based heavily on https://github.com/ptesarik/vc4boot
  */
 
-OUTPUT_FORMAT("elf32-vc4", "elf32-vc4", "elf32-vc4")
 OUTPUT_ARCH(vc4)
 ENTRY(_start)
-GROUP(-lgcc)
 
 MEMORY {
   /* in the 8 alias, L2 cached
@@ -37,6 +35,11 @@ SECTIONS {
     _frodata = .;
     *(.rodata .rodata.* .gnu.linkonce.r.*)
     *(.rodata1)
+    /* VCE coprocessor kernels: machine code for a different instruction set,
+       compiled from C in a .vce section and embedded here as data for the VC4
+       side to stage into the coprocessor's code RAM. */
+    . = ALIGN(4);
+    KEEP(*(.vce .vce.*))
     _erodata = .;
   } >ram
 
@@ -44,6 +47,19 @@ SECTIONS {
     PROVIDE(__start_commands = .);
     KEEP(*(commands))
     PROVIDE(__stop_commands = .);
+  } >ram
+
+  /*
+   * Without this, --gc-sections drops the `apps` input section (nothing
+   * references the descriptors) and __start_apps/__stop_apps stay
+   * weak-undefined at 0, so apps_init() iterates over an empty range and never
+   * starts the shell. Boot then reaches "initializing apps" and idles
+   * forever.
+   */
+  apps : {
+    PROVIDE(__start_apps = .);
+    KEEP(*(apps))
+    PROVIDE(__stop_apps = .);
   } >ram
 
   fs_impl : {

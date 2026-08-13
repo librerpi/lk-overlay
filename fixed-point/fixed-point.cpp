@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <inttypes.h>
+#include <cmath>
 #include <iostream>
 
 #include "fixed-point.h"

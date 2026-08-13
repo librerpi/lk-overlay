@@ -1,0 +1,6 @@
+Source: librepi-firmware
+Package: librepi-firmware
+Description: the lk-overlay based libre rpi firmware
+Maintainer: michael bishop <cleverca22@gmail.com>
+Version: 0.1
+Architecture: armhf

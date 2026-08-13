@@ -3,14 +3,28 @@
 
 Everything is licensed under the GPLv2 or later unless stated otherwise
 
-# developing with this lk overlay:
+# developing with this lk overlay
+
+The flake uses the VC4/VCE-enabled LLVM fork by default, while retaining the
+historical VC4 GCC toolchain for one-to-one compiler comparisons.
+
+```console
+$ nix develop
+$ make PROJECT=vc4-stage1 VC4_TOOLCHAIN=llvm
+$ make PROJECT=vc4-stage1 VC4_TOOLCHAIN=gcc
 ```
-[clever@system76:~/apps/rpi]$ git clone --recurse-submodules git@github.com:librerpi/lk-overlay.git
-[clever@system76:~/apps/rpi]$ cd lk-overlay/
-[clever@system76:~/apps/rpi/lk-overlay]$ nix-shell
-[nix-shell:~/apps/rpi/lk-overlay]$ make PROJECT=rpi3-bootcode
-[nix-shell:~/apps/rpi/lk-overlay]$ ls -lh build-rpi3-bootcode/lk.bin
--rwxr-xr-x 1 clever users 113K Mar 31 23:27 build-rpi3-bootcode/lk.bin
+
+The development shell supplies LLVM, its VideoCore compiler-rt builtins, the
+VC4 newlib sysroot, and `vc4-elf-*` GCC tools. `VC4_TOOLCHAIN` may be set on
+the command line or in the environment; it defaults to `llvm`.
+
+For reproducible builds which do not modify the working tree:
+
+```console
+$ nix build .#vc4-stage1       # LLVM
+$ nix build .#vc4-stage1-gcc   # legacy GCC baseline
+$ nix build .#vc4-toolchain    # LLVM/Clang with VC4 and VCE backends
+$ nix build .#vc4-gcc          # standalone legacy GCC toolchain
 ```
 
 # what features work
@@ -19,9 +33,9 @@ Everything is licensed under the GPLv2 or later unless stated otherwise
 | -------------------------------------------------------- | ---- | ---- | ---- | ---- |
 | composite NTSC video                                     | [x]  | [x]  | [x]  | ?    |
 | DSI video                                                | [ ]  | [ ]  | [ ]  | [ ]  |
-| HDMI video                                               | [ ]  | [ ]  | [ ]  | [ ]  |
+| HDMI video                                               | [x]  | [x]  | [x]  | [ ]  |
 | DPI video, partially tested                              | [x]  | [x]  | [x]  | ?    |
-| v3d partially working                                    | [x]  | [x]  | [x]  | ?    |
+| v3d                                                      | [x]  | [x]  | [x]  | ?    |
 | full 2d composition under firmware control               | [x]  | [x]  | [x]  | ?    |
 | CSI, untested                                            | [ ]  | [ ]  | [ ]  | [ ]  |
 | i2c host (under linux)                                   | ?    | [x]  | [x]  | ?    |
