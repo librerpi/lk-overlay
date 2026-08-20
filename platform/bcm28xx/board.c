@@ -9,6 +9,22 @@
 #include <platform/bcm28xx/udelay.h>
 #include <stdio.h>
 
+static const board_pins_t pi0 = {
+  .status = 47,
+};
+
+static const board_pins_t pi0w = {
+  .status = 47,
+};
+
+static const board_pins_t pi1b = {
+  .status = 16,
+};
+
+static const board_pins_t pi1brev2 = {
+  .status = 16,
+};
+
 static const board_pins_t pi2b = {
   .lan_run = 31,
   .ethclk = 44,
@@ -42,23 +58,47 @@ static enum handler_return blink_led(struct timer *unused, unsigned int unused2,
 
 void board_init(void) {
   uint32_t revision = otp_read(30);
-  uint32_t type = (revision >> 4) & 0xff;
-  printf("booting on board type: 0x%x\n", type);
-  switch (type) {
-  case 4: // 2B
-    current_board = &pi2b;
-    break;
-  case 8: // 3B
-    current_board = &pi3b;
-    break;
-  case 0xd: // 3B+
-    current_board = &pi3bplus;
-    break;
-  case 0x12: // pi02w
-    current_board = &pi02w;
-    break;
-  default:
-    break;
+  if (revision & BV(23)) {
+    uint32_t type = (revision >> 4) & 0xff;
+    printf("booting on board type: 0x%x\n", type);
+    switch (type) {
+    case 4: // 2B
+      current_board = &pi2b;
+      break;
+    case 8: // 3B
+      current_board = &pi3b;
+      break;
+    case 9: // zero
+      current_board = &pi0;
+      break;
+    case 0xc: // zero-w
+      current_board = &pi0w;
+      break;
+    case 0xd: // 3B+
+      current_board = &pi3bplus;
+      break;
+    case 0x12: // pi02w
+      current_board = &pi02w;
+      break;
+    default:
+      break;
+    }
+  } else {
+    printf("legacy revision code 0x%x\n", revision);
+    switch (revision) {
+    case 2:
+      current_board = &pi1b;
+      break;
+    case 0xe:
+    case 0xf:
+      current_board = &pi1brev2;
+      break;
+    }
+  }
+
+  if (!current_board) {
+    printf("couldnt identify board\n");
+    return;
   }
 
   if (current_board->lan_run) {
