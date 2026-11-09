@@ -16,8 +16,8 @@ struct i2c_regs {
   uint32_t clkt;
 };
 
-static int cmd_i2c_set_rate(int argc, const cmd_args *argv);
-static int cmd_i2c_xfer(int argc, const cmd_args *argv);
+static int cmd_i2c_set_rate(int argc, const console_cmd_args *argv);
+static int cmd_i2c_xfer(int argc, const console_cmd_args *argv);
 
 STATIC_COMMAND_START
 STATIC_COMMAND("i2c_xfer", "I2C transfer", &cmd_i2c_xfer)
@@ -52,7 +52,7 @@ void i2c_set_rate(unsigned busnum, unsigned long rate)
   regs->del = (fedl << 16) | redl;
 }
 
-static int cmd_i2c_set_rate(int argc, const cmd_args *argv) {
+static int cmd_i2c_set_rate(int argc, const console_cmd_args *argv) {
   if (argc != 3) {
     printf("usage: i2c_set_rate <bus> <rate>\n");
     return -1;
@@ -145,7 +145,7 @@ int i2c_xfer(unsigned busnum, unsigned addr,
   return ret;
 }
 
-static int cmd_i2c_xfer(int argc, const cmd_args *argv) {
+static int cmd_i2c_xfer(int argc, const console_cmd_args *argv) {
   if (argc != 5) {
     printf("usage: i2c_xfer <bus> <addr> <hex_str> <recv_len>\n");
     return -1;
