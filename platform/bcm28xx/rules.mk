@@ -24,9 +24,14 @@ MODULE_DEFINES += PLLA_FREQ_MHZ=$(PLLA_FREQ_MHZ) PLLA_CORE_DIV=$(PLLA_CORE_DIV) 
 ifeq ($(ARCH),vpu)
   MODULE_DEPS += platform/bcm28xx/pll
   ifeq ($(BOOTCODE),1)
-    MEMBASE := 0x80000000 # in the 8 alias
+    ifeq ($(VPU_STAGE2),1)
+      MEMBASE := 0x80020000 # after the first-stage 128 KiB region
+      LINKER_SCRIPT += $(LOCAL_DIR)/bootcode-stage2.ld
+    else
+      MEMBASE := 0x80000000 # in the 8 alias
+      LINKER_SCRIPT += $(LOCAL_DIR)/bootcode.ld
+    endif
     MEMSIZE := 0x20000 # 128kb
-    LINKER_SCRIPT += $(LOCAL_DIR)/bootcode.ld
   else
     MEMBASE := 0xc0000000
     MEMSIZE ?= 0x01400000 # 20MB

@@ -6,7 +6,9 @@
 #define MB (1024*1024)
 
 static void autoram_dram_init(uint level) {
+#ifndef VPU_STAGE2
   sdram_init();
+#endif
   uint32_t start = UNCACHED_RAM | (1 * MB);
   uint32_t length = 20 * MB;
   novm_add_arena("dram", start, length);
