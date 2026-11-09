@@ -92,6 +92,22 @@ const struct pll_def pll_def[] = {
     .ana_vco = REG32(A2W_PLLD_ANA_VCO),
   },
 #endif
+#ifdef BCM283X_PLLD_CONTROL
+  [PLL_D] = {
+    .name = "PLLD",
+    .ana = REG32(A2W_PLLD_ANA0),
+    .dig = REG32(A2W_PLLD_DIG0),
+    .enable_bit = A2W_XOSC_CTRL_PLLDEN_SET,
+    .frac = REG32(A2W_PLLD_FRAC),
+    .ctrl = REG32(A2W_PLLD_CTRL),
+    .ndiv_mask = A2W_PLLD_CTRL_NDIV_SET,
+    .ana1_prescale_bit = 14,
+    .cm_flock_bit = CM_LOCK_FLOCKD_BIT,
+    .cm_pll = REG32(CM_PLLD),
+    .ana_kaip = REG32(A2W_PLLD_ANA_KAIP),
+    .ana_vco = REG32(A2W_PLLD_ANA_VCO),
+  },
+#endif
   [PLL_H] = {
     .name = "PLLH",
     .ana = REG32(A2W_PLLH_ANA0),
@@ -243,6 +259,14 @@ const struct pll_chan_def pll_chan_def[] = {
     .div_mask = A2W_PLLH_AUX_DIV_SET,
     .pll = PLL_H,
   },
+#elif defined(BCM283X_PLLD_CONTROL)
+  [PLL_CHAN_DPER] = {
+    .name = "PLLD_PER",
+    .ctrl = REG32(A2W_PLLD_PER),
+    .chenb_bit = A2W_PLLD_PER_CHENB_LSB,
+    .div_mask = A2W_PLLD_PER_DIV_SET,
+    .pll = PLL_D,
+  },
 #endif
 };
 
@@ -352,7 +376,13 @@ static int set_pll_freq(enum pll pll, uint32_t freq) {
   } else {
     ana3 = (ana3 & ~A2W_PLL_ANA3_KA_MASK)
       | (2UL << A2W_PLL_ANA3_KA_LSB);
-    ana1 = (ana1 & A2W_PLL_ANA1_KI_MASK & ~A2W_PLL_ANA1_KP_MASK)
+#ifdef BCM283X_PLLD_CONTROL
+    if (pll == PLL_D)
+      ana1 &= ~A2W_PLL_ANA1_KP_MASK;
+    else
+#endif
+      ana1 &= A2W_PLL_ANA1_KI_MASK & ~A2W_PLL_ANA1_KP_MASK;
+    ana1 = ana1
       | (2UL << A2W_PLL_ANA1_KI_LSB)
       | (8UL << A2W_PLL_ANA1_KP_LSB);
   }
@@ -477,6 +507,15 @@ void configure_pll_b(uint32_t freq) {
 
   *REG32(CM_ARMCTL) = CM_PASSWORD | 4 | CM_ARMCTL_ENAB_SET;
 }
+
+#ifdef BCM283X_PLLD_CONTROL
+int setup_plld(uint32_t target_freq, int per_div) {
+  if (per_div <= 0 || per_div > 255 || set_pll_freq(PLL_D, target_freq))
+    return -1;
+  *REG32(A2W_PLLD_PER) = A2W_PASSWORD | (uint32_t)per_div;
+  return 0;
+}
+#endif
 
 static int cmd_set_pll_freq(int argc, const console_cmd_args *argv) {
   if (argc != 3) {
