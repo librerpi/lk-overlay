@@ -434,8 +434,11 @@ void platform_early_init(void) {
     uart_init_early();
     logf("b\n");
 
+#ifndef ARCH_VPU
+    // The DWC2 block is ARM-owned and can fault during VPU early boot.
     // soft-disconnect, so the usb host doesnt spew errors
     *REG32(USB_DCTL) = BIT(1);
+#endif
 
 #ifdef ARCH_ARM64
   __asm__ volatile("msr daifclr, #4" ::: "memory");
