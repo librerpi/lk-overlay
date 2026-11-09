@@ -16,6 +16,9 @@
 #include <lk/reg.h>
 #include <platform/bcm28xx/clock.h>
 #include <platform/bcm28xx/hvs.h>
+#ifdef BCM283X_DSI_HVS
+#include <platform/bcm28xx/dsi_framebuffer.h>
+#endif
 #include <platform/bcm28xx/pv.h>
 #include <platform/interrupts.h>
 #include <stdio.h>
@@ -1001,7 +1004,26 @@ void hvs_update_dlist(int channel) {
         for (unsigned int i=0; i < actual_length; i++) {
           dlist_memory[display_slot++] = layer->premade_dlist[i];
         }
-      } else
+      }
+#ifdef BCM283X_DSI_HVS
+      else if (channel == HVS_DSI1_CHANNEL && layer->fb &&
+               layer->fb->format == GFX_FORMAT_ARGB_8888 &&
+               layer->fb->width == DSI_FB_WIDTH && layer->fb->height == DSI_FB_HEIGHT &&
+               layer->fb->stride * layer->fb->pixelsize == DSI_FB_STRIDE_BYTES &&
+               layer->x == 0 && layer->y == 0 && layer->viewport_x == 0 &&
+               layer->viewport_y == 0 && layer->viewport_w == DSI_FB_WIDTH &&
+               layer->viewport_h == DSI_FB_HEIGHT && layer->w == DSI_FB_WIDTH &&
+               layer->h == DSI_FB_HEIGHT &&
+               (((uint32_t)(uintptr_t)layer->fb->ptr & 0x3fffffffu) == DSI_FB_PRIMARY_PHYS ||
+                ((uint32_t)(uintptr_t)layer->fb->ptr & 0x3fffffffu) == DSI_FB_BACK_PHYS)) {
+        uint32_t words[DSI_FB_DLIST_WORDS];
+        uint32_t physical = (uint32_t)(uintptr_t)layer->fb->ptr & 0x3fffffffu;
+        hvs_dsi_framebuffer_dlist(words, physical);
+        for (unsigned int i = 0; i < DSI_FB_DLIST_WORDS; ++i)
+          dlist_memory[display_slot++] = words[i];
+      }
+#endif
+      else
 #if 0
       if ((layer->w == layer->viewport_w) && (layer->h == layer->viewport_h)) { // unity scale
         hvs_add_plane(layer, layer->x, layer->y, false);
