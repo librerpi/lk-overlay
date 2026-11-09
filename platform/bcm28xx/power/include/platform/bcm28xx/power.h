@@ -5,6 +5,9 @@
 
 #define PM_BASE (BCM_PERIPH_BASE_VIRT + 0x100000)
 #define PM_PASSWORD 0x5a000000
+#define PM_DSI1 (PM_BASE + 0x054)
+#define PM_DSI1_CTRLEN (1u << 0)
+#define PM_DSI1_LDOHPEN (1u << 2)
 
 #define PM_AUDIO                (PM_BASE + 0x004)
 
