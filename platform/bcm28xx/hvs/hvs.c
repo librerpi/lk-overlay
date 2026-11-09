@@ -533,10 +533,27 @@ void hvs_initialize() {
   debugTextLayer->name = "debug text";
 #endif
 
+#ifdef BCM283X_DSI_HVS
+  uint32_t dispctrl = *REG32(SCALER_DISPCTRL) | SCALER_DISPCTRL_ENABLE;
+  const uint32_t irq_clear = (1u << 0) | (1u << 4) | (1u << 5) | (1u << 6) |
+                             (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) |
+                             (1u << 11) | (1u << 12) | (1u << 13) |
+                             (1u << 14) | (1u << 15);
+  const uint32_t panic_mask = (3u << 24) | (3u << 26) | (3u << 28);
+  *REG32(SCALER_DISPCTRL) = dispctrl;
+  *REG32(SCALER_DISPECTRL) &= ~((uint32_t)3u << 30);
+  *REG32(SCALER_DISPCTRL) = (*REG32(SCALER_DISPCTRL) & ~(3u << 18)) | DSP3_MUX(3);
+  *REG32(SCALER_DISPEOLN) = (*REG32(SCALER_DISPEOLN) & ~(3u << 30)) | (3u << 30);
+  *REG32(SCALER_DISPDITHER) = (*REG32(SCALER_DISPDITHER) & ~(3u << 30)) | (3u << 30);
+  dispctrl = *REG32(SCALER_DISPCTRL) | (1u << 1) | (1u << 2) | (1u << 3);
+  dispctrl &= ~(irq_clear | panic_mask);
+  *REG32(SCALER_DISPCTRL) = dispctrl | (2u << 24) | (2u << 26) | (2u << 28);
+#else
   *REG32(SCALER_DISPCTRL) &= ~SCALER_DISPCTRL_ENABLE; // disable HVS
   *REG32(SCALER_DISPCTRL) = SCALER_DISPCTRL_ENABLE // re-enable HVS
     | DSP3_MUX(3)
     | 0x7f; // irq en
+#endif
   for (int i=0; i<3; i++) {
     hvs_channels[i].dispctrl = SCALER_DISPCTRLX_RESET;
     hvs_channels[i].dispctrl = 0;
@@ -550,9 +567,16 @@ void hvs_initialize() {
   mutex_release(&channels[hvs_channel].lock);
 #endif
 
+#ifdef BCM283X_DSI_HVS
+  /* Preserve the channel buffer allocation used by the working DSI path. */
+  hvs_channels[2].dispbase = 0x07ff0000u;
+  hvs_channels[1].dispbase = 0x3c8f0800u;
+  hvs_channels[0].dispbase = 0x50ff3c90u;
+#else
   hvs_channels[2].dispbase = BASE_BASE(0)      | BASE_TOP(0x7f0);
   hvs_channels[1].dispbase = BASE_BASE(0xf10)  | BASE_TOP(0x50f0);
   hvs_channels[0].dispbase = BASE_BASE(0x800)  | BASE_TOP(0xf00);
+#endif
 
   hvs_wipe_displaylist();
   upload_scaling_kernel();
@@ -718,6 +742,33 @@ void hvs_configure_channel(int channel, int width, int height, bool interlaced) 
     *REG32(SCALER_DISPDITHER) = (dither & (0xf << (channel * 4))) | (new << (channel * 4));
   }
 }
+
+#ifdef BCM283X_DSI_HVS
+void hvs_configure_channel_dsi1(int width, int height) {
+  struct pixel_valve *rawpv;
+  channels[HVS_DSI1_CHANNEL].width = width;
+  channels[HVS_DSI1_CHANNEL].height = height;
+  channels[HVS_DSI1_CHANNEL].interlaced = false;
+  hvs_channels[HVS_DSI1_CHANNEL].dispbase = 0x3c8f0800u;
+  /* Restore the working DSI1 output state before enabling the channel. */
+  *REG32(SCALER_DISPCTRL) = 0x9a040fffu;
+  *REG32(SCALER_DISPEOLN) = 0x00007038u;
+  hvs_channels[HVS_DSI1_CHANNEL].dispctrl = 0;
+  hvs_channels[HVS_DSI1_CHANNEL].dispctrl = SCALER_DISPCTRLX_RESET;
+  hvs_channels[HVS_DSI1_CHANNEL].dispctrl = 0;
+  hvs_channels[HVS_DSI1_CHANNEL].dispbkgnd = SCALER_DISPBKGND_AUTOHS | 0x020202;
+  rawpv = getPvAddr(1);
+  rawpv->int_enable = 0;
+  rawpv->int_status = 0xff;
+  setup_pv_interrupt(1, pv_irq, (void *)1);
+  rawpv->int_enable = PV_INTEN_VFP_START;
+}
+
+void hvs_start_channel_dsi1(int width, int height) {
+  hvs_channels[HVS_DSI1_CHANNEL].dispctrl = SCALER_DISPCTRLX_ENABLE |
+      SCALER_DISPCTRL_W(width) | SCALER_DISPCTRL_H(height);
+}
+#endif
 
 void hvs_wipe_displaylist(void) {
   for (int i=0; i<1024; i++) {
@@ -1001,6 +1052,13 @@ void hvs_update_dlist(int channel) {
   }
 
   channels[channel].dlist_target = list_start;
+#ifdef BCM283X_DSI_HVS
+  /* The first list has no active frame boundary on which to commit. */
+  if (channel == HVS_DSI1_CHANNEL &&
+      (!(hvs_channels[channel].dispctrl & SCALER_DISPCTRLX_ENABLE) ||
+       *REG32(SCALER_DISPLACT1) == 0))
+    *REG32(SCALER_DISPLIST1) = list_start;
+#endif
   hvs_debug = false;
 }
 
