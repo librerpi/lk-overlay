@@ -5,8 +5,9 @@ BUILD_DIR ?= ../../build-arm-chainloader-test
 PLATFORM := ../../platform/bcm28xx
 
 .PHONY: test check
-test: $(BUILD_DIR)/handoff_test
+test: $(BUILD_DIR)/handoff_test $(BUILD_DIR)/clock_test
 	$(BUILD_DIR)/handoff_test
+	$(BUILD_DIR)/clock_test
 
 $(BUILD_DIR)/handoff_test: handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c $(PLATFORM)/arm-chainloader/mappings.c \
 		$(PLATFORM)/include/platform/bcm28xx/arm_chainloader.h \
@@ -14,6 +15,14 @@ $(BUILD_DIR)/handoff_test: handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c 
 	mkdir -p $(BUILD_DIR)
 	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -I$(PLATFORM)/include \
 		handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c $(PLATFORM)/arm-chainloader/mappings.c -o $@
+
+$(BUILD_DIR)/clock_test: clock_test.c $(PLATFORM)/arm-chainloader/clock.c \
+		$(PLATFORM)/include/platform/bcm28xx/arm_chainloader.h \
+		$(PLATFORM)/include/platform/bcm28xx/a2w.h $(PLATFORM)/include/platform/bcm28xx/cm.h \
+		include/lk/reg.h include/platform/bcm28xx.h
+	mkdir -p $(BUILD_DIR)
+	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -Iinclude -I$(PLATFORM)/include \
+		clock_test.c $(PLATFORM)/arm-chainloader/clock.c -o $@
 
 check:
 	@test -n "$(ELF)" -a -n "$(IMAGE)" -a -n "$(CHAINLOADER)" || \

@@ -22,3 +22,6 @@ int arm_chainloader_prepare_image(void *destination, size_t capacity,
 
 /* Write the BCM2837 translation registers used by the validated handoff. */
 int arm_chainloader_configure_mappings(volatile uint32_t *table, size_t entries);
+
+/* Configure PLLB and the ARM clock for the validated 19.2 MHz crystal path. */
+int arm_chainloader_setup_clock(uint32_t arm_mhz);
