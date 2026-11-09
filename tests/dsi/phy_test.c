@@ -9,10 +9,16 @@
 #include <platform/bcm28xx/udelay.h>
 
 static uint32_t registers[1024], dsi_regs[64];
-static unsigned calls, pll_fail, latch, delay_1ms;
+static unsigned calls, pll_fail, latch, delay_1ms, stop_running_clock, clock_accesses;
 struct event { uint32_t reg, value; };
 static struct event events[64];
-uint32_t *test_reg(uint32_t address) { assert(address < 1024); return &registers[address]; }
+uint32_t *test_reg(uint32_t address) {
+  assert(address < 1024);
+  /* Simulate hardware clearing read-only BUSY after the disable write. */
+  if (address == 0x258 && stop_running_clock && ++clock_accesses == 3)
+    registers[address] &= ~0x80u;
+  return &registers[address];
+}
 int setup_plld(uint32_t freq, int divider) {
   assert(freq == 2000000000u && divider == 8);
   return pll_fail ? -1 : 0;
@@ -33,7 +39,7 @@ void bcm_dsi1_write(uint32_t offset, uint32_t value) {
 }
 static void reset(void) {
   memset(registers, 0, sizeof(registers)); memset(dsi_regs, 0, sizeof(dsi_regs));
-  calls = pll_fail = latch = delay_1ms = 0;
+  calls = pll_fail = latch = delay_1ms = stop_running_clock = clock_accesses = 0;
 }
 int main(void) {
   struct bcm_dsi_clock_config cfg = { .pixel_hz_requested = 25979400u };
@@ -54,6 +60,8 @@ int main(void) {
   assert(delay_1ms == 2);
   reset(); pll_fail = 1; assert(bcm_dsi1_clock_init(&cfg) == -1);
   reset(); registers[0x258] = 0x80; assert(bcm_dsi1_clock_init(&cfg) == -1);
+  reset(); registers[0x258] = 0x90; stop_running_clock = 1;
+  assert(bcm_dsi1_clock_init(&cfg) == 0);
   reset(); cfg.pixel_hz_requested = UINT32_MAX; assert(bcm_dsi1_clock_init(&cfg) == -1);
   cfg.pixel_hz_requested = 25979400u;
   reset(); latch = 1; assert(bcm_dsi1_phy_init(&cfg) == 0);

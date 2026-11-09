@@ -79,7 +79,15 @@ int bcm_dsi7_scanout(void) {
   if (pv) pv->c = 0;
   hvs_channels[HVS_DSI1_CHANNEL].dispctrl = 0;
   udelay(1000);
-  if (bcm_dsi1_clock_init(&cfg) || bcm_dsi1_phy_init(&cfg) || bcm_dsi1_video_prepare())
+  if (bcm_dsi1_clock_init(&cfg)) {
+    puts("DSI: clock initialization failed");
+    return -1;
+  }
+  if (bcm_dsi1_phy_init(&cfg)) {
+    puts("DSI: PHY initialization failed");
+    return -1;
+  }
+  if (bcm_dsi1_video_prepare())
     return -1;
   hvs_initialize();
   setup_pixelvalve(&dsi7_timings, 1);

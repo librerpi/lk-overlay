@@ -6,6 +6,7 @@
 #include <platform/bcm28xx/pll_read.h>
 #include <platform/bcm28xx/power.h>
 #include <platform/bcm28xx/udelay.h>
+#include <stdio.h>
 
 #define DSI_CM_ENABLE (1u << 4)
 #define DSI_CM_GATE (1u << 6)
@@ -38,14 +39,15 @@ static int wait_clock(uint32_t ctl) {
 
 static int set_clock(uint32_t ctl, uint32_t divreg, unsigned int source, uint32_t divider) {
   uint32_t value = *REG32(ctl);
-  if (wait_clock(ctl)) return -1;
+  /* BUSY may be set while the clock is running. Disable it before waiting. */
   *REG32(ctl) = CM_PASSWORD | (value & ~DSI_CM_ENABLE);
   if (wait_clock(ctl)) return -1;
   *REG32(divreg) = CM_PASSWORD | divider;
   *REG32(ctl) = CM_PASSWORD | ((value & ~(0xfu | DSI_CM_FRAC)) | source |
                                ((divider & 0xfffu) ? DSI_CM_FRAC : 0) |
                                DSI_CM_ENABLE | DSI_CM_GATE);
-  return wait_clock(ctl);
+  /* BUSY is expected to be set once the clock runs; do not wait for it to clear. */
+  return 0;
 }
 
 /* Derived from the working vc4_dsi and clk-bcm2835 initialization sequence. */
@@ -63,7 +65,11 @@ int bcm_dsi1_clock_init(struct bcm_dsi_clock_config *cfg) {
   plld_hz = get_pll_freq(PLL_D);
   dper_hz = get_pll_chan_freq(PLL_CHAN_DPER);
   requested = cfg->pixel_hz_requested * 24u;
-  if (!plld_hz || !dper_hz || !requested) return -1;
+  if (!plld_hz || !dper_hz || !requested) {
+    printf("DSI: invalid PLLD clocks (PLLD=%u DPER=%u requested=%u)\n",
+           plld_hz, dper_hz, requested);
+    return -1;
+  }
   phy_div = plld_hz / requested;
   if (!phy_div) phy_div = 1;
   if (phy_div > 255) return -1;
@@ -74,7 +80,10 @@ int bcm_dsi1_clock_init(struct bcm_dsi_clock_config *cfg) {
   *REG32(CM_PLLD) = CM_PASSWORD | (cm & ~(PLLD_LOAD_DSI1 | PLLD_HOLD_DSI1));
   escape_div = (((uint64_t)dper_hz << 12) + 100000000u - 1) / 100000000u;
   escape_div &= ~0xfu;
-  if (!escape_div || set_clock(DSI_CM_DSI1E_CTL, DSI_CM_DSI1E_DIV, 6, escape_div)) return -1;
+  if (!escape_div || set_clock(DSI_CM_DSI1E_CTL, DSI_CM_DSI1E_DIV, 6, escape_div)) {
+    puts("DSI: escape clock did not stop");
+    return -1;
+  }
   cfg->phy_hz = plld_hz / phy_div;
   cfg->pixel_hz_actual = cfg->phy_hz / 24u;
   cfg->escape_hz = (uint32_t)(((uint64_t)dper_hz << 12) / escape_div);
@@ -111,7 +120,10 @@ int bcm_dsi1_phy_init(const struct bcm_dsi_clock_config *cfg) {
   bcm_dsi1_write(BCM_DSI1_PHY_AFEC0, afec0);
   bcm_dsi1_write(BCM_DSI1_PHY_AFEC1, 0);
   udelay(1000);
-  if (set_clock(DSI_CM_DSI1P_CTL, DSI_CM_DSI1P_DIV, 8, 0)) return -1;
+  if (set_clock(DSI_CM_DSI1P_CTL, DSI_CM_DSI1P_DIV, 8, 0)) {
+    puts("DSI: PHY clock did not stop");
+    return -1;
+  }
   bcm_dsi1_write(BCM_DSI1_HS_CLT0, field(hs_timing(ui_ns, 262, 0), 18, 0x1ff) |
                  field(hs_timing(ui_ns, 0, 8), 9, 0x1ff) | field(hs_timing(ui_ns, 38, 0), 0, 0x1ff));
   bcm_dsi1_write(BCM_DSI1_HS_CLT1, field(hs_timing(ui_ns, 60, 0), 9, 0x1ff) |
