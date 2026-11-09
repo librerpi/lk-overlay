@@ -1,6 +1,6 @@
 TARGET := rpi3-vpu
 
-MODULES += app/shell platform/bcm28xx/panel platform/bcm28xx/hvs \
+MODULES += app/shell platform/bcm28xx/bridge platform/bcm28xx/hvs \
 	platform/bcm28xx/rpi-ddr2/autoram
 BOOTCODE := 1
 VPU_STAGE2 := 1
