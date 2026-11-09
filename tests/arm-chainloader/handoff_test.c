@@ -44,6 +44,19 @@ int main(void) {
   assert(arm_chainloader_prepare_image(destination + 1, sizeof(payload), payload,
                                      sizeof(payload), 1, 2, 3, 0) == -1);
   for (unsigned int i = 0; i < 34; ++i) assert(destination[i] == 0xa5a5a5a5);
+  uint32_t table[ARM_CHAINLOADER_MAP_ENTRIES + 2];
+  for (unsigned int i = 0; i < ARM_CHAINLOADER_MAP_ENTRIES + 2; ++i) table[i] = 0xdeadbeef;
+  assert(arm_chainloader_configure_mappings(table + 1, ARM_CHAINLOADER_MAP_ENTRIES - 1) == -1);
+  for (unsigned int i = 0; i < ARM_CHAINLOADER_MAP_ENTRIES + 2; ++i) assert(table[i] == 0xdeadbeef);
+  assert(arm_chainloader_configure_mappings(NULL, ARM_CHAINLOADER_MAP_ENTRIES) == -1);
+  assert(arm_chainloader_configure_mappings(table + 1, ARM_CHAINLOADER_MAP_ENTRIES) == 0);
+  assert(table[0] == 0xdeadbeef && table[ARM_CHAINLOADER_MAP_ENTRIES + 1] == 0xdeadbeef);
+  for (unsigned int i = 0; i < ARM_CHAINLOADER_MAP_ENTRIES; ++i) {
+    uint32_t expected_map = i < 62 ? 0x600u + i * 8u : 0x630u;
+    if (i == 0x20 || i == 0x3f) expected_map = 0x3f0u;
+    if (i == 0x40) expected_map = 0x200u;
+    assert(table[i + 1] == expected_map);
+  }
   puts("ARM firmware-data handoff tests passed");
   return 0;
 }

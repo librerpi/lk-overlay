@@ -8,12 +8,12 @@ PLATFORM := ../../platform/bcm28xx
 test: $(BUILD_DIR)/handoff_test
 	$(BUILD_DIR)/handoff_test
 
-$(BUILD_DIR)/handoff_test: handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c \
+$(BUILD_DIR)/handoff_test: handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c $(PLATFORM)/arm-chainloader/mappings.c \
 		$(PLATFORM)/include/platform/bcm28xx/arm_chainloader.h \
 		$(PLATFORM)/include/platform/bcm28xx/dsi_framebuffer.h
 	mkdir -p $(BUILD_DIR)
 	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -I$(PLATFORM)/include \
-		handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c -o $@
+		handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c $(PLATFORM)/arm-chainloader/mappings.c -o $@
 
 check:
 	@test -n "$(ELF)" -a -n "$(IMAGE)" -a -n "$(CHAINLOADER)" || \
