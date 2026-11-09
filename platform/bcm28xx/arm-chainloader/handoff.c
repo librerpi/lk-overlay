@@ -3,6 +3,12 @@
 #include <platform/bcm28xx/arm_chainloader.h>
 #include <platform/bcm28xx/dsi_framebuffer.h>
 
+int arm_chainloader_board_supported(uint32_t revision) {
+  uint32_t type = (revision >> 4) & 0xff;
+  return (revision & (1u << 23)) && ((revision >> 12) & 0xf) == 2 &&
+         ((revision >> 20) & 7) == 2 && (type == 8 || type == 0xd);
+}
+
 int arm_chainloader_write_firmware_data(volatile uint32_t *data, uint32_t serial,
                                        uint32_t revision, uint32_t uart_hz,
                                        uint32_t active_framebuffer) {

@@ -136,7 +136,11 @@ static int cmd_pll_dump(int argc, const console_cmd_args *argv) {
 }
 
 // based on https://github.com/raspberrypi/linux/blob/rpi-4.19.y/drivers/clk/bcm/clk-bcm2835.c#L356
+#ifdef BCM283X_ARM_CHAINLOADER
+#define CM_KILL 0x20
+#else
 #define CM_KILL 0x40
+#endif
 #define CM_BUSY 0x80
 #define CM_SRC_MASK 0xf
 #define CM_SRC_BITS 4
@@ -155,7 +159,11 @@ int measure_clock(int mux) {
   }
 
   int count = *REG32(CM_TCNTCNT);
+#ifdef BCM283X_ARM_CHAINLOADER
+  *REG32(CM_TCNTCTL) = CM_PASSWORD | 0;
+#else
   *REG32(CM_TCNTCNT) = CM_PASSWORD | 0;
+#endif
   return count * divisor;
 }
 

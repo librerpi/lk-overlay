@@ -6,6 +6,11 @@
 #include <platform/bcm28xx/dsi_framebuffer.h>
 
 int main(void) {
+  assert(arm_chainloader_board_supported(0x00a02082));
+  assert(arm_chainloader_board_supported(0x00a020d3));
+  assert(!arm_chainloader_board_supported(0x00902082)); /* 512 MiB */
+  assert(!arm_chainloader_board_supported(0x00a01041)); /* Pi 2 */
+  assert(!arm_chainloader_board_supported(0x00000002)); /* old-style Pi 1 */
   const uint32_t expected[] = {
     0, 0, 0x12345678, 0x00a02082, 5389000, 0x3142464c,
     0x01800000, 0x00300000, 0x01800000, 0x01977000,

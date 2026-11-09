@@ -16,6 +16,7 @@
 static gfx_surface *primary_fb;
 static gfx_surface *back_fb;
 static hvs_layer *display_layer;
+static bool scanout_ready;
 
 static const struct pv_timings dsi7_timings = {
   .hfp = 1, .hsync = 2, .hbp = 46, .hactive = DSI_FB_WIDTH,
@@ -24,7 +25,7 @@ static const struct pv_timings dsi7_timings = {
 };
 
 int bcm_dsi7_framebuffer_handoff(uint32_t *physical) {
-  if (!physical || !display_layer || !display_layer->fb)
+  if (!physical || !scanout_ready || !display_layer || !display_layer->fb)
     return -1;
   *physical = (uint32_t)(uintptr_t)display_layer->fb->ptr & 0x3fffffffu;
   return (*physical == DSI_FB_PRIMARY_PHYS || *physical == DSI_FB_BACK_PHYS) ? 0 : -1;
@@ -75,6 +76,7 @@ int bcm_dsi7_scanout(void) {
   struct bcm_dsi_clock_config cfg = { .pixel_hz_requested = 25979400u };
   struct pixel_valve *pv = getPvAddr(1);
 
+  scanout_ready = false;
   bcm_dsi1_write(BCM_DSI1_DISP0_CTRL, 0);
   if (pv) pv->c = 0;
   hvs_channels[HVS_DSI1_CHANNEL].dispctrl = 0;
@@ -96,6 +98,7 @@ int bcm_dsi7_scanout(void) {
     return -1;
   enable_pixelvalve(1);
   udelay(49000);
+  scanout_ready = true;
   puts("DSI: 800x480 color bars active");
   return 0;
 }

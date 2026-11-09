@@ -9,6 +9,4 @@ $(error ARM_CHAINLOADER_BIN does not exist: $(ARM_CHAINLOADER_BIN))
 endif
 
 MODULES += platform/bcm28xx/arm-chainloader
-# Keep the payload in the image until the ARM handoff is connected.
-GLOBAL_LDFLAGS += -u arm_chainloader_start -u arm_chainloader_prepare_image \
-	-u arm_chainloader_configure_mappings -u arm_chainloader_setup_clock
+GLOBAL_DEFINES += BCM283X_ARM_CHAINLOADER=1

@@ -9,6 +9,9 @@
 #define ARM_CHAINLOADER_FORMAT_A8R8G8B8 1u
 #define ARM_CHAINLOADER_MAP_ENTRIES 65u
 
+/* This handoff describes only a 1 GiB BCM2837 Pi 3B/3B+. */
+int arm_chainloader_board_supported(uint32_t revision);
+
 /* data points to the firmware-data area in the copied ARM image. */
 int arm_chainloader_write_firmware_data(volatile uint32_t *data, uint32_t serial,
                                        uint32_t revision, uint32_t uart_hz,
@@ -25,3 +28,6 @@ int arm_chainloader_configure_mappings(volatile uint32_t *table, size_t entries)
 
 /* Configure PLLB and the ARM clock for the validated 19.2 MHz crystal path. */
 int arm_chainloader_setup_clock(uint32_t arm_mhz);
+
+/* Complete the working BCM2837 asynchronous bridge reset sequence. */
+void arm_chainloader_release_bridge(void);

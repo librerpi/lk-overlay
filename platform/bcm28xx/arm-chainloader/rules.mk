@@ -1,7 +1,9 @@
 LOCAL_DIR := $(GET_LOCAL_DIR)
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS += $(LOCAL_DIR)/payload.S $(LOCAL_DIR)/handoff.c $(LOCAL_DIR)/mappings.c $(LOCAL_DIR)/clock.c
+MODULE_DEPS += platform/bcm28xx/display platform/bcm28xx/otp platform/bcm28xx/power platform/bcm28xx/pll
+MODULE_SRCS += $(LOCAL_DIR)/payload.S $(LOCAL_DIR)/handoff.c $(LOCAL_DIR)/mappings.c \
+	$(LOCAL_DIR)/clock.c $(LOCAL_DIR)/release.c $(LOCAL_DIR)/start.c
 MODULE_DEFINES += ARM_CHAINLOADER_FILE=\"$(ARM_CHAINLOADER_BIN)\"
 
 # Always refresh the embedded input, including when a symlink target changes.

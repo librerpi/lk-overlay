@@ -5,9 +5,10 @@ BUILD_DIR ?= ../../build-arm-chainloader-test
 PLATFORM := ../../platform/bcm28xx
 
 .PHONY: test check
-test: $(BUILD_DIR)/handoff_test $(BUILD_DIR)/clock_test
+test: $(BUILD_DIR)/handoff_test $(BUILD_DIR)/clock_test $(BUILD_DIR)/release_test
 	$(BUILD_DIR)/handoff_test
 	$(BUILD_DIR)/clock_test
+	$(BUILD_DIR)/release_test
 
 $(BUILD_DIR)/handoff_test: handoff_test.c $(PLATFORM)/arm-chainloader/handoff.c $(PLATFORM)/arm-chainloader/mappings.c \
 		$(PLATFORM)/include/platform/bcm28xx/arm_chainloader.h \
@@ -23,6 +24,16 @@ $(BUILD_DIR)/clock_test: clock_test.c $(PLATFORM)/arm-chainloader/clock.c \
 	mkdir -p $(BUILD_DIR)
 	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -Iinclude -I$(PLATFORM)/include \
 		clock_test.c $(PLATFORM)/arm-chainloader/clock.c -o $@
+
+$(BUILD_DIR)/release_test: release_test.c $(PLATFORM)/arm-chainloader/release.c \
+		$(PLATFORM)/include/platform/bcm28xx/arm.h \
+		$(PLATFORM)/power/include/platform/bcm28xx/power.h \
+		$(PLATFORM)/include/platform/bcm28xx/arm_chainloader.h \
+		include/lk/reg.h include/platform/bcm28xx.h ../panel/include/platform/bcm28xx/udelay.h
+	mkdir -p $(BUILD_DIR)
+	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -Iinclude -I../panel/include \
+		-I$(PLATFORM)/include -I$(PLATFORM)/power/include \
+		release_test.c $(PLATFORM)/arm-chainloader/release.c -o $@
 
 check:
 	@test -n "$(ELF)" -a -n "$(IMAGE)" -a -n "$(CHAINLOADER)" || \
