@@ -210,7 +210,11 @@ static void stage1_entry(const struct app_descriptor *app, void *args) {
   puts("stage1 entry\n");
   // sdhost initializes in a blocking mode before threads are ran, so will be available immediately if detected
   // usb initiailizes in a thread and wont show up until stage1_msd_probed() gets called
+#if defined(STAGE1_SD_FAT)
+  add_boot_target("sdhostp0");
+#else
   add_boot_target("sdhostp1");
+#endif
 
 #ifdef WITH_DEV_SPI
   add_boot_target("spi");
