@@ -25,6 +25,25 @@ int main(void) {
   for (unsigned int i = 0; i < sizeof(data) / sizeof(data[0]); ++i)
     assert(data[i] == 0xa5a5a5a5);
   assert(arm_chainloader_write_firmware_data(NULL, 1, 2, 3, DSI_FB_BACK_PHYS) == -1);
+  uint32_t payload[32], destination[34];
+  for (unsigned int i = 0; i < 32; ++i) payload[i] = 0x12340000u + i;
+  memset(destination, 0xa5, sizeof(destination));
+  assert(arm_chainloader_prepare_image(destination + 1, sizeof(payload), payload, sizeof(payload),
+                                     0x12345678, 0x00a02082, 5389000, DSI_FB_BACK_PHYS) == 0);
+  assert(destination[0] == 0xa5a5a5a5 && destination[33] == 0xa5a5a5a5);
+  assert(memcmp(destination + 1, payload, ARM_CHAINLOADER_FIRMWARE_DATA_OFFSET) == 0);
+  assert(memcmp(destination + 9, expected, sizeof(expected)) == 0);
+  assert(memcmp(destination + 24, payload + 23, 9 * sizeof(uint32_t)) == 0);
+  memset(destination, 0xa5, sizeof(destination));
+  assert(arm_chainloader_prepare_image(destination + 1, sizeof(payload) - 1, payload,
+                                     sizeof(payload), 1, 2, 3, DSI_FB_BACK_PHYS) == -1);
+  assert(arm_chainloader_prepare_image(destination + 1, sizeof(payload), payload,
+                                     91, 1, 2, 3, DSI_FB_BACK_PHYS) == -1);
+  assert(arm_chainloader_prepare_image((uint8_t *)(destination + 1) + 1, sizeof(payload), payload,
+                                     sizeof(payload), 1, 2, 3, DSI_FB_BACK_PHYS) == -1);
+  assert(arm_chainloader_prepare_image(destination + 1, sizeof(payload), payload,
+                                     sizeof(payload), 1, 2, 3, 0) == -1);
+  for (unsigned int i = 0; i < 34; ++i) assert(destination[i] == 0xa5a5a5a5);
   puts("ARM firmware-data handoff tests passed");
   return 0;
 }

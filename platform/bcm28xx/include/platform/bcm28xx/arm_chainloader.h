@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define ARM_CHAINLOADER_FIRMWARE_DATA_OFFSET 32u
 #define ARM_CHAINLOADER_FIRMWARE_DATA_WORDS 15u
@@ -11,3 +12,9 @@
 int arm_chainloader_write_firmware_data(volatile uint32_t *data, uint32_t serial,
                                        uint32_t revision, uint32_t uart_hz,
                                        uint32_t active_framebuffer);
+
+/* Copy the ARM binary and patch its firmware-data area before ARM release. */
+int arm_chainloader_prepare_image(void *destination, size_t capacity,
+                                  const void *payload, size_t payload_size,
+                                  uint32_t serial, uint32_t revision,
+                                  uint32_t uart_hz, uint32_t active_framebuffer);
