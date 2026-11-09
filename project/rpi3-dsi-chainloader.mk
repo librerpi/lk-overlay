@@ -10,4 +10,4 @@ endif
 
 MODULES += platform/bcm28xx/arm-chainloader
 # Keep the payload in the image until the ARM handoff is connected.
-GLOBAL_LDFLAGS += -u arm_chainloader_start
+GLOBAL_LDFLAGS += -u arm_chainloader_start -u arm_chainloader_write_firmware_data
