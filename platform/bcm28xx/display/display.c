@@ -54,11 +54,14 @@ static int prepare_framebuffer(void) {
 }
 
 static int prepare_scanout(void) {
+  static const uint32_t colors[] = {
+    0xffffffff, 0xffffff00, 0xff00ffff, 0xff00ff00,
+    0xffff00ff, 0xffff0000, 0xff0000ff, 0xff000000,
+  };
   if (prepare_framebuffer())
     return -1;
-  /* The colour bars were a bring-up diagnostic. Leave the firmware-owned
-   * scanout in a neutral state until Linux or the application draws into it. */
-  gfx_fillrect(back_fb, 0, 0, DSI_FB_WIDTH, DSI_FB_HEIGHT, 0xff000000u);
+  for (unsigned int bar = 0; bar < 8; ++bar)
+    gfx_fillrect(back_fb, bar * 100u, 0, 100u, DSI_FB_HEIGHT, colors[bar]);
   gfx_flush(back_fb);
   display_layer->fb = back_fb;
   hvs_configure_channel_dsi1(DSI_FB_WIDTH, DSI_FB_HEIGHT);
@@ -96,7 +99,7 @@ int bcm_dsi7_scanout(void) {
   enable_pixelvalve(1);
   udelay(49000);
   scanout_ready = true;
-  puts("DSI: 800x480 scanout active");
+  puts("DSI: 800x480 color bars active");
   return 0;
 }
 
