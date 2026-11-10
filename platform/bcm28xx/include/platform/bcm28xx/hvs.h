@@ -19,6 +19,8 @@
 #define SCALER_DISPLIST0    (SCALER_BASE + 0x20)
 #define SCALER_DISPLIST1    (SCALER_BASE + 0x24)
 #define SCALER_DISPLIST2    (SCALER_BASE + 0x28)
+#define SCALER_DISPLACT1    (SCALER_BASE + 0x34)
+#define HVS_DSI1_CHANNEL    1
 
 struct hvs_channel {
   volatile uint32_t dispctrl;
@@ -220,6 +222,10 @@ extern const int scaling_kernel;
 void hvs_wipe_displaylist(void);
 void hvs_initialize(void);
 void hvs_configure_channel(int channel, int width, int height, bool interlaced);
+#ifdef BCM283X_DSI_HVS
+void hvs_configure_channel_dsi1(int width, int height);
+void hvs_start_channel_dsi1(int width, int height);
+#endif
 void hvs_setup_irq(void);
 // schedules a pageflip at the next vsync, based on the current state of the layers list
 // can be called multiple times per frame

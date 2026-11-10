@@ -86,6 +86,9 @@ extern uint32_t freq_pllc_per;
 extern uint32_t vpu_clock;
 extern const struct pll_chan_def pll_chan_def[PLL_CHAN_NUM];
 
+#ifdef BCM283X_PLLD_CONTROL
+int setup_plld(uint32_t freq, int per_div);
+#endif
 void setup_plla(uint32_t freq, int core_div, int per_div);
 void setup_pllc(uint32_t freq, int core0_div, int per_div);
 void setup_pllh(uint32_t freq, int aux_div, int pix_div);

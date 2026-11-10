@@ -92,12 +92,17 @@ void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
 # define PV_CONTROL_CLK_SELECT_VEC              2
 #define PIXEL_REP(n) (((n) & 0x3) << 4)
 #define FIFO_LEVEL(n) ((n & 0x3f) << 15)
+#define PV_CONTROL_FORMAT_DSIV_24 (4u << 21)
 
-  rawpv->vc = BV(0) | // video enable
-            BV(1)| // continous
+  bool dsi = t->clock_mux == clk_dsi;
+  rawpv->vc = (dsi ? BV(3) : BV(0)) | // DSI output mode or legacy video enable
+            BV(1)| // continuous
             (t->interlaced ? BV(4) : 0);
 
-  rawpv->h_active = t->hactive;
+  if (dsi)
+    rawpv->dsi_h_active = t->hactive;
+  else
+    rawpv->h_active = t->hactive;
 
   uint32_t fifo_len_bytes = 64;
   fifo_len_bytes = fifo_len_bytes - 3 * 6;
@@ -110,7 +115,7 @@ void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
   else if (t->clock_mux == clk_vec) clk = PV_CONTROL_CLK_SELECT_VEC;
 #endif
 
-  rawpv->c = PV_CONTROL_EN |
+  rawpv->c = (dsi ? PV_CONTROL_FORMAT_DSIV_24 : PV_CONTROL_EN) |
             PV_CONTROL_FIFO_CLR |
             CLK_SELECT(clk) |
             PIXEL_REP(1 - 1) |
@@ -118,6 +123,14 @@ void setup_pixelvalve(const struct pv_timings *t, int pvnr) {
             BV(13) | // trigger underflow
             BV(14) | // clear at start
             FIFO_LEVEL(fifo_len_bytes);
+}
+
+void enable_pixelvalve(int pvnr) {
+  struct pixel_valve *rawpv = getPvAddr(pvnr);
+  if (!rawpv)
+    return;
+  rawpv->c |= PV_CONTROL_EN;
+  rawpv->vc |= BV(0);
 }
 
 void setup_pv_interrupt(int pvnr, int_handler handler, void *arg) {

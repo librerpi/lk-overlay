@@ -17,7 +17,11 @@ static ssize_t fs_read_wrapper(struct elf_handle *handle, void *buf, uint64_t of
 void try_sd_boot(const char *device) {
   int ret;
   logf("trying to boot from %s\n", device);
+#if defined(STAGE1_SD_FAT)
+  ret = fs_mount("/root", "fat", device);
+#else
   ret = fs_mount("/root", "ext2", device);
+#endif
   if (ret) {
     printf("mount failure: %d\n", ret);
     return;

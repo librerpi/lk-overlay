@@ -5,6 +5,7 @@
 enum clock_source {
   clk_dpi_smi_hdmi,
   clk_vec,
+  clk_dsi,
 };
 
 struct pv_timings {
@@ -27,10 +28,15 @@ struct pixel_valve {
   volatile uint32_t vertb_even;
   volatile uint32_t int_enable;
   volatile uint32_t int_status;
-  volatile uint32_t h_active;
+  union {
+    volatile uint32_t h_active; /* legacy non-DSI access */
+    volatile uint32_t stat;
+  };
+  volatile uint32_t dsi_h_active;
 };
 
 void setup_pixelvalve(const struct pv_timings *timings, int pvnr);
+void enable_pixelvalve(int pvnr);
 void setup_pv_interrupt(int pvnr, int_handler handler, void *arg);
 struct pixel_valve *getPvAddr(int pvnr);
 

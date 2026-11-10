@@ -7,6 +7,7 @@ MODULE_DEPS += \
 	platform/bcm28xx/pixelvalve \
 
 MODULE_SRCS += \
-	$(LOCAL_DIR)/hvs.c
+	$(LOCAL_DIR)/hvs.c \
+	$(LOCAL_DIR)/dsi_framebuffer.c
 
 include make/module.mk
