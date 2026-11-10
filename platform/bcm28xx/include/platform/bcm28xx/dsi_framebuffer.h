@@ -2,9 +2,9 @@
 
 #include <stdint.h>
 
-#define DSI_FB_PRIMARY_PHYS 0x01800000u
-#define DSI_FB_BACK_PHYS    0x01977000u
-#define DSI_FB_POOL_BASE    0x01800000u
+#define DSI_FB_POOL_BASE    0x07000000u
+#define DSI_FB_PRIMARY_PHYS 0x07000000u
+#define DSI_FB_BACK_PHYS    0x07177000u
 #define DSI_FB_POOL_SIZE    0x00300000u
 #define DSI_FB_WIDTH 800u
 #define DSI_FB_HEIGHT 480u

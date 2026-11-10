@@ -13,8 +13,8 @@ int main(void) {
   assert(!arm_chainloader_board_supported(0x00000002)); /* old-style Pi 1 */
   const uint32_t expected[] = {
     0, 0, 0x12345678, 0x00a02082, 5389000, 0x3142464c,
-    0x01800000, 0x00300000, 0x01800000, 0x01977000,
-    0x01977000, 800, 480, 800, 1,
+    0x07000000, 0x00300000, 0x07000000, 0x07177000,
+    0x07177000, 800, 480, 800, 1,
   };
   uint32_t data[ARM_CHAINLOADER_FIRMWARE_DATA_WORDS + 2];
   _Static_assert(sizeof(expected) == ARM_CHAINLOADER_FIRMWARE_DATA_WORDS * sizeof(uint32_t), "ABI size");
